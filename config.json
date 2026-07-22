@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "hybrid-vision": {
+      "url": "http://localhost:11402/sse"
+    }
+  }
+}
