@@ -203,7 +203,7 @@ Locate the element or text matching: "{query}". Provide the bounding box coordin
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `3000` | Express listener port. (README suggests `11402`) |
+| `PORT` | `11402` | Express listener port. |
 | `OLLAMA_HOST` | `http://localhost:11434` | Base URL for local Ollama inference service. |
 | `VISION_MODEL_FAST` | `llava:13b` | Default vision model for `analyze_image`. |
 | `VISION_MODEL_HEAVY` | `qwen3-vl:30b` | Default vision model for `find_text_element` and `compare_images`. |

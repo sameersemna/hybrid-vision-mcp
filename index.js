@@ -28,7 +28,7 @@ process.on("unhandledRejection", (reason) => {
 // ==========================================
 // Configuration
 // ==========================================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 11402;
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
 const VISION_MODEL_FAST = process.env.VISION_MODEL_FAST || "llava:13b";
 const VISION_MODEL_HEAVY = process.env.VISION_MODEL_HEAVY || "qwen3-vl:30b";
@@ -337,6 +337,264 @@ function buildAnnotationOverlay(annotations, imgWidth, imgHeight) {
   return Buffer.from(svg);
 }
 
+function normalizeDomFragment(dom) {
+  if (!dom || typeof dom !== "string") return "";
+  const trimmed = dom.trim();
+  if (trimmed.length < 3) return "";
+  return trimmed;
+}
+
+function normalizeCssSnapshot(css) {
+  if (!css || typeof css !== "string") return "";
+  const trimmed = css.trim();
+  if (trimmed.length < 3) return "";
+  return trimmed;
+}
+
+function extractSemanticPage(html, minTextLength = 10, includeRaw = false) {
+  const controlMap = {
+    title: "",
+    meta: {},
+    headings: [],
+    navigation: { items: [], links: [] },
+    main_content: [],
+    lists: [],
+    forms: [],
+    tables: [],
+    media: [],
+    footer: {},
+    sections: [],
+    raw_stats: {}
+  };
+
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (titleMatch) controlMap.title = titleMatch[1].trim();
+
+  const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
+  if (descMatch) controlMap.meta.description = descMatch[1];
+
+  const headingRegex = /<h([1-6])[^>]*>([\s\S]*?)<\/h[1-6]>/gi;
+  let hMatch;
+  while ((hMatch = headingRegex.exec(html)) !== null) {
+    const level = parseInt(hMatch[1]);
+    const text = hMatch[2].replace(/<[^>]+>/g, "").trim();
+    if (text.length >= minTextLength) {
+      controlMap.headings.push({ level, text });
+    }
+  }
+
+  const navMatch = html.match(/<nav[^>]*>([\s\S]*?)<\/nav>/i);
+  if (navMatch) {
+    controlMap.navigation.raw = navMatch[1].trim();
+    const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let lMatch;
+    while ((lMatch = linkRegex.exec(navMatch[1])) !== null) {
+      controlMap.navigation.links.push({
+        href: lMatch[1],
+        text: lMatch[2].replace(/<[^>]+>/g, "").trim()
+      });
+    }
+  }
+
+  const sectionRegex = /<(main|article|section)([^>]*)>([\s\S]*?)<\/\1>/gi;
+  let sMatch;
+  while ((sMatch = sectionRegex.exec(html)) !== null) {
+    const tag = sMatch[1].toLowerCase();
+    const attrs = sMatch[2];
+    const inner = sMatch[3];
+    const text = inner.replace(/<[^>]+>/g, "").trim();
+    if (text.length >= minTextLength || tag === "main") {
+      controlMap.sections.push({ tag, attrs, text_preview: text.substring(0, 200) });
+      if (tag === "main") {
+        controlMap.main_content.push({
+          type: tag,
+          text_preview: text.substring(0, 500),
+          paragraph_count: (inner.match(/<p[^>]*>/gi) || []).length
+        });
+      }
+    }
+  }
+
+  const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+  let pMatch;
+  while ((pMatch = pRegex.exec(html)) !== null) {
+    const text = pMatch[1].replace(/<[^>]+>/g, "").trim();
+    if (text.length >= minTextLength) {
+      controlMap.main_content.push({ type: "paragraph", text_preview: text.substring(0, 200) });
+    }
+  }
+
+  const listRegex = /<(ul|ol)([^>]*)>([\s\S]*?)<\/\1>/gi;
+  let listMatch;
+  while ((listMatch = listRegex.exec(html)) !== null) {
+    const tag = listMatch[1];
+    const inner = listMatch[3];
+    const items = [];
+    const itemRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+    let iMatch;
+    while ((iMatch = itemRegex.exec(inner)) !== null) {
+      const text = iMatch[1].replace(/<[^>]+>/g, "").trim();
+      if (text.length >= minTextLength) items.push(text.substring(0, 100));
+    }
+    if (items.length > 0) {
+      controlMap.lists.push({ type: tag, item_count: items.length, items: items.slice(0, 20) });
+    }
+  }
+
+  const formRegex = /<form[^>]*>([\s\S]*?)<\/form>/gi;
+  let fMatch;
+  while ((fMatch = formRegex.exec(html)) !== null) {
+    const inner = fMatch[1];
+    const inputs = (inner.match(/<input[^>]*>/gi) || []).length;
+    const textareas = (inner.match(/<textarea[^>]*>/gi) || []).length;
+    const selects = (inner.match(/<select[^>]*>/gi) || []).length;
+    controlMap.forms.push({ inputs, textareas, selects, text_preview: inner.replace(/<[^>]+>/g, "").trim().substring(0, 200) });
+  }
+
+  const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+  let tMatch;
+  while ((tMatch = tableRegex.exec(html)) !== null) {
+    const inner = tMatch[1];
+    const rows = (inner.match(/<tr[^>]*>/gi) || []).length;
+    const headers = (inner.match(/<th[^>]*>/gi) || []).length;
+    const cells = (inner.match(/<td[^>]*>/gi) || []).length;
+    controlMap.tables.push({ rows, headers, cells });
+  }
+
+  const footerMatch = html.match(/<footer[^>]*>([\s\S]*?)<\/footer>/i);
+  if (footerMatch) {
+    controlMap.footer.text = footerMatch[1].replace(/<[^>]+>/g, "").trim().substring(0, 300);
+  }
+
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi;
+  let imgMatch;
+  while ((imgMatch = imgRegex.exec(html)) !== null) {
+    controlMap.media.push({ type: "image", src: imgMatch[1], alt: imgMatch[2] });
+  }
+
+  if (includeRaw) {
+    controlMap.raw_stats = {
+      total_tags: (html.match(/<[^>]+>/g) || []).length,
+      total_links: (html.match(/<a[^>]*>/gi) || []).length,
+      total_images: (html.match(/<img[^>]*>/gi) || []).length,
+      char_count: html.length
+    };
+  }
+
+  return controlMap;
+}
+
+async function generateRepoGraph(repoPath, maxDepth = 5, includeNodeModules = false) {
+  const resolvedPath = path.resolve(repoPath);
+
+  try {
+    const stat = await fs.promises.stat(resolvedPath);
+    if (!stat.isDirectory()) {
+      throw new Error(`Path is not a directory: ${resolvedPath}`);
+    }
+  } catch (err) {
+    throw new Error(`Invalid repo path: ${resolvedPath}. ${err.message}`);
+  }
+
+  const nodes = [];
+  const edges = [];
+  const extCounts = {};
+  const fileCounts = { total: 0, by_ext: {} };
+
+  async function walkDir(dirPath, depth, parentId) {
+    if (depth > maxDepth) return;
+
+    try {
+      const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        if (!includeNodeModules && entry.name === "node_modules") continue;
+        if (entry.name.startsWith(".") && entry.name !== ".git") continue;
+
+        const fullPath = path.join(dirPath, entry.name);
+        const relativePath = path.relative(resolvedPath, fullPath);
+        const nodeId = relativePath.replace(/\\/g, "/");
+
+        let nodeType = "file";
+        let extension = "";
+        let size = 0;
+
+        if (entry.isDirectory()) {
+          nodeType = "directory";
+        } else {
+          extension = path.extname(entry.name).toLowerCase();
+          if (!extension.startsWith(".")) extension = "";
+          try {
+            const stat = await fs.promises.stat(fullPath);
+            size = stat.size;
+          } catch {}
+
+          extCounts[extension || "no_ext"] = (extCounts[extension || "no_ext"] || 0) + 1;
+          fileCounts.total++;
+          fileCounts.by_ext[extension || "no_ext"] = (fileCounts.by_ext[extension || "no_ext"] || 0) + 1;
+        }
+
+        nodes.push({
+          id: nodeId,
+          type: nodeType,
+          path: fullPath,
+          relative_path: nodeId,
+          extension: extension,
+          size: size
+        });
+
+        if (parentId) {
+          edges.push({ source: parentId, target: nodeId });
+        }
+
+        if (entry.isDirectory()) {
+          await walkDir(fullPath, depth + 1, nodeId);
+        }
+      }
+    } catch (err) {
+      // Permission denied etc - skip
+    }
+  }
+
+  await walkDir(resolvedPath, 0, null);
+
+  const dotLines = [
+    'digraph repo {',
+    '  rankdir=TB;',
+    '  node [shape=box, style=filled, fontname="Helvetica,Arial,sans-serif"];',
+    '  edge [arrowhead=vee, fontname="Helvetica,Arial,sans-serif"];',
+    ''
+  ];
+
+  for (const node of nodes) {
+    const label = node.relative_path.split("/").pop();
+    const fillColor = node.type === "directory" ? "#E1F5FE" : "#F5F5F5";
+    const shape = node.type === "directory" ? "folder" : "box";
+    dotLines.push(`  "${node.relative_path.replace(/"/g, '\\"')}" [label="${label}", shape=${shape}, fillcolor="${fillColor}"];`);
+  }
+
+  for (const edge of edges) {
+    dotLines.push(`  "${edge.source.replace(/"/g, '\\"')}" -> "${edge.target.replace(/"/g, '\\"')}";`);
+  }
+
+  dotLines.push("}");
+
+  return {
+    json: {
+      success: true,
+      repo_path: resolvedPath,
+      max_depth: maxDepth,
+      node_count: nodes.length,
+      edge_count: edges.length,
+      file_counts: fileCounts,
+      extension_distribution: extCounts,
+      nodes: nodes,
+      edges: edges
+    },
+    dot: dotLines.join("\n")
+  };
+}
+
 // ==========================================
 // MCP Server Factory
 // ==========================================
@@ -534,6 +792,51 @@ function createMcpServer() {
               model: { type: "string", description: "Optional Ollama vision model override." },
             },
             required: ["image_source"],
+          },
+        },
+        {
+          name: "textual_visual_feedback",
+          title: "Textual Visual Feedback",
+          description: "Generate a comprehensive feedback object in JSON format integrating a screenshot, DOM tree, CSS styles, and OCR-derived text data. Creates a unified snapshot for vibe coding agents to understand the current visual+code state.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              dom_fragment: { type: "string", description: "Optional HTML DOM fragment as string to include in the feedback." },
+              css_snapshot: { type: "string", description: "Optional CSS styles as string to include in the feedback." },
+              include_ocr: { type: "boolean", description: "If true, run OCR on the screenshot to extract text. Default: true." },
+              ocr_language: { type: "string", description: "OCR language code. Default: 'eng'." },
+              include_image: { type: "boolean", description: "If true, includes the raw Base64 PNG as an MCP image content block. Default: false. The JSON text block always includes the data URI regardless of this flag." }
+            },
+            required: ["image_source"],
+          },
+        },
+        {
+          name: "extract_semantic_page",
+          title: "Extract Semantic Page",
+          description: "Extract structured semantic layout from HTML using DomDistiller-inspired algorithms. Produces a structured Control Map with headings, navigation, content blocks, forms, tables, and other semantic elements.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              html_content: { type: "string", description: "HTML content as string to analyze." },
+              min_text_length: { type: "number", description: "Minimum character length for text blocks to include. Default: 10." },
+              include_raw: { type: "boolean", description: "If true, include raw text stats in output. Default: false." }
+            },
+            required: ["html_content"],
+          },
+        },
+        {
+          name: "generate_repo_graph",
+          title: "Generate Repo Graph",
+          description: "Generate repository structural map using Graphviz DOT and JSON formats. Analyzes file tree, classifies files by extension, builds dependency-like parent-child graph for deep codebase understanding.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              repo_path: { type: "string", description: "Absolute path to repository root directory." },
+              max_depth: { type: "number", description: "Maximum directory depth to traverse. Default: 5." },
+              include_node_modules: { type: "boolean", description: "If true, include node_modules in traversal. Default: false." }
+            },
+            required: ["repo_path"],
           },
         },
       ],
@@ -982,6 +1285,109 @@ function createMcpServer() {
           content: [
             { type: "text", text: JSON.stringify(response, null, 2) },
             { type: "image", data: base64, mimeType: "image/png" },
+          ],
+        };
+      }
+
+      if (name === "textual_visual_feedback") {
+        const rawBuf = await resolveImageToBuffer(args.image_source);
+        const pngBuf = await normalizeToPngBuffer(rawBuf);
+        const meta = await sharp(pngBuf).metadata();
+
+        let ocrText = "";
+        let ocrConfidence = 0;
+        if (args.include_ocr !== false) {
+          try {
+            const lang = args.ocr_language || "eng";
+            const { data } = await Tesseract.recognize(pngBuf, lang);
+            ocrText = data.text || "";
+            ocrConfidence = data.confidence || 0;
+          } catch (e) {
+            ocrText = `[OCR Error: ${e.message}]`;
+          }
+        }
+
+        const domFragment = normalizeDomFragment(args.dom_fragment);
+        const cssSnapshot = normalizeCssSnapshot(args.css_snapshot);
+
+        const base64 = pngBuf.toString("base64");
+        const dataUri = `data:image/png;base64,${base64}`;
+
+        const feedback = {
+          success: true,
+          timestamp: new Date().toISOString(),
+          screenshot: {
+            mime_type: "image/png",
+            width: meta.width,
+            height: meta.height,
+            data_uri_length: base64.length,
+            data_uri: dataUri
+          },
+          ocr: {
+            enabled: args.include_ocr !== false,
+            language: args.ocr_language || "eng",
+            confidence: ocrConfidence,
+            text: ocrText
+          },
+          dom: {
+            provided: domFragment.length > 0,
+            fragment_length: domFragment.length,
+            fragment_preview: domFragment.substring(0, 500)
+          },
+          css: {
+            provided: cssSnapshot.length > 0,
+            snapshot_length: cssSnapshot.length,
+            snapshot_preview: cssSnapshot.substring(0, 500)
+          }
+        };
+
+        const content = [
+          { type: "text", text: JSON.stringify(feedback, null, 2) }
+        ];
+        if (args.include_image === true) {
+          content.push({ type: "image", data: base64, mimeType: "image/png" });
+        }
+        return { content };
+      }
+
+      if (name === "extract_semantic_page") {
+        if (!args.html_content || typeof args.html_content !== "string" || args.html_content.trim().length < 3) {
+          throw new Error("Parameter 'html_content' must be a non-empty HTML string.");
+        }
+
+        const minTextLength = Math.max(0, Number(args.min_text_length) || 10);
+        const includeRaw = !!args.include_raw;
+
+        const controlMap = extractSemanticPage(args.html_content, minTextLength, includeRaw);
+
+        return {
+          content: [
+            { type: "text", text: JSON.stringify({ success: true, control_map: controlMap }, null, 2) }
+          ],
+        };
+      }
+
+      if (name === "generate_repo_graph") {
+        if (!args.repo_path || typeof args.repo_path !== "string") {
+          throw new Error("Parameter 'repo_path' must be a non-empty string.");
+        }
+
+        const maxDepth = Math.max(1, Math.min(20, Number(args.max_depth) || 5));
+        const includeNodeModules = !!args.include_node_modules;
+
+        const result = await generateRepoGraph(args.repo_path, maxDepth, includeNodeModules);
+
+        const response = {
+          success: true,
+          graph: result.json,
+          dot_preview: result.dot.substring(0, 2000),
+          dot_length: result.dot.length,
+        };
+
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(response, null, 2) },
+            { type: "text", text: `--- Graphviz DOT ---\n${result.dot}` }
           ],
         };
       }

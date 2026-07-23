@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = "http://localhost:11402";
 
 async function createTextImage() {
   const svg = `<svg width="400" height="100" xmlns="http://www.w3.org/2000/svg">
@@ -302,6 +302,150 @@ async function main() {
     const text = result.content[0]?.text || "";
     const structured = result.isError || text.toLowerCase().includes("error") || text.toLowerCase().includes("required");
     if (!structured) throw new Error("Expected validation error for missing image_source in detect_ui_elements");
+  }));
+
+  console.log("\n== Tool: textual_visual_feedback ==");
+  results.push(await runTest("textual_visual_feedback happy (with OCR + include_image=true)", async (client) => {
+    const result = await client.callTool({
+      name: "textual_visual_feedback",
+      arguments: {
+        image_source: textImage,
+        include_ocr: true,
+        ocr_language: "eng",
+        include_image: true
+      },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Feedback returned error: ${text}`);
+    const parsed = JSON.parse(text);
+    if (!parsed.success) throw new Error("Feedback missing success flag");
+    if (!parsed.screenshot || !parsed.screenshot.data_uri) throw new Error("Missing screenshot in feedback");
+    if (!parsed.ocr || !parsed.ocr.text) throw new Error("Missing ocr in feedback");
+    const imageBlock = result.content.find((c) => c.type === "image");
+    if (!imageBlock) throw new Error("Missing image block in feedback");
+  }));
+
+  results.push(await runTest("textual_visual_feedback default (no include_image flag)", async (client) => {
+    const result = await client.callTool({
+      name: "textual_visual_feedback",
+      arguments: {
+        image_source: textImage,
+        include_ocr: true,
+        ocr_language: "eng"
+      },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Feedback returned error: ${text}`);
+    const parsed = JSON.parse(text);
+    if (!parsed.success) throw new Error("Feedback missing success flag");
+    if (!parsed.screenshot || !parsed.screenshot.data_uri) throw new Error("Missing screenshot data URI in JSON text");
+    const imageBlock = result.content.find((c) => c.type === "image");
+    if (imageBlock) throw new Error("Did not expect image block when include_image is not set");
+  }));
+
+  results.push(await runTest("textual_visual_feedback happy (with DOM + CSS)", async (client) => {
+    const result = await client.callTool({
+      name: "textual_visual_feedback",
+      arguments: {
+        image_source: textImage,
+        dom_fragment: '<div class=\"header\"><h1>Title</h1></div>',
+        css_snapshot: '.header { color: red; }',
+        include_ocr: false
+      },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Feedback returned error: ${text}`);
+    const parsed = JSON.parse(text);
+    if (!parsed.dom.provided) throw new Error("Missing dom in feedback");
+    if (!parsed.css.provided) throw new Error("Missing css in feedback");
+  }));
+
+  results.push(await runTest("textual_visual_feedback edge (missing image_source)", async (client) => {
+    const result = await client.callTool({
+      name: "textual_visual_feedback",
+      arguments: {},
+    });
+    const text = result.content[0]?.text || "";
+    const structured = result.isError || text.toLowerCase().includes("required");
+    if (!structured) throw new Error("Expected error for missing image_source");
+  }));
+
+  console.log("\n== Tool: extract_semantic_page ==");
+  const sampleHtml = `
+    <html>
+      <head><title>Test Page</title><meta name="description" content="A test page"></head>
+      <body>
+        <nav><a href="/home">Home</a><a href="/about">About</a></nav>
+        <main>
+          <h1>Welcome</h1>
+          <p>This is a test paragraph.</p>
+          <ul><li>Item 1</li><li>Item 2</li></ul>
+          <form><input type="text" name="q"><button>Submit</button></form>
+          <table><tr><th>A</th></tr><tr><td>1</td></tr></table>
+        </main>
+        <article><h2>Article Title</h2><p>Article content here.</p></article>
+        <footer>Copyright 2024</footer>
+        <img src="test.png" alt="Test Image">
+      </body>
+    </html>
+  `;
+
+  results.push(await runTest("extract_semantic_page happy (comprehensive HTML)", async (client) => {
+    const result = await client.callTool({
+      name: "extract_semantic_page",
+      arguments: { html_content: sampleHtml, min_text_length: 3, include_raw: true },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Semantic page returned error: ${text}`);
+    const parsed = JSON.parse(text);
+    if (!parsed.success) throw new Error("Missing success flag");
+    const cm = parsed.control_map;
+    if (cm.title !== "Test Page") throw new Error("Missing title");
+    if (!cm.headings.find(h => h.level === 1 && h.text === "Welcome")) throw new Error("Missing h1");
+    if (!cm.navigation.links.find(l => l.href === "/home")) throw new Error("Missing nav links");
+    if (!cm.lists.length) throw new Error("Missing lists");
+    if (!cm.forms.length) throw new Error("Missing forms");
+    if (!cm.tables.length) throw new Error("Missing tables");
+    if (!cm.media.length) throw new Error("Missing media");
+    if (!cm.footer.text.includes("Copyright")) throw new Error("Missing footer");
+  }));
+
+  results.push(await runTest("extract_semantic_page edge (empty HTML)", async (client) => {
+    const result = await client.callTool({
+      name: "extract_semantic_page",
+      arguments: { html_content: "" },
+    });
+    const text = result.content[0]?.text || "";
+    const structured = result.isError || text.toLowerCase().includes("error");
+    if (!structured) throw new Error("Expected error for empty HTML");
+  }));
+
+  console.log("\n== Tool: generate_repo_graph ==");
+  results.push(await runTest("generate_repo_graph happy (current repo)", async (client) => {
+    const result = await client.callTool({
+      name: "generate_repo_graph",
+      arguments: {
+        repo_path: "/home/sameer/Public/Shared/Work/Services/MCP/hybrid-vision-mcp",
+        max_depth: 3,
+        include_node_modules: false
+      },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Repo graph returned error: ${text}`);
+    const parsed = JSON.parse(text);
+    if (!parsed.success) throw new Error("Missing success flag");
+    if (!parsed.graph.nodes.find(n => n.relative_path === "index.js")) throw new Error("Missing index.js node");
+    if (!parsed.dot_preview.includes("digraph repo")) throw new Error("Missing DOT format");
+  }));
+
+  results.push(await runTest("generate_repo_graph edge (invalid path)", async (client) => {
+    const result = await client.callTool({
+      name: "generate_repo_graph",
+      arguments: { repo_path: "/nonexistent/path/12345" },
+    });
+    const text = result.content[0]?.text || "";
+    const structured = result.isError || text.toLowerCase().includes("error");
+    if (!structured) throw new Error("Expected error for invalid repo path");
   }));
 
   const passed = results.filter((r) => r).length;

@@ -9,8 +9,9 @@ A Model Context Protocol (MCP) server that exposes vision capabilities over HTTP
 - **Local-First Vision Stack**:
   - **OCR**: Fast CPU-based Tesseract.js WebAssembly engine (shipped with `eng.traineddata`).
   - **Preprocessing**: Sharp-powered crop, grayscale, and sharpen filters with boundary validation; returns full Base64 PNG via proper MCP `image` content blocks.
-  - **AI Analysis**: Local Ollama vision models for description, comparison, element localization, rich browser screenshot analysis, visual diff, and UI element detection.
+  - **AI Analysis**: Local Ollama vision models for description, comparison, element localization, rich browser screenshot analysis, visual diff, UI element detection, textual visual feedback generation, and semantic page extraction.
   - **Annotation Engine**: SVG-based overlay system for rendering labels, bounding boxes, arrows, and circles on images, returned as annotated PNGs.
+  - **Repository Analysis**: Structural repo mapping via Graphviz DOT and JSON outputs for deep codebase understanding.
 - **Flexible Image Input**: Accepts Base64 Data URIs, HTTP(S) URLs, `file://` URIs, local filesystem paths, and `upload://` references.
 - **Structured Responses**: Tools return JSON metadata in text blocks and full image data in `image` content blocks per MCP spec.
 - **Self-Healing Upload Endpoint**: Binary image upload via `/upload` with automatic cleanup of stale files.
@@ -37,7 +38,7 @@ npm install
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `3000` | Express listener port. |
+| `PORT` | `11402` | Express listener port. |
 | `OLLAMA_HOST` | `http://localhost:11434` | Base URL for the local Ollama inference service. |
 | `VISION_MODEL_FAST` | `llava:13b` | Default vision model for `analyze_image` and `detect_ui_elements`. |
 | `VISION_MODEL_HEAVY` | `qwen3-vl:30b` | Default vision model for `find_text_element`, `compare_images`, `browser_screenshot_analysis`, `visual_diff`, and `detect_ui_elements`. |
@@ -46,7 +47,7 @@ npm install
 ## Running the Server
 
 ```bash
-PORT=3000 VISION_MODEL_FAST="llava:13b" VISION_MODEL_HEAVY="qwen3-vl:30b" node index.js
+PORT=11402 VISION_MODEL_FAST="llava:13b" VISION_MODEL_HEAVY="qwen3-vl:30b" node index.js
 ```
 
 The server listens on `0.0.0.0` and exposes:
@@ -56,7 +57,7 @@ The server listens on `0.0.0.0` and exposes:
 - **Legacy SSE**: `GET http://localhost:<PORT>/sse` + `POST http://localhost:<PORT>/messages`
 - **Image Upload**: `POST http://localhost:<PORT>/upload` (binary body, returns `upload://<filename>` reference)
 
-If the default port `3000` is occupied by another service, set a custom port via the `PORT` environment variable:
+If the default port `11402` is occupied by another service, set a custom port via the `PORT` environment variable:
 
 ```bash
 PORT=3001 node index.js
@@ -72,7 +73,7 @@ For MCP clients that use a `config.json` format (e.g., VS Code or Kilo MCP exten
 {
   "mcpServers": {
     "hybrid-vision": {
-      "url": "http://localhost:3000/sse"
+      "url": "http://localhost:11402/sse"
     }
   }
 }
@@ -315,6 +316,98 @@ Detect UI components and interactive elements in a screenshot using a vision mod
 
 ---
 
+### 11. `textual_visual_feedback`
+
+Generate a comprehensive feedback object in JSON format integrating a screenshot, DOM tree, CSS styles, and OCR-derived text data. Creates a unified snapshot for vibe coding agents to understand the current visual+code state.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `image_source` | string | **Yes** | — | Base64 Data URI, HTTP URL, local path, or `upload://<filename>`. |
+| `dom_fragment` | string | No | `""` | Optional HTML DOM fragment as string to include in feedback. |
+| `css_snapshot` | string | No | `""` | Optional CSS styles as string to include in feedback. |
+| `include_ocr` | boolean | No | `true` | If true, run OCR on the screenshot to extract text. |
+| `ocr_language` | string | No | `eng` | OCR language code (e.g. `eng`, `spa`). |
+| `include_image` | boolean | No | `false` | If true, includes the raw Base64 PNG as an MCP `image` content block. The JSON text block always includes the `data_uri` regardless of this flag. |
+
+**Returns** (default `include_image=false`):
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"timestamp\": \"2024-...\", \"screenshot\": { \"width\": 800, \"height\": 600, \"data_uri\": \"data:image/png;base64,...\" }, \"ocr\": { \"enabled\": true, \"confidence\": 85, \"text\": \"...\" }, \"dom\": { \"provided\": true, \"fragment_length\": 42 }, \"css\": { \"provided\": false } }"
+    }
+  ]
+}
+```
+
+**Returns** (when `include_image=true`):
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"timestamp\": \"2024-...\", \"screenshot\": { \"width\": 800, \"height\": 600, \"data_uri\": \"data:image/png;base64,...\" }, \"ocr\": { \"enabled\": true, \"confidence\": 85, \"text\": \"...\" }, \"dom\": { \"provided\": true, \"fragment_length\": 42 }, \"css\": { \"provided\": false } }"
+    },
+    { "type": "image", "data": "<base64_png>", "mimeType": "image/png" }
+  ]
+}
+```
+
+---
+
+### 12. `extract_semantic_page`
+
+Extract structured semantic layout from HTML using DomDistiller-inspired algorithms. Produces a structured Control Map with headings, navigation, content blocks, forms, tables, and other semantic elements.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `html_content` | string | **Yes** | — | HTML content as string to analyze. |
+| `min_text_length` | number | No | `10` | Minimum character length for text blocks to include. |
+| `include_raw` | boolean | No | `false` | If true, include raw text stats in output. |
+
+**Returns**:
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"control_map\": { \"title\": \"...\", \"headings\": [...], \"navigation\": {...}, \"main_content\": [...], \"lists\": [...], \"forms\": [...], \"tables\": [...], \"media\": [...], \"footer\": {...} } }"
+    }
+  ]
+}
+```
+
+---
+
+### 13. `generate_repo_graph`
+
+Generate repository structural map using Graphviz DOT and JSON formats. Analyzes file tree, classifies files by extension, builds dependency-like parent-child graph for deep codebase understanding.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `repo_path` | string | **Yes** | — | Absolute path to repository root directory. |
+| `max_depth` | number | No | `5` | Maximum directory depth to traverse. |
+| `include_node_modules` | boolean | No | `false` | If true, include `node_modules` in traversal. |
+
+**Returns**:
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"graph\": { \"node_count\": 42, \"edge_count\": 38, \"nodes\": [...], \"edges\": [...] } }"
+    },
+    {
+      "type": "text",
+      "text": "--- Graphviz DOT ---\ndigraph repo {\n  rankdir=TB;\n  ...\n}"
+    }
+  ]
+}
+```
+
+---
+
 ## Image Input Formats
 
 All tools accept image input through a 6-stage resolution pipeline:
@@ -362,6 +455,9 @@ Generates synthetic images in memory using Sharp and runs a full matrix of happy
 - `browser_screenshot_annotation`: Happy path with label + box; edge case with empty annotations array and invalid annotation item; arrow + circle with `return_base64=false`.
 - `visual_diff`: Happy path with two images and custom threshold/color; edge case with single image (minimum length check).
 - `detect_ui_elements`: Happy path with no overlay; edge case with missing image_source.
+- `textual_visual_feedback`: Happy path with OCR; happy path with DOM + CSS; edge case with missing image_source.
+- `extract_semantic_page`: Happy path with comprehensive HTML; edge case with empty HTML.
+- `generate_repo_graph`: Happy path on current repo; edge case with invalid path.
 
 ## Error Handling
 
@@ -393,3 +489,8 @@ Process-level guards (`uncaughtException`, `unhandledRejection`) are installed a
 ## License
 
 ISC
+
+```bash
+sudo lsof -ti:11402
+PORT=11402 VISION_MODEL_FAST="llava:13b" VISION_MODEL_HEAVY="qwen3-vl:30b" node index.js
+```
