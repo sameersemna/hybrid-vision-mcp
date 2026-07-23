@@ -1,7 +1,6 @@
 #!/bin/bash
 
-echo "Killing any process running on port 11402..."
-sudo kill -9 $(sudo lsof -ti:11402)
+# sudo kill -9 $(sudo lsof -ti:11402)
 
 node_binary='/usr/local/n/versions/node/24.14.1/bin/node'
 $node_binary --version

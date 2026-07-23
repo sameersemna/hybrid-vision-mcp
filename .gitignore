@@ -2,3 +2,5 @@ node_modules/
 *.traineddata
 *.service
 *.prs
+screenshots/
+visual_qa_report_*.md

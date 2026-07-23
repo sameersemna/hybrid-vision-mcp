@@ -305,27 +305,7 @@ async function main() {
   }));
 
   console.log("\n== Tool: textual_visual_feedback ==");
-  results.push(await runTest("textual_visual_feedback happy (with OCR + include_image=true)", async (client) => {
-    const result = await client.callTool({
-      name: "textual_visual_feedback",
-      arguments: {
-        image_source: textImage,
-        include_ocr: true,
-        ocr_language: "eng",
-        include_image: true
-      },
-    });
-    const text = result.content[0]?.text || "";
-    if (text.includes("Error")) throw new Error(`Feedback returned error: ${text}`);
-    const parsed = JSON.parse(text);
-    if (!parsed.success) throw new Error("Feedback missing success flag");
-    if (!parsed.screenshot || !parsed.screenshot.data_uri) throw new Error("Missing screenshot in feedback");
-    if (!parsed.ocr || !parsed.ocr.text) throw new Error("Missing ocr in feedback");
-    const imageBlock = result.content.find((c) => c.type === "image");
-    if (!imageBlock) throw new Error("Missing image block in feedback");
-  }));
-
-  results.push(await runTest("textual_visual_feedback default (no include_image flag)", async (client) => {
+  results.push(await runTest("textual_visual_feedback happy (with OCR)", async (client) => {
     const result = await client.callTool({
       name: "textual_visual_feedback",
       arguments: {
@@ -338,9 +318,10 @@ async function main() {
     if (text.includes("Error")) throw new Error(`Feedback returned error: ${text}`);
     const parsed = JSON.parse(text);
     if (!parsed.success) throw new Error("Feedback missing success flag");
-    if (!parsed.screenshot || !parsed.screenshot.data_uri) throw new Error("Missing screenshot data URI in JSON text");
-    const imageBlock = result.content.find((c) => c.type === "image");
-    if (imageBlock) throw new Error("Did not expect image block when include_image is not set");
+    if (!parsed.screenshot || !parsed.screenshot.file_path) throw new Error("Missing file_path in feedback");
+    if (!parsed.screenshot.data_uri_length) throw new Error("Missing data_uri_length metadata");
+    if (result.content.find((c) => c.type === "image")) throw new Error("Did not expect image content block");
+    if (!parsed.ocr || !parsed.ocr.text) throw new Error("Missing ocr in feedback");
   }));
 
   results.push(await runTest("textual_visual_feedback happy (with DOM + CSS)", async (client) => {
@@ -348,7 +329,7 @@ async function main() {
       name: "textual_visual_feedback",
       arguments: {
         image_source: textImage,
-        dom_fragment: '<div class=\"header\"><h1>Title</h1></div>',
+        dom_fragment: '<div class="header"><h1>Title</h1></div>',
         css_snapshot: '.header { color: red; }',
         include_ocr: false
       },
@@ -358,6 +339,8 @@ async function main() {
     const parsed = JSON.parse(text);
     if (!parsed.dom.provided) throw new Error("Missing dom in feedback");
     if (!parsed.css.provided) throw new Error("Missing css in feedback");
+    if (!parsed.screenshot || !parsed.screenshot.file_path) throw new Error("Missing file_path in feedback");
+    if (result.content.find((c) => c.type === "image")) throw new Error("Did not expect image content block");
   }));
 
   results.push(await runTest("textual_visual_feedback edge (missing image_source)", async (client) => {

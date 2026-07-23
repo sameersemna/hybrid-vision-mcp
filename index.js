@@ -30,9 +30,11 @@ process.on("unhandledRejection", (reason) => {
 // ==========================================
 const PORT = process.env.PORT || 11402;
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
+const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS) || 180000;
 const VISION_MODEL_FAST = process.env.VISION_MODEL_FAST || "llava:13b";
 const VISION_MODEL_HEAVY = process.env.VISION_MODEL_HEAVY || "qwen3-vl:30b";
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "/tmp/hvm-uploads";
+const FEEDBACK_DIR = process.env.FEEDBACK_DIR || "/tmp/hvm-feedback";
 const MAX_UPLOAD_AGE_MS = 15 * 60 * 1000;
 
 // ==========================================
@@ -199,15 +201,24 @@ async function queryOllamaVision(model, prompt, imageBuffers) {
     stream: false,
   };
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+
   let response;
   try {
     response = await fetch(`${OLLAMA_HOST}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
   } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error(`Ollama request timed out after ${OLLAMA_TIMEOUT_MS}ms. Try a lighter model (e.g., llava:7b), reduce image size, or increase OLLAMA_TIMEOUT_MS.`);
+    }
     throw new Error(`Could not connect to Ollama service at ${OLLAMA_HOST}: ${err.message}`);
+  } finally {
+    clearTimeout(timer);
   }
 
   if (!response.ok) {
@@ -797,7 +808,7 @@ function createMcpServer() {
         {
           name: "textual_visual_feedback",
           title: "Textual Visual Feedback",
-          description: "Generate a comprehensive feedback object in JSON format integrating a screenshot, DOM tree, CSS styles, and OCR-derived text data. Creates a unified snapshot for vibe coding agents to understand the current visual+code state.",
+          description: "Generate a concise feedback object in JSON format integrating a screenshot, DOM tree, CSS styles, and OCR-derived text data. The image is saved to a local file to avoid context window overflow.",
           inputSchema: {
             type: "object",
             properties: {
@@ -805,8 +816,7 @@ function createMcpServer() {
               dom_fragment: { type: "string", description: "Optional HTML DOM fragment as string to include in the feedback." },
               css_snapshot: { type: "string", description: "Optional CSS styles as string to include in the feedback." },
               include_ocr: { type: "boolean", description: "If true, run OCR on the screenshot to extract text. Default: true." },
-              ocr_language: { type: "string", description: "OCR language code. Default: 'eng'." },
-              include_image: { type: "boolean", description: "If true, includes the raw Base64 PNG as an MCP image content block. Default: false. The JSON text block always includes the data URI regardless of this flag." }
+              ocr_language: { type: "string", description: "OCR language code. Default: 'eng'." }
             },
             required: ["image_source"],
           },
@@ -1311,7 +1321,9 @@ function createMcpServer() {
         const cssSnapshot = normalizeCssSnapshot(args.css_snapshot);
 
         const base64 = pngBuf.toString("base64");
-        const dataUri = `data:image/png;base64,${base64}`;
+        const filename = `${Date.now()}-${crypto.randomUUID()}.png`;
+        const filePath = path.join(FEEDBACK_DIR, filename);
+        fs.writeFileSync(filePath, pngBuf);
 
         const feedback = {
           success: true,
@@ -1321,7 +1333,7 @@ function createMcpServer() {
             width: meta.width,
             height: meta.height,
             data_uri_length: base64.length,
-            data_uri: dataUri
+            file_path: filePath
           },
           ocr: {
             enabled: args.include_ocr !== false,
@@ -1341,13 +1353,11 @@ function createMcpServer() {
           }
         };
 
-        const content = [
-          { type: "text", text: JSON.stringify(feedback, null, 2) }
-        ];
-        if (args.include_image === true) {
-          content.push({ type: "image", data: base64, mimeType: "image/png" });
-        }
-        return { content };
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(feedback, null, 2) }
+          ],
+        };
       }
 
       if (name === "extract_semantic_page") {
@@ -1507,6 +1517,24 @@ const cleanupUploads = () => {
 };
 setInterval(cleanupUploads, 5 * 60 * 1000);
 cleanupUploads();
+
+fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
+
+const cleanupFeedback = () => {
+  try {
+    const now = Date.now();
+    const files = fs.readdirSync(FEEDBACK_DIR);
+    for (const file of files) {
+      const full = path.join(FEEDBACK_DIR, file);
+      const stat = fs.statSync(full);
+      if (now - stat.mtimeMs > MAX_UPLOAD_AGE_MS) {
+        try { fs.unlinkSync(full); } catch {}
+      }
+    }
+  } catch {}
+};
+setInterval(cleanupFeedback, 5 * 60 * 1000);
+cleanupFeedback();
 
 app.post("/upload", express.raw({ type: "*/*", limit: "50mb" }), async (req, res) => {
   if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {

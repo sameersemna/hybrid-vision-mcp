@@ -318,7 +318,7 @@ Detect UI components and interactive elements in a screenshot using a vision mod
 
 ### 11. `textual_visual_feedback`
 
-Generate a comprehensive feedback object in JSON format integrating a screenshot, DOM tree, CSS styles, and OCR-derived text data. Creates a unified snapshot for vibe coding agents to understand the current visual+code state.
+Generate a concise feedback object in JSON format integrating a screenshot, DOM tree, CSS styles, and OCR-derived text data. The screenshot is saved to a local file to avoid context window overflow, and only metadata plus the file path are returned.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -327,29 +327,15 @@ Generate a comprehensive feedback object in JSON format integrating a screenshot
 | `css_snapshot` | string | No | `""` | Optional CSS styles as string to include in feedback. |
 | `include_ocr` | boolean | No | `true` | If true, run OCR on the screenshot to extract text. |
 | `ocr_language` | string | No | `eng` | OCR language code (e.g. `eng`, `spa`). |
-| `include_image` | boolean | No | `false` | If true, includes the raw Base64 PNG as an MCP `image` content block. The JSON text block always includes the `data_uri` regardless of this flag. |
 
-**Returns** (default `include_image=false`):
+**Returns**:
 ```json
 {
   "content": [
     {
       "type": "text",
-      "text": "{ \"success\": true, \"timestamp\": \"2024-...\", \"screenshot\": { \"width\": 800, \"height\": 600, \"data_uri\": \"data:image/png;base64,...\" }, \"ocr\": { \"enabled\": true, \"confidence\": 85, \"text\": \"...\" }, \"dom\": { \"provided\": true, \"fragment_length\": 42 }, \"css\": { \"provided\": false } }"
+      "text": "{ \"success\": true, \"timestamp\": \"2024-...\", \"screenshot\": { \"mime_type\": \"image/png\", \"width\": 800, \"height\": 600, \"data_uri_length\": 954504, \"file_path\": \"/tmp/hvm-feedback/1700000000000-abc.png\" }, \"ocr\": { \"enabled\": true, \"confidence\": 85, \"text\": \"...\" }, \"dom\": { \"provided\": true, \"fragment_length\": 42 }, \"css\": { \"provided\": false } }"
     }
-  ]
-}
-```
-
-**Returns** (when `include_image=true`):
-```json
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "{ \"success\": true, \"timestamp\": \"2024-...\", \"screenshot\": { \"width\": 800, \"height\": 600, \"data_uri\": \"data:image/png;base64,...\" }, \"ocr\": { \"enabled\": true, \"confidence\": 85, \"text\": \"...\" }, \"dom\": { \"provided\": true, \"fragment_length\": 42 }, \"css\": { \"provided\": false } }"
-    },
-    { "type": "image", "data": "<base64_png>", "mimeType": "image/png" }
   ]
 }
 ```
