@@ -1,6 +1,6 @@
 # Hybrid Vision MCP Server — Actual Tool Usage Report
 
-**Generated:** 2026-07-22T23:59:15.899Z
+**Generated:** 2026-07-23T07:37:17.863Z
 **Server URL:** http://localhost:11402
 
 ---
@@ -18,7 +18,7 @@
 
 ### check_vision_health
 
-**Duration:** 27ms
+**Duration:** 7ms
 
 **Output:**
 
@@ -34,7 +34,7 @@
 
 ### fast_ocr_tesseract
 
-**Duration:** 168ms
+**Duration:** 155ms
 
 **Parameters:**
 
@@ -57,7 +57,7 @@ HYBRID VISION TEST 123
 
 ### preprocess_and_crop
 
-**Duration:** 6ms
+**Duration:** 5ms
 
 **Parameters:**
 
@@ -86,7 +86,7 @@ Data URI: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAA8CAYAAAAjW/WRAAAA
 
 ### analyze_image
 
-**Duration:** 13155ms
+**Duration:** 6594ms
 
 **Parameters:**
 
@@ -101,20 +101,18 @@ Data URI: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAA8CAYAAAAjW/WRAAAA
 **Output:**
 
 ```
-The image shows a user interface from a website or mobile application. There are several visible components:
+In the image, I can see a form or interface with the following elements:
 
-1. At the top, there is a navigation bar with what appears to be a back arrow (on the left side) indicating that users can go back to previous pages or sections.
-2. Below the navigation bar is a heading in bold text that reads "Hello World." This is likely a placeholder text used during development and testing of the application's functionality.
-3. To the right of the heading, there is a button with the label "Submit," suggesting that this is an actionable element where users can submit information or data.
-4. The main body of text in the image reads "OCR Test 1 45 625 6." This could be referring to some sort of Optical Character Recognition (OCR) test with a score and possibly related to an application that uses OCR technology for document processing or analysis.
-5. The layout includes a form or input area, where users might enter data, although it's not fully visible in the image.
+1. A heading that says "Hello World" at the top center of the image.
+2. Below the heading is some text that appears to be part of instructions or a welcome message, but it's not clear enough to read everything it says. It seems to mention something about OCR testing and possibly an ID number (456), but the full context isn't entirely visible.
+3. There is a button labeled "Submit" located towards the bottom center of the image, indicating where someone would click to submit their information or test results.
 ```
 
 ---
 
 ### find_text_element
 
-**Duration:** 1463ms
+**Duration:** 1631ms
 
 **Parameters:**
 
@@ -129,14 +127,14 @@ The image shows a user interface from a website or mobile application. There are
 **Output:**
 
 ```
-The button labeled "Submit" is located at the bottom right of the image. It's a green button with a white outline, and it's centered on the bottom right.
+The "Submit" button is located towards the right side of the image, just below the input field where you would type your name. It has a green rounded square shape with a white checkmark inside it.
 ```
 
 ---
 
 ### compare_images
 
-**Duration:** 8187ms
+**Duration:** 5084ms
 
 **Parameters:**
 
@@ -154,17 +152,7 @@ The button labeled "Submit" is located at the bottom right of the image. It's a 
 **Output:**
 
 ```
-The image appears to show two different flags or symbols, each with a distinct color scheme and design elements. Here are the differences I can identify:
-
-1. Background Color: The left flag has a solid yellow background while the right flag features a yellow border surrounding a blue center.
-
-2. Shape of Circles: In both designs, there is a circular shape, but the left circle has a green center and the right one has a blue center.
-
-3. Size of Symbols: The blue symbol on the right appears to be larger than its counterpart on the left.
-
-4. Alignment of Elements: In the design on the right, the blue symbol is centered within the yellow border, whereas on the left, the green circle is positioned slightly towards the left side compared to the center alignment of the yellow border on the right.
-
-These are the visual differences that can be observed between the two images.
+The image you've provided is a simplified representation of the flag of Japan, which features a circle in two colors: blue and green. There are no realistic elements or variations in this image as it appears to be a stylized or digital art version of the flag rather than an actual photograph or painting. If there were any visual differences that are not apparent due to the nature of the image, I would need a more detailed or complex comparison to identify them accurately.
 ```
 
 ---

@@ -1,5 +1,6 @@
 import express from "express";
 import fs from "fs";
+import path from "path";
 import crypto from "crypto";
 import os from "os";
 import { fileURLToPath } from "url";
@@ -31,6 +32,8 @@ const PORT = process.env.PORT || 3000;
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
 const VISION_MODEL_FAST = process.env.VISION_MODEL_FAST || "llava:13b";
 const VISION_MODEL_HEAVY = process.env.VISION_MODEL_HEAVY || "qwen3-vl:30b";
+const UPLOAD_DIR = process.env.UPLOAD_DIR || "/tmp/hvm-uploads";
+const MAX_UPLOAD_AGE_MS = 15 * 60 * 1000;
 
 // ==========================================
 // Helper Functions & Image Validation
@@ -133,6 +136,18 @@ async function resolveImageToBuffer(input) {
   }
 
   // 5. Local File Path (Only works if client and MCP server share a filesystem)
+  if (trimmed.startsWith("upload://")) {
+    const filename = trimmed.slice("upload://".length);
+    const fullPath = path.join(UPLOAD_DIR, filename);
+    if (fs.existsSync(fullPath)) {
+      const buf = fs.readFileSync(fullPath);
+      if (buf.length === 0) throw new Error(`Uploaded file "${filename}" is empty.`);
+      if (!isSupportedImageBuffer(buf)) throw new Error(`Uploaded file "${filename}" is not a supported image format.`);
+      return buf;
+    }
+    throw new Error(`Upload reference not found: "${trimmed}". Upload the image to /upload first.`);
+  }
+
   if (fs.existsSync(trimmed)) {
     const buf = fs.readFileSync(trimmed);
     if (buf.length === 0) {
@@ -160,11 +175,14 @@ async function resolveImageToBuffer(input) {
 
 async function normalizeToPngBuffer(buffer) {
   try {
+    if (!isSupportedImageBuffer(buffer)) {
+      throw new Error("Decoded image buffer does not contain a valid image header. The Base64 payload may be truncated, corrupted, or contains non-image data.");
+    }
     return await sharp(buffer).toFormat("png").toBuffer();
   } catch (err) {
     if (err.message.includes("libpng read error") || err.message.includes("vipspng")) {
       throw new Error(
-        `Image data was truncated or corrupted in transit (libpng read error). Check if the Base64 payload was truncated by LLM token limits.`
+        `Image data was truncated or corrupted in transit (libpng read error). Check if the Base64 payload was truncated by LLM token limits. Consider using the /upload endpoint to send large images.`
       );
     }
     throw new Error(`Unsupported or corrupted image data: ${err.message}`);
@@ -217,8 +235,7 @@ function createMcpServer() {
     }
   );
 
-  const REMOTE_IMAGE_DESC = "Base64 Data URI (data:image/png;base64,...) or HTTP URL ONLY. Do NOT pass local file paths as the MCP server runs remotely.";
-
+  // Streamable HTTP Transports (/mcp)
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
       tools: [
@@ -228,7 +245,7 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: REMOTE_IMAGE_DESC },
+              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
               language: { type: "string", description: "Language code (e.g., 'eng', 'spa'). Default: 'eng'." },
             },
             required: ["image_source"],
@@ -240,7 +257,7 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: REMOTE_IMAGE_DESC },
+              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
               crop: {
                 type: "object",
                 properties: {
@@ -263,7 +280,7 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: REMOTE_IMAGE_DESC },
+              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
               prompt: { type: "string", description: "Question or instruction for analyzing the image." },
               model: { type: "string", description: "Optional Ollama vision model override." },
             },
@@ -276,7 +293,7 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: REMOTE_IMAGE_DESC },
+              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
               query: { type: "string", description: "Target text or element to locate." },
               model: { type: "string", description: "Optional Ollama vision model override." },
             },
@@ -291,8 +308,8 @@ function createMcpServer() {
             properties: {
               image_sources: {
                 type: "array",
-                items: { type: "string", description: REMOTE_IMAGE_DESC },
-                description: "Array of at least 2 Base64 Data URIs or HTTP URLs.",
+                items: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+                description: "Array of at least 2 image inputs.",
               },
               prompt: { type: "string", description: "Comparison instructions." },
               model: { type: "string", description: "Optional Ollama vision model override." },
@@ -543,6 +560,39 @@ app.post("/messages", async (req, res) => {
   }
 
   await transport.handlePostMessage(req, res, req.body);
+});
+
+// ==========================================
+// Self-healing: Upload Endpoint
+// ==========================================
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const cleanupUploads = () => {
+  try {
+    const now = Date.now();
+    const files = fs.readdirSync(UPLOAD_DIR);
+    for (const file of files) {
+      const full = path.join(UPLOAD_DIR, file);
+      const stat = fs.statSync(full);
+      if (now - stat.mtimeMs > MAX_UPLOAD_AGE_MS) {
+        try { fs.unlinkSync(full); } catch {}
+      }
+    }
+  } catch {}
+};
+setInterval(cleanupUploads, 5 * 60 * 1000);
+cleanupUploads();
+
+app.post("/upload", express.raw({ type: "*/*", limit: "50mb" }), async (req, res) => {
+  if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+    res.status(400).send("No image binary body received.");
+    return;
+  }
+  const ext = (req.get("content-type") || "image/octet-stream").split("/")[1] || "bin";
+  const filename = `${crypto.randomUUID()}.${ext}`;
+  const fullPath = path.join(UPLOAD_DIR, filename);
+  fs.writeFileSync(fullPath, req.body);
+  res.status(200).json({ uploadRef: `upload://${filename}` });
 });
 
 app.listen(PORT, "0.0.0.0", () => {
