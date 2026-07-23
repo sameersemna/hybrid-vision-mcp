@@ -1,0 +1,8 @@
+
+========================================
+ Hybrid Vision MCP Server Running 
+ Listening on: http://0.0.0.0:3000
+ - Streamable HTTP: http://localhost:3000/mcp
+ - SSE Endpoint:    http://localhost:3000/sse
+========================================
+

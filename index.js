@@ -368,13 +368,24 @@ function createMcpServer() {
           const imgWidth = meta.width || 1;
           const imgHeight = meta.height || 1;
 
-          // Safely clamp crop region inside actual image bounds
-          const left = Math.max(0, Math.min(Math.round(args.crop.left || 0), imgWidth - 1));
-          const top = Math.max(0, Math.min(Math.round(args.crop.top || 0), imgHeight - 1));
-          const width = Math.max(1, Math.min(Math.round(args.crop.width || 1), imgWidth - left));
-          const height = Math.max(1, Math.min(Math.round(args.crop.height || 1), imgHeight - top));
+          const cropLeft = Math.round(args.crop.left || 0);
+          const cropTop = Math.round(args.crop.top || 0);
+          const cropWidth = Math.round(args.crop.width || 1);
+          const cropHeight = Math.round(args.crop.height || 1);
 
-          pipeline = pipeline.extract({ left, top, width, height });
+          if (cropLeft < 0 || cropTop < 0 || cropWidth <= 0 || cropHeight <= 0) {
+            throw new Error("Crop dimensions must be positive numbers.");
+          }
+
+          if (cropLeft >= imgWidth || cropTop >= imgHeight) {
+            throw new Error("Crop region starts outside the image boundaries.");
+          }
+
+          if (cropLeft + cropWidth > imgWidth || cropTop + cropHeight > imgHeight) {
+            throw new Error("Crop region exceeds image boundaries.");
+          }
+
+          pipeline = pipeline.extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight });
         }
 
         if (args.grayscale) {
