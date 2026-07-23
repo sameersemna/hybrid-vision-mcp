@@ -219,6 +219,29 @@ async function queryOllamaVision(model, prompt, imageBuffers) {
   return data.response;
 }
 
+function normalizeImageSources(input) {
+  if (Array.isArray(input)) return input;
+  if (typeof input !== "string") return null;
+
+  const trimmed = input.trim();
+
+  if (trimmed.startsWith('"[') && trimmed.endsWith(']"')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+    } catch { /* not valid JSON */ }
+  }
+
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+    } catch { /* not valid JSON */ }
+  }
+
+  return null;
+}
+
 // ==========================================
 // MCP Server Factory
 // ==========================================
@@ -302,14 +325,18 @@ function createMcpServer() {
         },
         {
           name: "compare_images",
-          description: "Compare two or more images side-by-side using local Ollama Vision Models.",
+          description: "Compare two or more images side-by-side using local Ollama Vision Models. CRITICAL: image_sources MUST be a raw JSON array of strings. NEVER wrap the array in quotes as a single string. Example: [\"data:image/png;base64,...\", \"https://...\"]",
           inputSchema: {
             type: "object",
             properties: {
               image_sources: {
                 type: "array",
-                items: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
-                description: "Array of at least 2 image inputs.",
+                minItems: 2,
+                items: { 
+                  type: "string", 
+                  description: "Base64 Data URI, HTTP URL, or file path. Must be a string element inside the array, not the array itself." 
+                },
+                description: "Array of at least 2 image inputs. Must be an array, not a string. Do NOT pass a single stringified array.",
               },
               prompt: { type: "string", description: "Comparison instructions." },
               model: { type: "string", description: "Optional Ollama vision model override." },
@@ -450,12 +477,17 @@ function createMcpServer() {
       }
 
       if (name === "compare_images") {
-        if (!Array.isArray(args.image_sources) || args.image_sources.length < 2) {
-          throw new Error("Parameter 'image_sources' must be an array of at least 2 image inputs.");
+        const rawSources = normalizeImageSources(args.image_sources);
+        if (!rawSources || rawSources.length < 2) {
+          throw new Error(
+            "Parameter 'image_sources' must be a JSON array containing at least 2 image strings. " +
+            "Do NOT pass a single stringified array (e.g., \"[...]\") or a single Base64 string. " +
+            "Correct format: [\"data:image/png;base64,...\", \"https://example.com/img2.png\"]"
+          );
         }
 
         const buffers = [];
-        for (const src of args.image_sources) {
+        for (const src of rawSources) {
           const buf = await resolveImageToBuffer(src);
           await normalizeToPngBuffer(buf);
           buffers.push(buf);
