@@ -1,6 +1,6 @@
 # Hybrid Vision MCP Server
 
-A Model Context Protocol (MCP) server that exposes vision capabilities over HTTP, SSE, and Streamable HTTP transports. It bridges local vision engines—Tesseract.js (WASM OCR) and Sharp (image preprocessing)—with local Ollama vision models for image analysis, comparison, and text localization.
+A Model Context Protocol (MCP) server that exposes vision capabilities over HTTP, SSE, and Streamable HTTP transports. It bridges local vision engines—Tesseract.js (WASM OCR) and Sharp (image preprocessing)—with local Ollama vision models for image analysis, comparison, text localization, and browser screenshot analysis/annotation.
 
 ## Features
 
@@ -8,9 +8,11 @@ A Model Context Protocol (MCP) server that exposes vision capabilities over HTTP
 - **Multi-Transport Support**: Works with `/mcp` (streamable HTTP), `/sse` (legacy SSE), and `/messages` endpoints.
 - **Local-First Vision Stack**:
   - **OCR**: Fast CPU-based Tesseract.js WebAssembly engine (shipped with `eng.traineddata`).
-  - **Preprocessing**: Sharp-powered crop, grayscale, and sharpen filters with boundary validation.
-  - **AI Analysis**: Local Ollama vision models for description, comparison, and element localization.
+  - **Preprocessing**: Sharp-powered crop, grayscale, and sharpen filters with boundary validation; returns full Base64 PNG via proper MCP `image` content blocks.
+  - **AI Analysis**: Local Ollama vision models for description, comparison, element localization, rich browser screenshot analysis, visual diff, and UI element detection.
+  - **Annotation Engine**: SVG-based overlay system for rendering labels, bounding boxes, arrows, and circles on images, returned as annotated PNGs.
 - **Flexible Image Input**: Accepts Base64 Data URIs, HTTP(S) URLs, `file://` URIs, local filesystem paths, and `upload://` references.
+- **Structured Responses**: Tools return JSON metadata in text blocks and full image data in `image` content blocks per MCP spec.
 - **Self-Healing Upload Endpoint**: Binary image upload via `/upload` with automatic cleanup of stale files.
 
 ## Prerequisites
@@ -37,14 +39,14 @@ npm install
 |----------|---------|-------------|
 | `PORT` | `3000` | Express listener port. |
 | `OLLAMA_HOST` | `http://localhost:11434` | Base URL for the local Ollama inference service. |
-| `VISION_MODEL_FAST` | `llava:13b` | Default vision model for `analyze_image`. |
-| `VISION_MODEL_HEAVY` | `qwen3-vl:30b` | Default vision model for `find_text_element` and `compare_images`. |
+| `VISION_MODEL_FAST` | `llava:13b` | Default vision model for `analyze_image` and `detect_ui_elements`. |
+| `VISION_MODEL_HEAVY` | `qwen3-vl:30b` | Default vision model for `find_text_element`, `compare_images`, `browser_screenshot_analysis`, `visual_diff`, and `detect_ui_elements`. |
 | `UPLOAD_DIR` | `/tmp/hvm-uploads` | Directory for temporary binary image uploads. |
 
 ## Running the Server
 
 ```bash
-PORT=11402 VISION_MODEL_FAST="llava:13b" VISION_MODEL_HEAVY="qwen3-vl:30b" node index.js
+PORT=3000 VISION_MODEL_FAST="llava:13b" VISION_MODEL_HEAVY="qwen3-vl:30b" node index.js
 ```
 
 The server listens on `0.0.0.0` and exposes:
@@ -54,6 +56,14 @@ The server listens on `0.0.0.0` and exposes:
 - **Legacy SSE**: `GET http://localhost:<PORT>/sse` + `POST http://localhost:<PORT>/messages`
 - **Image Upload**: `POST http://localhost:<PORT>/upload` (binary body, returns `upload://<filename>` reference)
 
+If the default port `3000` is occupied by another service, set a custom port via the `PORT` environment variable:
+
+```bash
+PORT=3001 node index.js
+```
+
+Then point your MCP client configuration to the same port.
+
 ## Client Configuration
 
 For MCP clients that use a `config.json` format (e.g., VS Code or Kilo MCP extensions), add:
@@ -62,7 +72,7 @@ For MCP clients that use a `config.json` format (e.g., VS Code or Kilo MCP exten
 {
   "mcpServers": {
     "hybrid-vision": {
-      "url": "http://localhost:11402/sse"
+      "url": "http://localhost:3000/sse"
     }
   }
 }
@@ -159,6 +169,152 @@ Compare two or more images side-by-side using local Ollama vision models.
 
 ---
 
+### 7. `browser_screenshot_analysis`
+
+Perform high-level visual and semantic analysis of a browser screenshot or UI image. Generates a rich description of layout, components, visual hierarchy, colors, typography, spacing, and overall design "vibe" to help agents understand the current UI state without manual inspection.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `image_source` | string | **Yes** | — | Base64 Data URI, HTTP URL, local path, or `upload://<filename>`. |
+| `focus` | string | No | `"all"` | Analysis focus: `all`, `layout`, `components`, `accessibility`, `design`, or `content`. |
+| `detail_level` | string | No | `"standard"` | Level of detail: `brief`, `standard`, or `detailed`. |
+| `model` | string | No | `VISION_MODEL_HEAVY` | Optional Ollama vision model override. |
+
+**Returns**: Structured text summary prefixed with analysis metadata.
+
+---
+
+### 8. `browser_screenshot_annotation`
+
+Annotate a screenshot or image with text labels, bounding boxes, arrows, or circles to highlight specific UI components, regions of interest, or action targets.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `image_source` | string | **Yes** | — | Base64 Data URI, HTTP URL, local path, or `upload://<filename>`. |
+| `annotations` | array[object] | **Yes** | — | Array of annotation objects (see schema below). |
+| `return_base64` | boolean | No | `true` | If true, appends an `image` content block with the full annotated Base64 PNG. If false, returns only a JSON metadata text block. |
+
+**Annotation Object Schema**:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `type` | string | **Yes** | — | `label`, `box`, `arrow`, or `circle`. |
+| `text` | string | Conditional | — | Text content for `label` annotations. |
+| `x` | number | Conditional | — | X coordinate (pixels). |
+| `y` | number | Conditional | — | Y coordinate (pixels). |
+| `width` | number | Conditional | — | Width (box) or radius (circle) in pixels. |
+| `height` | number | Conditional | — | Height (box) in pixels. |
+| `target_x` | number | Conditional | — | Target X for arrow endpoint. |
+| `target_y` | number | Conditional | — | Target Y for arrow endpoint. |
+| `color` | string | No | `#FF0000` | Hex color code. |
+| `font_size` | number | No | `16` | Font size in pixels for labels. |
+
+**Returns** (default `return_base64=true`):
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"width\": 800, \"height\": 600, \"format\": \"image/png\", \"data_uri_length\": 123456, \"data_uri\": \"data:image/png;base64,...\" }"
+    },
+    { "type": "image", "data": "<base64_png>", "mimeType": "image/png" }
+  ]
+}
+```
+
+**Returns** (when `return_base64=false`):
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"width\": 800, \"height\": 600, \"format\": \"image/png\", \"data_uri_length\": 123456, \"data_uri\": \"data:image/png;base64,...\" }"
+    }
+  ]
+}
+```
+
+---
+
+### 9. `visual_diff`
+
+Compare two screenshots and highlight visual changes between them. Generates a pixel-level diff image that colors changed regions, and optionally an AI-generated description of what differs between the `before` and `after` states.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `image_sources` | array[2 strings] | **Yes** | — | Array of exactly 2 images: [before, after]. |
+| `threshold` | number | No | `15` | Minimum combined RGB delta to mark a pixel as changed (0-255). Lower values catch subtle changes. |
+| `highlight_color` | string | No | `#FF00FF` | Hex color for changed pixels in the diff image. |
+| `analyze` | boolean | No | `true` | If true, includes an Ollama Vision description of the differences. |
+
+**Returns**: A Base64-encoded diff PNG, JSON metadata (changed pixel ratio, dimensions, threshold), and an AI description when `analyze=true`.
+
+**Returns** (when `analyze=true`):
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"changed_pixels\": 12450, \"total_pixels\": 240000, \"change_ratio\": \"5.19%\", \"threshold\": 15, \"ai_description\": \"...\" }"
+    },
+    { "type": "image", "data": "<base64_png>", "mimeType": "image/png" }
+  ]
+}
+```
+
+**Returns** (when `analyze=false`):
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"changed_pixels\": 12450, \"total_pixels\": 240000, \"change_ratio\": \"5.19%\", \"threshold\": 15 }"
+    },
+    { "type": "image", "data": "<base64_png>", "mimeType": "image/png" }
+  ]
+}
+```
+
+---
+
+### 10. `detect_ui_elements`
+
+Detect UI components and interactive elements in a screenshot using a vision model. Returns structured element descriptions with approximate bounding boxes and an optional overlay visualization.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `image_source` | string | **Yes** | — | Base64 Data URI, HTTP URL, local path, or `upload://<filename>`. |
+| `element_types` | array[string] | No | all common UI elements | Filter to specific types: `button`, `input`, `link`, `card`, `navigation`, `modal`, `dropdown`, `checkbox`, `radio`, `table`, `list`, `icon`, `heading`. |
+| `return_overlay` | boolean | No | `false` | If true, attempts to overlay detected elements as green bounding boxes on the image. |
+| `model` | string | No | `VISION_MODEL_HEAVY` | Optional Ollama vision model override. |
+
+**Returns** (default `return_overlay=false`):
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"width\": 800, \"height\": 600, \"detection\": \"Buttons: [x=...], Inputs: [x=...]\" }"
+    }
+  ]
+}
+```
+
+**Returns** (when `return_overlay=true`):
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"width\": 800, \"height\": 600, \"detection\": \"...\", \"overlay_data_uri\": \"data:image/png;base64,...\" }"
+    },
+    { "type": "image", "data": "<base64_png>", "mimeType": "image/png" }
+  ]
+}
+```
+
+---
+
 ## Image Input Formats
 
 All tools accept image input through a 6-stage resolution pipeline:
@@ -202,22 +358,28 @@ Generates synthetic images in memory using Sharp and runs a full matrix of happy
 - `analyze_image`: Happy path with prompt; edge case with empty prompt (default fallback).
 - `find_text_element`: Happy path with valid query; edge case with missing query.
 - `compare_images`: Happy path with 2+ images; edge case with single image (minimum length check).
+- `browser_screenshot_analysis`: Happy path with focus/detail variants; happy path with default parameters.
+- `browser_screenshot_annotation`: Happy path with label + box; edge case with empty annotations array and invalid annotation item; arrow + circle with `return_base64=false`.
+- `visual_diff`: Happy path with two images and custom threshold/color; edge case with single image (minimum length check).
+- `detect_ui_elements`: Happy path with no overlay; edge case with missing image_source.
 
 ## Error Handling
 
-All tool errors are caught and returned as structured MCP error responses:
+All tool errors are caught and returned as structured MCP error responses. The server returns structured JSON inside `content[0].text` for machine-readable errors:
 
 ```json
 {
   "content": [
     {
       "type": "text",
-      "text": "Error executing tool '<tool_name>': <error_message>"
+      "text": "{ \"error\": true, \"code\": \"INVALID_ANNOTATION\", \"message\": \"Each annotation must be an object with a 'type' field.\", \"validTypes\": [\"label\",\"box\",\"arrow\",\"circle\"], \"suggestions\": [\"Ensure 'label' annotations include 'text'\", \"Ensure coordinate fields (x, y) are numbers\"] }"
     }
   ],
   "isError": true
 }
 ```
+
+Agent clients can parse the JSON to auto-recover or display actionable suggestions. Simple tool execution errors fall back to the original text response with `isError: true`.
 
 Process-level guards (`uncaughtException`, `unhandledRejection`) are installed at server startup to prevent the Node.js process from crashing unexpectedly.
 

@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 
-const BASE_URL = "http://localhost:11402";
+const BASE_URL = "http://localhost:3000";
 
 async function createTextImage() {
   const svg = `<svg width="400" height="100" xmlns="http://www.w3.org/2000/svg">
@@ -168,6 +168,140 @@ async function main() {
     const text = result.content[0]?.text || "";
     const structured = result.isError || text.toLowerCase().includes("at least 2");
     if (!structured) throw new Error("Expected validation error for single image array");
+  }));
+
+  console.log("\n== Tool: browser_screenshot_analysis ==");
+  results.push(await runTest("browser_screenshot_analysis happy", async (client) => {
+    const result = await client.callTool({
+      name: "browser_screenshot_analysis",
+      arguments: { image_source: textImage, focus: "layout", detail_level: "standard" },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Screenshot analysis returned error: ${text}`);
+    if (!text.includes("Browser Screenshot Analysis")) throw new Error("Missing expected header in analysis response");
+  }));
+
+  results.push(await runTest("browser_screenshot_analysis detail variants", async (client) => {
+    for (const level of ["brief", "detailed"]) {
+      const r = await client.callTool({
+        name: "browser_screenshot_analysis",
+        arguments: { image_source: textImage, detail_level: level },
+      });
+      if (r.content[0]?.text.includes("Error")) throw new Error(`Analysis failed for detail_level=${level}`);
+    }
+  }));
+
+  console.log("\n== Tool: browser_screenshot_annotation ==");
+  results.push(await runTest("browser_screenshot_annotation happy (label + box)", async (client) => {
+    const result = await client.callTool({
+      name: "browser_screenshot_annotation",
+      arguments: {
+        image_source: textImage,
+        annotations: [
+          { type: "box", x: 10, y: 10, width: 100, height: 50, color: "#FF0000" },
+          { type: "label", text: "Header Text", x: 15, y: 40, color: "#00FF00", font_size: 14 },
+        ],
+      },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Annotation returned error: ${text}`);
+    if (!text.includes("success")) throw new Error("Missing success marker in annotation response");
+    const imageBlock = result.content.find((c) => c.type === "image");
+    if (!imageBlock) throw new Error("Missing image content block in annotation response");
+    if (!imageBlock.mimeType?.startsWith("image/")) throw new Error("Invalid image mimeType");
+    if (imageBlock.data?.length < 100) throw new Error("Annotated image data appears too short");
+  }));
+
+  results.push(await runTest("browser_screenshot_annotation edge (no annotations)", async (client) => {
+    const result = await client.callTool({
+      name: "browser_screenshot_annotation",
+      arguments: { image_source: textImage, annotations: [] },
+    });
+    const text = result.content[0]?.text || "";
+    const structured = result.isError || text.includes("non-empty array");
+    if (!structured) throw new Error("Expected error for empty annotations array");
+  }));
+
+  results.push(await runTest("browser_screenshot_annotation edge (invalid item)", async (client) => {
+    const result = await client.callTool({
+      name: "browser_screenshot_annotation",
+      arguments: { image_source: textImage, annotations: [{ x: 10, y: 10 }] },
+    });
+    const text = result.content[0]?.text || "";
+    const structured = result.isError || text.includes("INVALID_ANNOTATION");
+    if (!structured) throw new Error("Expected structured error for invalid annotation item");
+  }));
+
+  results.push(await runTest("browser_screenshot_annotation arrow + return_base64_false", async (client) => {
+    const result = await client.callTool({
+      name: "browser_screenshot_annotation",
+      arguments: {
+        image_source: textImage,
+        annotations: [
+          { type: "arrow", x: 10, y: 10, target_x: 100, target_y: 60, color: "#0000FF" },
+          { type: "circle", x: 200, y: 50, width: 30, color: "#FFFF00" },
+        ],
+        return_base64: false,
+      },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Annotation with arrow returned error: ${text}`);
+    const hasBase64 = text.includes("data_uri") && text.includes("base64");
+    if (!hasBase64) throw new Error("Expected JSON response to contain data_uri when return_base64=false");
+  }));
+
+  console.log("\n== Tool: visual_diff ==");
+  results.push(await runTest("visual_diff happy (two images)", async (client) => {
+    const result = await client.callTool({
+      name: "visual_diff",
+      arguments: {
+        image_sources: [multiObjectImage, secondImage],
+        threshold: 20,
+        highlight_color: "#FF00FF",
+        analyze: false,
+      },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Visual diff returned error: ${text}`);
+    const imageBlock = result.content.find((c) => c.type === "image");
+    if (!imageBlock) throw new Error("Missing image content block in visual_diff response");
+    if (!imageBlock.mimeType?.startsWith("image/")) throw new Error("Invalid image mimeType");
+    if (!text.includes("Visual diff computed successfully")) throw new Error("Missing success message in diff response");
+  }));
+
+  results.push(await runTest("visual_diff edge (single image)", async (client) => {
+    const result = await client.callTool({
+      name: "visual_diff",
+      arguments: { image_sources: [textImage] },
+    });
+    const text = result.content[0]?.text || "";
+    const structured = result.isError || text.toLowerCase().includes("at least 2");
+    if (!structured) throw new Error("Expected validation error for single image array in visual_diff");
+  }));
+
+  console.log("\n== Tool: detect_ui_elements ==");
+  results.push(await runTest("detect_ui_elements happy (no overlay)", async (client) => {
+    const result = await client.callTool({
+      name: "detect_ui_elements",
+      arguments: {
+        image_source: multiObjectImage,
+      },
+    });
+    const text = result.content[0]?.text || "";
+    if (text.includes("Error")) throw new Error(`Detect UI returned error: ${text}`);
+    if (!text.includes("UI elements detected")) throw new Error("Missing expected header in detect response");
+    const imageBlock = result.content.find((c) => c.type === "image");
+    if (imageBlock) throw new Error("Did not expect image block when return_overlay is false");
+  }));
+
+  results.push(await runTest("detect_ui_elements edge (missing image_source)", async (client) => {
+    const result = await client.callTool({
+      name: "detect_ui_elements",
+      arguments: {},
+    });
+    const text = result.content[0]?.text || "";
+    const structured = result.isError || text.toLowerCase().includes("error") || text.toLowerCase().includes("required");
+    if (!structured) throw new Error("Expected validation error for missing image_source in detect_ui_elements");
   }));
 
   const passed = results.filter((r) => r).length;

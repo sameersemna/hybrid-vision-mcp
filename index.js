@@ -242,6 +242,101 @@ function normalizeImageSources(input) {
   return null;
 }
 
+function escapeXml(input) {
+  if (input === null || input === undefined) return "";
+  return String(input)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function hexToRgb(hex) {
+  if (!hex || typeof hex !== "string") return { r: 255, g: 0, b: 0, alpha: 1 };
+  let clean = hex.replace("#", "");
+  if (clean.length === 3) clean = clean[0] + clean[0] + clean[1] + clean[1] + clean[2] + clean[2];
+  const num = parseInt(clean, 16);
+  if (isNaN(num)) return { r: 255, g: 0, b: 0, alpha: 1 };
+  return {
+    r: (num >> 16) & 0xff,
+    g: (num >> 8) & 0xff,
+    b: num & 0xff,
+    alpha: 1,
+  };
+}
+
+function buildAnnotationOverlay(annotations, imgWidth, imgHeight) {
+  if (!annotations || !Array.isArray(annotations) || annotations.length === 0) return null;
+
+  let svgBoxes = "";
+  const escapedFont = "DejaVu Sans, sans-serif";
+
+  for (const ann of annotations) {
+    if (!ann || typeof ann !== "object") continue;
+    const type = String(ann.type || "").toLowerCase();
+    const color = ann.color || "#FF0000";
+    const rgb = hexToRgb(color);
+    const font_size = Math.max(10, Math.min(72, Number(ann.font_size) || 16));
+
+    if (type === "label" && typeof ann.text === "string" && ann.text.trim() !== "") {
+      const tx = Number(ann.x) || 0;
+      const ty = Number(ann.y) || 0;
+      const textContent = escapeXml(ann.text);
+      svgBoxes +=
+        `<rect x="${tx}" y="${ty - font_size + 2}" width="${Math.max(1, Math.round(textContent.length * font_size * 0.6 + 10))}" height="${font_size + 4}" fill="rgba(${rgb.r},${rgb.g},${rgb.b},0.85)" rx="3"/>`;
+      svgBoxes +=
+        `<text x="${tx + 5}" y="${ty}" font-family="${escapedFont}" font-size="${font_size}" fill="white">${textContent}</text>`;
+    }
+
+    if (type === "box" || type === "rectangle") {
+      const bx = Number(ann.x) || 0;
+      const by = Number(ann.y) || 0;
+      const bw = Math.max(1, Number(ann.width) || 50);
+      const bh = Math.max(1, Number(ann.height) || 50);
+      svgBoxes +=
+        `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="none" stroke="${color}" stroke-width="3" rx="2"/>`;
+    }
+
+    if (type === "circle") {
+      const cx = Number(ann.x) || 0;
+      const cy = Number(ann.y) || 0;
+      const r = Math.max(1, Number(ann.width) || 25);
+      svgBoxes +=
+        `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="3"/>`;
+    }
+
+    if (type === "arrow") {
+      const x1 = Number(ann.x) || 0;
+      const y1 = Number(ann.y) || 0;
+      const x2 = Number(ann.target_x) || (Number(ann.x) || 0) + 50;
+      const y2 = Number(ann.target_y) || (Number(ann.y) || 0) + 50;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1) continue;
+      const ux = dx / len;
+      const uy = dy / len;
+      const arrowSize = 12;
+      const tipX = x2;
+      const tipY = y2;
+      const baseX = x2 - ux * arrowSize;
+      const baseY = y2 - uy * arrowSize;
+      const perpX = -uy;
+      const perpY = ux;
+      svgBoxes +=
+        `<line x1="${x1}" y1="${y1}" x2="${baseX}" y2="${baseY}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>`;
+      svgBoxes +=
+        `<polygon points="${tipX},${tipY} ${baseX + perpX * arrowSize * 0.6},${baseY + perpY * arrowSize * 0.6} ${baseX - perpX * arrowSize * 0.6},${baseY - perpY * arrowSize * 0.6}" fill="${color}" stroke="none"/>`;
+    }
+  }
+
+  if (svgBoxes === "") return null;
+
+  const svg = `<svg width="${imgWidth}" height="${imgHeight}" xmlns="http://www.w3.org/2000/svg">${svgBoxes}</svg>`;
+  return Buffer.from(svg);
+}
+
 // ==========================================
 // MCP Server Factory
 // ==========================================
@@ -346,10 +441,99 @@ function createMcpServer() {
         },
         {
           name: "check_vision_health",
+          title: "Vision Health Check",
           description: "Check connectivity to local Ollama service and verify vision engines.",
           inputSchema: {
             type: "object",
             properties: {},
+          },
+        },
+        {
+          name: "browser_screenshot_analysis",
+          title: "Browser Screenshot Analysis",
+          description: "Perform high-level visual and semantic analysis of a browser screenshot or UI image. Generates a rich description of layout, components, visual hierarchy, colors, typography, spacing, and overall design 'vibe' to help agents understand the current UI state without manual inspection.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              focus: { type: "string", description: "Analysis focus area.", enum: ["all", "layout", "components", "accessibility", "design", "content"] },
+              detail_level: { type: "string", description: "Level of detail.", enum: ["brief", "standard", "detailed"] },
+              model: { type: "string", description: "Optional Ollama vision model override." },
+            },
+            required: ["image_source"],
+          },
+        },
+        {
+          name: "browser_screenshot_annotation",
+          title: "Browser Screenshot Annotation",
+          description: "Annotate a screenshot or image with text labels, bounding boxes, arrows, or circles to highlight specific UI components, regions of interest, or action targets. Useful for explaining UI changes or marking elements for further analysis.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              annotations: {
+                type: "array",
+                description: "Array of annotation objects to draw on the image. Each object must specify a 'type' field.",
+                items: {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", description: "Annotation type: 'label' for text, 'box' for bounding box, 'arrow' for direction indicator, 'circle' for highlight ring.", enum: ["label", "box", "arrow", "circle"] },
+                    text: { type: "string", description: "Text content for 'label' annotations." },
+                    x: { type: "number", description: "X coordinate (pixels). Anchor for label/box/circle, origin for arrow." },
+                    y: { type: "number", description: "Y coordinate (pixels). Anchor for label/box/circle, origin for arrow." },
+                    width: { type: "number", description: "Width in pixels for 'box', radius for 'circle'." },
+                    height: { type: "number", description: "Height in pixels for 'box'." },
+                    target_x: { type: "number", description: "Target X coordinate for 'arrow' endpoint." },
+                    target_y: { type: "number", description: "Target Y coordinate for 'arrow' endpoint." },
+                    color: { type: "string", description: "Hex color for the annotation (e.g. '#FF0000'). Default: '#FF0000'." },
+                    font_size: { type: "number", description: "Font size in pixels for 'label'. Default: 16." },
+                  },
+                  required: ["type"],
+                },
+              },
+              return_base64: { type: "boolean", description: "If true, returns the annotated image as a full Base64 Data URI. Default: true." },
+            },
+            required: ["image_source", "annotations"],
+          },
+        },
+        {
+          name: "visual_diff",
+          title: "Visual Diff",
+          description: "Compare two screenshots and highlight visual changes between them. Generates a pixel-level diff image that colors changed regions, and optionally an AI description of what differs between the 'before' and 'after' states.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              image_sources: {
+                type: "array",
+                minItems: 2,
+                maxItems: 2,
+                items: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>. First element is 'before', second is 'after'." },
+                description: "Array of exactly 2 image inputs: [before, after].",
+              },
+              threshold: { type: "number", description: "Minimum combined RGB delta to mark a pixel as changed (0-255). Default: 15." },
+              highlight_color: { type: "string", description: "Hex color for changed pixels in the diff image (e.g. '#FF00FF'). Default: '#FF00FF'." },
+              analyze: { type: "boolean", description: "If true, includes an Ollama Vision description of the differences. Default: true." },
+            },
+            required: ["image_sources"],
+          },
+        },
+        {
+          name: "detect_ui_elements",
+          title: "Detect UI Elements",
+          description: "Detect UI components and interactive elements in a screenshot using a vision model. Returns structured element descriptions with approximate bounding boxes and optional overlay visualization.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              element_types: {
+                type: "array",
+                items: { type: "string" },
+                description: "Filter to specific element types (e.g. ['button', 'input', 'link', 'card', 'navigation', 'modal', 'dropdown', 'checkbox', 'radio', 'table', 'list', 'icon', 'heading']). Default: scans all common UI elements.",
+              },
+              return_overlay: { type: "boolean", description: "If true, attempts to overlay detected elements as bounding boxes on the image. Default: false." },
+              model: { type: "string", description: "Optional Ollama vision model override." },
+            },
+            required: ["image_source"],
           },
         },
       ],
@@ -441,13 +625,26 @@ function createMcpServer() {
 
         const processedBuffer = await pipeline.toBuffer();
         const base64 = processedBuffer.toString("base64");
+        const meta = await sharp(processedBuffer).metadata();
 
         return {
           content: [
             {
               type: "text",
-              text: `Image preprocessed successfully. Output Base64 data (length: ${base64.length} chars).\nData URI: data:image/png;base64,${base64.slice(0, 100)}...`,
+              text: JSON.stringify({
+                success: true,
+                message: "Image preprocessed successfully.",
+                width: meta.width,
+                height: meta.height,
+                format: meta.format,
+                operations: {
+                  crop: args.crop || null,
+                  grayscale: !!args.grayscale,
+                  sharpen: !!args.sharpen,
+                },
+              }, null, 2),
             },
+            { type: "image", data: base64, mimeType: "image/png" },
           ],
         };
       }
@@ -500,6 +697,295 @@ function createMcpServer() {
         return { content: [{ type: "text", text: textResult }] };
       }
 
+      if (name === "browser_screenshot_analysis") {
+        const rawBuf = await resolveImageToBuffer(args.image_source);
+        await normalizeToPngBuffer(rawBuf);
+
+        const focus = String(args.focus || "all").toLowerCase();
+        const detailLevel = String(args.detail_level || "standard").toLowerCase();
+
+        const prompts = {
+          brief: `Provide a concise summary of this browser screenshot. Identify the page type (login, dashboard, form, etc.), primary content, and any obvious UI anomalies. Focus: ${focus}.`,
+          standard: `Analyze this browser screenshot in detail. Describe the page layout, visual hierarchy, color scheme, typography, spacing, and overall design vibe. Identify UI components (nav, sidebar, buttons, cards, modals, forms), accessibility cues, and visual patterns. Focus: ${focus}.`,
+          detailed: `Perform a comprehensive visual and semantic analysis of this browser screenshot. Describe the full layout structure, grid system, visual hierarchy, color palette, typography choices, spacing rhythm, component types, interactive elements, content groupings, potential UX issues, and the overall aesthetic vibe. Focus: ${focus}.`,
+        };
+
+        const model = args.model || VISION_MODEL_HEAVY;
+        const prompt = prompts[detailLevel] || prompts.standard;
+
+        const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
+        return {
+          content: [
+            { type: "text", text: `[Browser Screenshot Analysis - Focus: ${focus} - Detail: ${detailLevel}]\n\n${textResult}` },
+          ],
+        };
+      }
+
+      if (name === "browser_screenshot_annotation") {
+        const rawBuf = await resolveImageToBuffer(args.image_source);
+        await normalizeToPngBuffer(rawBuf);
+
+        if (!args.annotations || !Array.isArray(args.annotations) || args.annotations.length === 0) {
+          throw new Error("Parameter 'annotations' must be a non-empty array of annotation objects.");
+        }
+
+        const invalid = args.annotations.find((a) => !a || typeof a !== "object" || !a.type);
+        if (invalid) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: true,
+                  code: "INVALID_ANNOTATION",
+                  message: "Each annotation must be an object with a 'type' field.",
+                  validTypes: ["label", "box", "arrow", "circle"],
+                  invalidItem: invalid,
+                }, null, 2),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const meta = await sharp(rawBuf).metadata();
+        if (!meta.width || !meta.height) {
+          throw new Error("Could not determine image dimensions for annotation overlay.");
+        }
+
+        const overlayBuffer = buildAnnotationOverlay(args.annotations, meta.width, meta.height);
+        if (!overlayBuffer) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  error: true,
+                  code: "NO_VALID_ANNOTATIONS",
+                  message: "No valid annotations could be rendered. Check that each annotation has the required fields for its type.",
+                  received: args.annotations.map((a) => ({ type: a.type, hasText: !!a.text, textLength: (a.text || "").length })),
+                  suggestions: ["Ensure 'label' annotations include 'text'", "Ensure coordinate fields (x, y) are numbers"],
+                }, null, 2),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const annotatedBuffer = await sharp(rawBuf)
+          .composite([{ input: overlayBuffer, blend: "over" }])
+          .png()
+          .toBuffer();
+
+        const base64 = annotatedBuffer.toString("base64");
+        const dataUri = `data:image/png;base64,${base64}`;
+
+        if (args.return_base64 !== false) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  success: true,
+                  message: `Annotation applied. ${args.annotations.length} annotation(s) rendered.`,
+                  width: meta.width,
+                  height: meta.height,
+                  format: "image/png",
+                  data_uri_length: base64.length,
+                  data_uri: dataUri,
+                }, null, 2),
+              },
+              { type: "image", data: base64, mimeType: "image/png" },
+            ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: "Annotation applied (base64 returned separately).",
+                width: meta.width,
+                height: meta.height,
+                format: "image/png",
+                data_uri_length: base64.length,
+                data_uri: dataUri,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      if (name === "detect_ui_elements") {
+        const rawBuf = await resolveImageToBuffer(args.image_source);
+        await normalizeToPngBuffer(rawBuf);
+
+        const meta = await sharp(rawBuf).metadata();
+        const elementTypes = Array.isArray(args.element_types)
+          ? args.element_types.join(", ")
+          : "buttons, text inputs, links/images acting as links, cards, navigation bars, modals, dropdowns, checkboxes, radio buttons, tables, lists, icons, headings, and form labels";
+
+        const prompt = `Analyze this screenshot and detect the following UI elements: ${elementTypes}. For each element you identify, provide: 1) the element type, 2) a brief label describing what it is or the text it contains, 3) approximate bounding box coordinates in pixels as [x, y, width, height] where (x,y) is the top-left corner. Return the results as a JSON array where each item has keys: "type", "label", "x", "y", "width", "height". If an element type is not visible, omit it from the array. Focus on accuracy for both labels and coordinates.`;
+        const model = args.model || VISION_MODEL_HEAVY;
+        const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
+
+        let overlay = null;
+        if (args.return_overlay === true) {
+          const boxes = [];
+          try {
+            const jsonMatch = textResult.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              if (Array.isArray(parsed)) {
+                for (const item of parsed) {
+                  if (item && item.type && typeof item.x === "number" && typeof item.y === "number") {
+                    boxes.push({
+                      type: "box",
+                      x: item.x,
+                      y: item.y,
+                      width: Math.max(10, Number(item.width) || 50),
+                      height: Math.max(10, Number(item.height) || 20),
+                      color: "#00FF00",
+                    });
+                  }
+                }
+              }
+            }
+          } catch {}
+
+          if (boxes.length > 0) {
+            const overlayBuf = buildAnnotationOverlay(boxes, meta.width, meta.height);
+            if (overlayBuf) {
+              const annotated = await sharp(rawBuf)
+                .composite([{ input: overlayBuf, blend: "over" }])
+                .png()
+                .toBuffer();
+              overlay = annotated.toString("base64");
+            }
+          }
+        }
+
+        const response = {
+          success: true,
+          message: `UI elements detected from screenshot (${meta.width}x${meta.height}).`,
+          width: meta.width,
+          height: meta.height,
+          detection: textResult,
+        };
+        if (overlay) {
+          response.overlay_data_uri = `data:image/png;base64,${overlay}`;
+        }
+
+        const content = [{ type: "text", text: JSON.stringify(response, null, 2) }];
+        if (overlay) {
+          content.push({ type: "image", data: overlay, mimeType: "image/png" });
+        }
+        return { content };
+      }
+
+      if (name === "visual_diff") {
+        const rawSources = normalizeImageSources(args.image_sources);
+        if (!rawSources || rawSources.length < 2) {
+          throw new Error(
+            "Parameter 'image_sources' must be a JSON array with at least 2 images. " +
+            "Format: [\"before_image\", \"after_image\"]"
+          );
+        }
+
+        const buffers = [];
+        const metas = [];
+        for (const src of rawSources.slice(0, 2)) {
+          const buf = await resolveImageToBuffer(src);
+          await normalizeToPngBuffer(buf);
+          buffers.push(buf);
+          metas.push(await sharp(buf).metadata());
+        }
+
+        const threshold = Math.max(0, Math.min(255, Number(args.threshold) || 15));
+        const highlightColor = args.highlight_color || "#FF00FF";
+        const rgb = hexToRgb(highlightColor);
+
+        const w1 = metas[0].width || 400;
+        const h1 = metas[0].height || 400;
+        const w2 = metas[1].width || 400;
+        const h2 = metas[1].height || 400;
+
+        const aspect1 = w1 / (h1 || 1);
+        const aspect2 = w2 / (h2 || 1);
+        let targetWidth, targetHeight;
+        if (Math.abs(aspect1 - aspect2) < 0.1) {
+          targetWidth = Math.max(1, Math.min(w1, w2));
+          targetHeight = Math.max(1, Math.round(targetWidth / (aspect1 || 1)));
+        } else {
+          targetWidth = Math.max(1, Math.min(w1, w2, 400));
+          targetHeight = Math.max(1, Math.round(targetWidth / ((aspect1 + aspect2) / 2 || 1)));
+        }
+
+        const raw1 = await sharp(buffers[0]).resize(targetWidth, targetHeight).removeAlpha().raw().toBuffer();
+        const raw2 = await sharp(buffers[1]).resize(targetWidth, targetHeight).removeAlpha().raw().toBuffer();
+
+        const pixelCount = targetWidth * targetHeight;
+        const diffPixels = Buffer.alloc(pixelCount * 4);
+        let changed = 0;
+
+        for (let i = 0; i < pixelCount; i++) {
+          const idx = i * 3;
+          const rDiff = Math.abs(raw1[idx] - raw2[idx]);
+          const gDiff = Math.abs(raw1[idx + 1] - raw2[idx + 1]);
+          const bDiff = Math.abs(raw1[idx + 2] - raw2[idx + 2]);
+          const totalDiff = rDiff + gDiff + bDiff;
+
+          if (totalDiff > threshold * 3) {
+            diffPixels[i * 4] = rgb.r;
+            diffPixels[i * 4 + 1] = rgb.g;
+            diffPixels[i * 4 + 2] = rgb.b;
+            diffPixels[i * 4 + 3] = 255;
+            changed++;
+          } else {
+            diffPixels[i * 4] = 20;
+            diffPixels[i * 4 + 1] = 20;
+            diffPixels[i * 4 + 2] = 20;
+            diffPixels[i * 4 + 3] = 255;
+          }
+        }
+
+        const diffBuf = await sharp(diffPixels, { raw: { width: targetWidth, height: targetHeight, channels: 4 } }).png().toBuffer();
+        const base64 = diffBuf.toString("base64");
+
+        let aiDescription = "";
+        if (args.analyze !== false) {
+          const prompt = "Compare these two screenshots. The first image is the 'before' state, the second is the 'after' state. Describe all visual differences you can identify, including what changed, where on the screen, and any visual regressions or improvements.";
+          aiDescription = await queryOllamaVision(VISION_MODEL_HEAVY, prompt, buffers);
+        }
+
+        const response = {
+          success: true,
+          message: "Visual diff computed successfully.",
+          width: targetWidth,
+          height: targetHeight,
+          changed_pixels: changed,
+          total_pixels: pixelCount,
+          change_ratio: (changed / pixelCount * 100).toFixed(2) + "%",
+          threshold: threshold,
+          highlight_color: highlightColor,
+          format: "image/png",
+          data_uri_length: base64.length,
+          data_uri: `data:image/png;base64,${base64}`,
+        };
+        if (aiDescription) {
+          response.ai_description = aiDescription;
+        }
+
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(response, null, 2) },
+            { type: "image", data: base64, mimeType: "image/png" },
+          ],
+        };
+      }
+
       throw new Error(`Unknown tool requested: ${name}`);
     } catch (err) {
       console.error(`[Tool Execution Error - ${name}]:`, err.message);
@@ -536,6 +1022,7 @@ app.get("/", (req, res) => {
 const streamableTransports = new Map();
 
 app.all("/mcp", async (req, res) => {
+  console.log("[DEBUG] /mcp HIT", req.method, req.path);
   const sessionId = req.headers["mcp-session-id"] || req.query.sessionId;
   let transport = streamableTransports.get(sessionId);
 
