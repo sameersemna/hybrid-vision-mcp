@@ -56,12 +56,15 @@ process.on("unhandledRejection", (reason) => {
 const PORT = process.env.PORT || 11402;
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
 const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS) || 180000;
+const MCP_REQUEST_TIMEOUT_MS = Number(process.env.MCP_REQUEST_TIMEOUT_MS) || 300000;
 const VISION_MODEL_FAST = process.env.VISION_MODEL_FAST || "llava:13b";
 const VISION_MODEL_HEAVY = process.env.VISION_MODEL_HEAVY || "qwen3-vl:30b";
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "/tmp/hvm-uploads";
 const FEEDBACK_DIR = process.env.FEEDBACK_DIR || "/tmp/hvm-feedback";
+const DOWNLOAD_DIR = path.resolve(process.env.DOWNLOAD_DIR || "./tmp/hvm-downloads");
 const MAX_UPLOAD_AGE_MS = 15 * 60 * 1000;
 const MAX_UPLOAD_SIZE_BYTES = Number(process.env.MAX_UPLOAD_SIZE_MB) * 1024 * 1024 || 20 * 1024 * 1024;
+const MAX_DOWNLOAD_SIZE_BYTES = (Number(process.env.MAX_DOWNLOAD_SIZE_MB) || 50) * 1024 * 1024;
 const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -181,37 +184,10 @@ async function resolveImageToBuffer(input) {
     trimmed = trimmed.replace(/^~/, os.homedir());
   }
 
-  // 4. HTTP / HTTPS URL
+  // 4. HTTP / HTTPS URL — download to disk, then return buffer
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    try {
-      const res = await fetch(trimmed, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) HybridVisionMCP/1.0",
-          "Accept": "image/png,image/jpeg,image/webp,image/*,*/*;q=0.8",
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const contentType = res.headers.get("content-type") || "";
-      if (contentType.includes("text/html") || contentType.includes("application/json")) {
-        throw new Error(`URL returned content-type '${contentType}' instead of a valid image.`);
-      }
-
-      const arrayBuf = await res.arrayBuffer();
-      const buf = Buffer.from(arrayBuf);
-      if (buf.length === 0) throw new Error("Fetched image payload is empty.");
-
-      if (!isSupportedImageBuffer(buf)) {
-        throw new Error("Fetched URL payload does not contain valid binary image headers.");
-      }
-
-      return buf;
-    } catch (err) {
-      throw new Error(`Failed to fetch image URL (${trimmed}): ${err.message}`);
-    }
+    const result = await downloadImageToFile(trimmed);
+    return fs.readFileSync(result.filePath);
   }
 
   // 5. Local File Path (Only works if client and MCP server share a filesystem)
@@ -225,6 +201,19 @@ async function resolveImageToBuffer(input) {
       return buf;
     }
     throw new Error(`Upload reference not found: "${trimmed}". Upload the image to /upload first.`);
+  }
+
+  // 5b. download:// reference — resolves from DOWNLOAD_DIR
+  if (trimmed.startsWith("download://")) {
+    const filename = trimmed.slice("download://".length);
+    const fullPath = path.join(DOWNLOAD_DIR, filename);
+    if (fs.existsSync(fullPath)) {
+      const buf = fs.readFileSync(fullPath);
+      if (buf.length === 0) throw new Error(`Downloaded file "${filename}" is empty.`);
+      if (!isSupportedImageBuffer(buf)) throw new Error(`Downloaded file "${filename}" is not a supported image format.`);
+      return buf;
+    }
+    throw new Error(`Download reference not found: "${trimmed}". Download the image using the download_image tool first.`);
   }
 
   if (fs.existsSync(trimmed)) {
@@ -250,6 +239,78 @@ async function resolveImageToBuffer(input) {
   throw new Error(
     `Unable to resolve image source. File not found on MCP server host at: "${trimmed}". Because the MCP server is hosted remotely, transmit the image as a Base64 Data URI ('data:image/png;base64,...') or an HTTP URL.`
   );
+}
+
+async function downloadImageToFile(url) {
+  if (typeof url !== "string" || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+    throw new Error(`Invalid URL: must start with http:// or https://. Received: "${typeof url === "string" ? url.substring(0, 80) : typeof url}"`);
+  }
+
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) HybridVisionMCP/1.0",
+        "Accept": "image/png,image/jpeg,image/webp,image/*,*/*;q=0.8",
+      },
+    });
+  } catch (err) {
+    throw new Error(`Failed to fetch image URL (${url}): ${err.message}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}${response.statusText ? ": " + response.statusText : ""} when fetching ${url}`);
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("text/html") || contentType.includes("application/json")) {
+    throw new Error(`URL returned content-type '${contentType}' instead of a valid image. Only image URLs are supported.`);
+  }
+
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_DOWNLOAD_SIZE_BYTES) {
+    throw new Error(`Downloaded image exceeds maximum size of ${Math.round(MAX_DOWNLOAD_SIZE_BYTES / 1024 / 1024)}MB (Content-Length: ${Math.round(Number(contentLength) / 1024 / 1024)}MB).`);
+  }
+
+  const arrayBuf = await response.arrayBuffer();
+  const buf = Buffer.from(arrayBuf);
+
+  if (buf.length === 0) {
+    throw new Error(`Fetched image payload is empty for URL: ${url}`);
+  }
+
+  if (buf.length > MAX_DOWNLOAD_SIZE_BYTES) {
+    throw new Error(`Downloaded image exceeds maximum size of ${Math.round(MAX_DOWNLOAD_SIZE_BYTES / 1024 / 1024)}MB (actual: ${Math.round(buf.length / 1024 / 1024)}MB).`);
+  }
+
+  if (!isSupportedImageBuffer(buf)) {
+    throw new Error(`Fetched URL payload does not contain valid binary image headers. The URL may not point to a valid image file.`);
+  }
+
+  const mimeType = resolveMimeTypeFromMagic(buf, contentType) || "image/png";
+  const ext = mimeType.split("/")[1] || "png";
+  const filename = `${crypto.randomUUID()}.${ext}`;
+  const filePath = path.join(DOWNLOAD_DIR, filename);
+
+  try {
+    fs.writeFileSync(filePath, buf);
+  } catch (err) {
+    throw new Error(`Failed to save downloaded image to disk: ${err.message}`);
+  }
+
+  let width = null;
+  let height = null;
+  try {
+    const meta = await sharp(buf).metadata();
+    width = meta.width;
+    height = meta.height;
+  } catch {}
+
+  const downloadRef = `download://${filename}`;
+
+  console.log(`[DOWNLOAD] Saved ${url} -> ${filePath} (${buf.length} bytes, ${mimeType}, ${width}x${height})`);
+
+  return { filePath, originalUrl: url, mimeType, size: buf.length, width, height, downloadRef };
 }
 
 async function normalizeToPngBuffer(buffer) {
@@ -973,6 +1034,19 @@ function createMcpServer() {
             required: ["repo_path"],
           },
         },
+        {
+          name: "download_image",
+          title: "Download Image",
+          description: "Download an image from a URL into the server's DOWNLOAD_DIR and return a download:// reference that can be passed to any other tool. Validates the URL, checks content-type, verifies image magic bytes, and enforces size limits.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              url: { type: "string", description: "HTTP or HTTPS URL of the image to download." },
+              filename: { type: "string", description: "Optional custom filename (without path). If omitted, a UUID-based name is generated." },
+            },
+            required: ["url"],
+          },
+        },
       ],
     };
   });
@@ -1552,6 +1626,33 @@ function createMcpServer() {
         };
       }
 
+      if (name === "download_image") {
+        if (!args.url || typeof args.url !== "string") {
+          throw new Error("Parameter 'url' must be a non-empty string.");
+        }
+
+        const result = await downloadImageToFile(args.url);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: true,
+                message: `Image downloaded successfully from URL.`,
+                downloadRef: result.downloadRef,
+                file_path: result.filePath,
+                original_url: result.originalUrl,
+                mime_type: result.mimeType,
+                size: result.size,
+                width: result.width,
+                height: result.height,
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
       throw new Error(`Unknown tool requested: ${name}`);
     } catch (err) {
       console.error(`[Tool Execution Error - ${name}]:`, err.message);
@@ -1669,6 +1770,24 @@ setInterval(cleanupUploads, 5 * 60 * 1000);
 cleanupUploads();
 
 fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
+
+fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+
+const cleanupDownloads = () => {
+  try {
+    const now = Date.now();
+    const files = fs.readdirSync(DOWNLOAD_DIR);
+    for (const file of files) {
+      const full = path.join(DOWNLOAD_DIR, file);
+      const stat = fs.statSync(full);
+      if (now - stat.mtimeMs > MAX_UPLOAD_AGE_MS) {
+        try { fs.unlinkSync(full); } catch {}
+      }
+    }
+  } catch {}
+};
+setInterval(cleanupDownloads, 5 * 60 * 1000);
+cleanupDownloads();
 
 const cleanupFeedback = () => {
   try {

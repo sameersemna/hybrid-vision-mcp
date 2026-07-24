@@ -29,14 +29,16 @@ function isAlreadyResolved(input) {
     trimmed.startsWith("https://") ||
     trimmed.startsWith("file://") ||
     trimmed.startsWith("upload://") ||
+    trimmed.startsWith("download://") ||
     trimmed.startsWith("~/")
   );
 }
 
 export class MCPUploadHelper {
-  constructor(baseUrl = "http://localhost:11402") {
+  constructor(baseUrl = "http://localhost:11402", requestTimeout = undefined) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.uploadUrl = `${this.baseUrl}/upload`;
+    this.requestTimeout = requestTimeout;
   }
 
   async uploadImage(source) {
@@ -117,7 +119,8 @@ export class MCPUploadHelper {
 
     try {
       await client.connect(transport);
-      const result = await client.callTool({ name: toolName, arguments: resolvedArgs });
+      const requestOptions = this.requestTimeout ? { timeout: this.requestTimeout } : undefined;
+      const result = await client.callTool({ name: toolName, arguments: resolvedArgs }, undefined, requestOptions);
       return result;
     } finally {
       await client.close();
@@ -145,7 +148,8 @@ export class MCPUploadHelper {
       }
     }
 
-    return await this.client.callTool({ name: toolName, arguments: resolvedArgs });
+    const requestOptions = this.requestTimeout ? { timeout: this.requestTimeout } : undefined;
+    return await this.client.callTool({ name: toolName, arguments: resolvedArgs }, undefined, requestOptions);
   }
 
   async close() {

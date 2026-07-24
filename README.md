@@ -54,11 +54,14 @@ cp .env.example .env
 | `PORT` | `11402` | Express listener port. |
 | `OLLAMA_HOST` | `http://localhost:11434` | Base URL for the local Ollama inference service. |
 | `OLLAMA_TIMEOUT_MS` | `180000` | Timeout for Ollama vision requests in milliseconds. |
+| `MCP_REQUEST_TIMEOUT_MS` | `300000` | Timeout for MCP client request/response in milliseconds. Heavy vision tools may exceed the default 60s SDK timeout; set this to match or exceed `OLLAMA_TIMEOUT_MS`. |
 | `VISION_MODEL_FAST` | `llava:13b` | Default vision model for `analyze_image` and `detect_ui_elements`. |
 | `VISION_MODEL_HEAVY` | `qwen3-vl:30b` | Default vision model for `find_text_element`, `compare_images`, `browser_screenshot_analysis`, `visual_diff`, and `detect_ui_elements`. |
 | `UPLOAD_DIR` | `/tmp/hvm-uploads` | Directory for temporary binary image uploads. |
 | `FEEDBACK_DIR` | `/tmp/hvm-feedback` | Directory for saved output images (annotations, diffs, overlays). |
+| `DOWNLOAD_DIR` | `./tmp/hvm-downloads` | Directory for downloaded images from URLs (via `download_image` tool or transparent URL resolution). |
 | `MAX_UPLOAD_SIZE_MB` | `20` | Maximum upload size in megabytes. |
+| `MAX_DOWNLOAD_SIZE_MB` | `50` | Maximum download size in megabytes for URL-based image downloads. |
 | `UPLOAD_RATE_LIMIT` | `10` | Maximum upload requests per minute per client IP. |
 | `CORS_ORIGINS` | *(empty = allow all)* | Comma-separated list of allowed CORS origins for the `/upload` endpoint. |
 
@@ -141,6 +144,30 @@ Tools that produce large output images (`preprocess_and_crop`, `browser_screensh
 - **Validation**: Magic-number verification ensures the file content matches the declared MIME type.
 - **Rate limit**: 10 uploads per minute per IP (configurable via `UPLOAD_RATE_LIMIT`).
 - **Cleanup**: Uploads are automatically deleted after 15 minutes. Feedback files follow the same TTL.
+
+## MCP SDK Request Timeout
+
+Heavy vision tools (`analyze_image`, `browser_screenshot_analysis`, `detect_ui_elements`, `find_text_element`, `compare_images`) rely on local Ollama vision models that may take longer than the MCP SDK's default 60-second request timeout to process large images.
+
+**Symptom**: MCP error `-32001: Request timed out` when calling heavy vision tools.
+
+**Solution**: Pass a `timeout` option to `client.callTool()` that matches or exceeds `OLLAMA_TIMEOUT_MS`:
+
+```javascript
+const result = await client.callTool(
+  { name: "analyze_image", arguments: { image_source: url, prompt: "..." } },
+  undefined,
+  { timeout: 300000 }  // 5 minutes
+);
+```
+
+The `upload-helper.js` library accepts an optional `requestTimeout` parameter in its constructor. When set, it automatically passes the timeout to every `callTool` and `callToolConnected` invocation:
+
+```javascript
+const helper = new MCPUploadHelper("http://localhost:11402", 300000);
+```
+
+The `MCP_REQUEST_TIMEOUT_MS` environment variable can be used to configure this value. See the [Environment Variables](#environment-variables) table above.
 
 ## File Input Schema Annotations
 
@@ -506,6 +533,39 @@ Generate repository structural map using Graphviz DOT and JSON formats. Analyzes
 
 ---
 
+### 14. `download_image`
+
+Download an image from a URL into the server's `DOWNLOAD_DIR` and return a `download://` reference that can be passed to any other tool. Validates the URL, checks content-type, verifies image magic bytes, and enforces size limits.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `url` | string | **Yes** | — | HTTP or HTTPS URL of the image to download. |
+| `filename` | string | No | auto-generated | Optional custom filename (without path). |
+
+**Returns**:
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{ \"success\": true, \"downloadRef\": \"download://<uuid>.png\", \"file_path\": \"/abs/path/to/tmp/hvm-downloads/<uuid>.png\", \"original_url\": \"https://...\", \"mime_type\": \"image/png\", \"size\": 123456, \"width\": 800, \"height\": 600 }"
+    }
+  ]
+}
+```
+
+**Error scenarios**:
+- Invalid URL format (not http/https)
+- DNS/network failure
+- HTTP error (4xx/5xx)
+- Wrong content-type (e.g., text/html)
+- Payload does not contain valid image magic bytes
+- Empty response
+- File exceeds `MAX_DOWNLOAD_SIZE_MB`
+```
+
+---
+
 ## Image Input Formats
 
 All tools accept image input through a resolution pipeline:
@@ -513,10 +573,11 @@ All tools accept image input through a resolution pipeline:
 1. **Base64 Data URI**: `data:image/png;base64,<BASE64_STRING>`
 2. **`file://` URI**: Converted to a local path on the server host.
 3. **Home Directory Expansion**: `~/path` is expanded to the server's home directory.
-4. **HTTP(S) URL**: Fetched with custom User-Agent; validated for image content-type and magic bytes.
+4. **HTTP(S) URL**: Fetched, validated, and saved to `DOWNLOAD_DIR` before processing.
 5. **Local Filesystem Path**: Resolved only if the file exists on the **server host** (not the client).
 6. **Pure Base64 Fallback**: If the string length exceeds 50 characters, it is decoded and validated as an image.
 7. **Upload Reference**: `upload://<filename>` — resolved from the server's `UPLOAD_DIR`.
+8. **Download Reference**: `download://<filename>` — resolved from the server's `DOWNLOAD_DIR` (returned by the `download_image` tool).
 
 > **Remote Host Rule**: The MCP Vision Server runs on a remote host. Local filesystem paths (e.g. `/tmp/...`, `C:\...`, `~/...`) are not visible to the server unless they exist on the server host. Transmit images as **Base64 Data URIs**, **HTTP URLs**, or **upload:// references**.
 

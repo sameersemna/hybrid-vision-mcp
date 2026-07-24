@@ -1,7 +1,11 @@
 import { MCPUploadHelper } from "./upload-helper.js";
 
 const BASE_URL = process.env.MCP_SERVER_URL || "http://localhost:11402";
-const helper = new MCPUploadHelper(BASE_URL);
+// Heavy vision tools (analyze_image, browser_screenshot_analysis, detect_ui_elements,
+// find_text_element, compare_images) can exceed the MCP SDK's default 60s timeout.
+// Pass a longer timeout to the helper to avoid MCP error -32001 (Request timed out).
+const MCP_TIMEOUT = Number(process.env.MCP_REQUEST_TIMEOUT_MS) || 300000;
+const helper = new MCPUploadHelper(BASE_URL, MCP_TIMEOUT);
 
 async function exampleDirectUpload() {
   console.log("=== Example 1: Direct upload from File object ===");
@@ -64,10 +68,34 @@ async function exampleConnectedSession() {
   }
 }
 
+async function exampleDownloadImage() {
+  console.log("\n=== Example 4: Download image from URL ===");
+
+  try {
+    const result = await helper.callTool("download_image", {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/300px-PNG_transparency_demonstration_1.png",
+    });
+    const data = JSON.parse(result.content[0].text);
+    console.log("Download result:", JSON.stringify(data, null, 2));
+
+    // Now use the download:// reference with any other tool
+    if (data.downloadRef) {
+      const analysis = await helper.callTool("analyze_image", {
+        image_source: data.downloadRef,
+        prompt: "Describe this image briefly.",
+      });
+      console.log("Analysis result:", analysis.content[0].text);
+    }
+  } catch (err) {
+    console.error("Error:", err.message);
+  }
+}
+
 async function runExamples() {
   await exampleDirectUpload();
   await exampleBatchUpload();
   await exampleConnectedSession();
+  await exampleDownloadImage();
 }
 
 runExamples().catch((err) => {
