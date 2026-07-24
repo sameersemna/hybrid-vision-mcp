@@ -4,3 +4,5 @@ node_modules/
 *.prs
 screenshots/
 visual_qa_report_*.md
+.env
+tmp/

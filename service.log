@@ -1,0 +1,947 @@
+
+========================================
+ Hybrid Vision MCP Server Running 
+ Listening on: http://0.0.0.0:11402
+ - Streamable HTTP: http://localhost:11402/mcp
+ - SSE Endpoint:    http://localhost:11402/sse
+========================================
+
+[HTTP] 11:55:11 PM -> GET /sse
+[HTTP] 11:55:12 PM -> GET /sse
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT GET /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[HTTP] 11:56:00 PM -> GET /sse
+ -> SSE connection closed for session: 7a183cda-cd56-4338-b728-742a44429a70
+ -> SSE connection closed for session: c6d65b63-6ea5-400c-af27-7aa4ea849ec0
+[HTTP] 11:59:37 PM -> GET /sse
+ -> SSE connection closed for session: 967021c2-15b3-4704-b51f-89246f852115
+[HTTP] 11:59:48 PM -> GET /sse
+ -> SSE connection closed for session: 1bbc9433-a144-4324-968f-daa7f22e5885
+[HTTP] 12:04:37 AM -> GET /sse
+ -> SSE connection closed for session: 2cbff688-0532-4595-b947-9a1dabaae1db
+[HTTP] 12:04:48 AM -> GET /sse
+ -> SSE connection closed for session: 3d3b5e68-ea92-4abb-a7e6-8c6e13e6e065
+[HTTP] 12:09:37 AM -> GET /sse
+ -> SSE connection closed for session: 9396d9bd-4218-464a-b450-4debbdf958ef
+[HTTP] 12:09:48 AM -> GET /sse
+ -> SSE connection closed for session: b8368a8f-27d5-4b61-af1b-d6e2be11732f
+[HTTP] 12:14:37 AM -> GET /sse
+ -> SSE connection closed for session: 2803f137-d911-49b4-b442-f421063ddf59
+[HTTP] 12:14:48 AM -> GET /sse
+ -> SSE connection closed for session: 23b47002-55fb-452d-afd9-07f4ab33b47b
+[HTTP] 12:17:20 AM -> GET /sse
+ -> SSE connection closed for session: 8643e7a3-fdfd-4fc0-94e3-1917639dacae
+[HTTP] 12:19:37 AM -> GET /sse
+ -> SSE connection closed for session: 7ffa1ce2-f43c-41b9-9672-53fb4182d57a
+[HTTP] 12:22:22 AM -> GET /sse
+ -> SSE connection closed for session: cfd119ce-b538-4a6e-83d6-3121a63310e1
+[HTTP] 12:24:37 AM -> GET /sse
+ -> SSE connection closed for session: 8e15b31b-ba1e-4f11-8f3a-65c90be252ee
+[HTTP] 12:27:22 AM -> GET /sse
+ -> SSE connection closed for session: a09e21c1-a0ae-4d9c-83f4-2b791f955762
+[HTTP] 12:29:37 AM -> GET /sse
+ -> SSE connection closed for session: e51af194-a7ac-426a-b264-5a4b89b571f8
+[HTTP] 12:32:23 AM -> GET /sse
+ -> SSE connection closed for session: 65359bc9-34f0-4c8d-9396-43b78b350d0e
+[HTTP] 12:34:37 AM -> GET /sse
+ -> SSE connection closed for session: 4b5c9972-aa1d-4e78-acd8-8e7c4c13305c
+[HTTP] 12:37:24 AM -> GET /sse
+ -> SSE connection closed for session: 14dda721-859b-4f4d-957c-4fb33355ced9
+[HTTP] 12:40:06 AM -> GET /sse
+ -> SSE connection closed for session: ed85b9c6-a5dd-43bb-89ea-93154a53718f
+[HTTP] 12:41:04 AM -> GET /sse
+ -> SSE connection closed for session: 69475979-9242-4d73-9c28-45851de04cd9
+[HTTP] 12:42:24 AM -> GET /sse
+ -> SSE connection closed for session: 3dbda387-3ef4-4ffe-b183-e500fc519933
+[HTTP] 12:46:06 AM -> GET /sse
+ -> SSE connection closed for session: a6ae30ae-6534-4185-a0c3-4add7cfe49c9
+[HTTP] 12:47:24 AM -> GET /sse
+[Tool Execution Error - analyze_image]: Unable to resolve image source. File not found on MCP server host at: "/home/sameer/Shared/Sync/Private/Work/Projects/unbiased/cycle1-candidate-home-light.png". Because the MCP server is hosted remotely, transmit the image as a Base64 Data URI ('data:image/png;base64,...') or an HTTP URL.
+[Tool Execution Error - analyze_image]: Unable to resolve image source. File not found on MCP server host at: "/home/sameer/Shared/Sync/Private/Work/Projects/unbiased/cycle1-candidate-home-light.png". Because the MCP server is hosted remotely, transmit the image as a Base64 Data URI ('data:image/png;base64,...') or an HTTP URL.
+[Tool Execution Error - analyze_image]: Unable to resolve image source. File not found on MCP server host at: "/home/sameer/Shared/Sync/Private/Work/Projects/unbiased/cycle1-candidate-home-light.png". Because the MCP server is hosted remotely, transmit the image as a Base64 Data URI ('data:image/png;base64,...') or an HTTP URL.
+ -> SSE connection closed for session: c56b5240-46b7-4451-907c-a9589b41149c
+[HTTP] 12:52:24 AM -> GET /sse
+ -> SSE connection closed for session: 73ae95e7-0f14-4a7e-99c1-13ba72454d08
+[HTTP] 12:56:06 AM -> GET /sse
+ -> SSE connection closed for session: 82382ba8-9562-438e-afc7-a8b4320f89a8
+[HTTP] 12:57:24 AM -> GET /sse
+ -> SSE connection closed for session: 993a14fe-fb72-4379-9f1b-9fe26887a16e
+[HTTP] 1:01:06 AM -> GET /sse
+ -> SSE connection closed for session: fbe99c40-de15-4e75-a0a5-9b4a9c29b604
+[HTTP] 1:02:24 AM -> GET /sse
+ -> SSE connection closed for session: 3fc54769-bded-4e81-b3e1-6592fa985f94
+[HTTP] 1:06:06 AM -> GET /sse
+ -> SSE connection closed for session: 4bc8c910-92ac-43bb-ac97-a06dd7dc454b
+[HTTP] 1:07:24 AM -> GET /sse
+ -> SSE connection closed for session: 38cdb40a-08f3-4dee-a110-464d467cbf08
+[HTTP] 1:11:09 AM -> GET /sse
+ -> SSE connection closed for session: e3bafd79-4ab4-4904-a6b4-3bae60ff3f3e
+[HTTP] 1:12:24 AM -> GET /sse
+ -> SSE connection closed for session: 4681e93f-ba02-42af-9d7b-c0c9a175fb53
+[HTTP] 1:16:09 AM -> GET /sse
+ -> SSE connection closed for session: 5012210e-055a-44d8-9dc9-f6b1501527e8
+[HTTP] 1:17:24 AM -> GET /sse
+ -> SSE connection closed for session: d14b6aca-0a7f-4fcd-8e9c-2ebf766f3a7b
+[HTTP] 1:21:12 AM -> GET /sse
+ -> SSE connection closed for session: a76bb085-1f0c-43ab-962c-3ca538954755
+[HTTP] 1:22:24 AM -> GET /sse
+ -> SSE connection closed for session: 4c258c1a-9d5e-49c1-8b8c-00c4155dafc2
+[HTTP] 1:26:12 AM -> GET /sse
+ -> SSE connection closed for session: bced3ac6-0ffa-4d54-b94c-8415e10e999a
+[HTTP] 1:27:24 AM -> GET /sse
+ -> SSE connection closed for session: a7879e7e-3674-466f-a4a2-0e63633d1c2c
+[HTTP] 1:31:12 AM -> GET /sse
+ -> SSE connection closed for session: 237fea77-d58f-4260-83e3-e55dd043b93c
+[HTTP] 1:32:24 AM -> GET /sse
+ -> SSE connection closed for session: bcf6c46e-36c2-44dd-94a7-04039def8edb
+[HTTP] 1:36:12 AM -> GET /sse
+ -> SSE connection closed for session: da334efc-3b19-4194-a286-b88735981c9e
+[HTTP] 1:37:24 AM -> GET /sse
+ -> SSE connection closed for session: f9e91d0e-c284-4bda-8f3f-5d955e37ae2c
+[HTTP] 1:41:12 AM -> GET /sse
+ -> SSE connection closed for session: 3492f94a-0445-4017-ba8d-3d2638ebfd3a
+[HTTP] 1:42:24 AM -> GET /sse
+ -> SSE connection closed for session: 479624eb-71fa-4790-bd80-a6563844f8b8
+[HTTP] 1:46:12 AM -> GET /sse
+ -> SSE connection closed for session: 8b113122-68fd-4736-8c39-350409581846
+[HTTP] 1:47:25 AM -> GET /sse
+ -> SSE connection closed for session: fe3fac01-df41-4d77-a851-e9801645f73e
+[HTTP] 1:51:15 AM -> GET /sse
+ -> SSE connection closed for session: 0aaf9a99-cd6e-4b69-a5ee-4a5cc5d32f55
+[HTTP] 1:52:26 AM -> GET /sse
+ -> SSE connection closed for session: 4a0f5ffe-cc25-4d53-a5f4-17f08ee5c787
+[HTTP] 1:56:18 AM -> GET /sse
+ -> SSE connection closed for session: da24c125-72a5-489e-acaf-92d3474d5b83
+[HTTP] 1:57:27 AM -> GET /sse
+ -> SSE connection closed for session: 7821a774-71bb-4a83-ae3d-0b20bfde7150
+[HTTP] 2:01:21 AM -> GET /sse
+ -> SSE connection closed for session: 28e83f8b-9eed-4bf6-ad81-71ee4644b733
+[HTTP] 2:02:28 AM -> GET /sse
+ -> SSE connection closed for session: be26ba61-bc89-4c3d-9100-1bb5595175dd
+[HTTP] 2:06:24 AM -> GET /sse
+ -> SSE connection closed for session: 82021fd1-3624-4d19-a166-36ec32501255
+[HTTP] 2:07:29 AM -> GET /sse
+ -> SSE connection closed for session: 0e68a944-7e45-436d-ae1f-85ff2b65536a
+[HTTP] 2:11:27 AM -> GET /sse
+ -> SSE connection closed for session: 4e36a710-e3ee-4734-b63f-f24f0d54ca4a
+[HTTP] 2:12:30 AM -> GET /sse
+ -> SSE connection closed for session: 10d843f8-fa8a-4532-b544-27c384857d36
+[HTTP] 2:16:30 AM -> GET /sse
+ -> SSE connection closed for session: 7fc1d5a4-cb16-4ff2-9a50-75853fb87f94
+[HTTP] 2:17:31 AM -> GET /sse
+ -> SSE connection closed for session: a131858b-3f84-4096-9197-49850ae2218d
+[HTTP] 2:21:33 AM -> GET /sse
+ -> SSE connection closed for session: de7533e9-f1a6-4d10-920d-4d256f8ca726
+[HTTP] 2:22:31 AM -> GET /sse
+ -> SSE connection closed for session: 7ad0cef9-2f17-4f54-8dcf-866f0f342f15
+[HTTP] 2:26:36 AM -> GET /sse
+ -> SSE connection closed for session: 0fa045ff-d789-4a5a-86b5-62f358d090cd
+[HTTP] 2:27:32 AM -> GET /sse
+ -> SSE connection closed for session: 64fb93ab-8c28-4202-b0b0-50c348186be3
+[HTTP] 2:31:39 AM -> GET /sse
+ -> SSE connection closed for session: e61b6b4b-987f-4a28-99b1-5011d42ec1a2
+[HTTP] 2:32:33 AM -> GET /sse
+ -> SSE connection closed for session: 312d2a2c-c270-499d-9275-20dbc551d6cf
+[HTTP] 2:36:42 AM -> GET /sse
+ -> SSE connection closed for session: 1d8b7fd9-1748-46a0-ac5d-24229ce6311b
+[HTTP] 2:37:34 AM -> GET /sse
+ -> SSE connection closed for session: cea43419-4c9b-4ed7-8394-050c5d03b2c0
+[HTTP] 2:41:45 AM -> GET /sse
+ -> SSE connection closed for session: 31641427-26b5-4987-9463-d911cc1957bb
+[HTTP] 2:42:35 AM -> GET /sse
+ -> SSE connection closed for session: 27d8e5f7-90b3-4c7a-b166-9d9930db03c6
+[HTTP] 2:46:45 AM -> GET /sse
+ -> SSE connection closed for session: 8501e4e9-c0d9-46c8-a4de-420a89df8816
+[HTTP] 2:47:36 AM -> GET /sse
+ -> SSE connection closed for session: 66ebf006-18a3-4b63-aa44-16c9595a131e
+[HTTP] 2:51:48 AM -> GET /sse
+ -> SSE connection closed for session: 3d4802c2-b6fd-4690-aba5-188a74cb8621
+[HTTP] 2:52:37 AM -> GET /sse
+ -> SSE connection closed for session: 2770d5e2-2a7f-432b-938d-5c704b2ad971
+[HTTP] 2:56:51 AM -> GET /sse
+ -> SSE connection closed for session: 9f798c79-a8cc-4dda-8878-9d6d9182e39e
+[HTTP] 2:57:38 AM -> GET /sse
+ -> SSE connection closed for session: cdc2beed-ffef-4af5-9b4e-7a3e010c1606
+[HTTP] 3:01:54 AM -> GET /sse
+ -> SSE connection closed for session: 4dfaf9ea-27ab-4d86-b6d4-ed541482b58a
+[HTTP] 3:02:39 AM -> GET /sse
+ -> SSE connection closed for session: 212a55a8-4633-4d71-a859-c5763004e1ff
+[HTTP] 3:06:57 AM -> GET /sse
+ -> SSE connection closed for session: 9cbcef45-581b-4b4a-8767-9416899976ed
+[HTTP] 3:07:40 AM -> GET /sse
+ -> SSE connection closed for session: dccc4bab-ad49-4adb-aa56-04e61dccca68
+[HTTP] 3:12:00 AM -> GET /sse
+ -> SSE connection closed for session: 8fec5d70-5c7d-4f1c-9cc4-205e0f719bd8
+[HTTP] 3:12:41 AM -> GET /sse
+ -> SSE connection closed for session: b3caea29-345f-4f0b-adeb-108385f245c9
+[HTTP] 3:17:03 AM -> GET /sse
+ -> SSE connection closed for session: e74f9562-8a76-4a06-a259-1c68cd5563ad
+[HTTP] 3:17:42 AM -> GET /sse
+ -> SSE connection closed for session: 9a0087cb-1de8-40f8-97b1-9dbdec84ea52
+[HTTP] 3:22:06 AM -> GET /sse
+ -> SSE connection closed for session: b6f5eed8-e950-4d70-8438-2330928e1001
+[HTTP] 3:22:42 AM -> GET /sse
+ -> SSE connection closed for session: 1b89d2e7-4c8d-4eb7-875b-321723bf0799
+[HTTP] 3:27:09 AM -> GET /sse
+ -> SSE connection closed for session: 4cdf03af-5527-4d27-b20e-1a49aec6b591
+[HTTP] 3:27:43 AM -> GET /sse
+ -> SSE connection closed for session: 506a1089-881b-49ae-bbeb-1b5589faaba5
+[HTTP] 3:32:12 AM -> GET /sse
+ -> SSE connection closed for session: 131862f7-1437-4526-b66b-973c01d1753a
+[HTTP] 3:32:44 AM -> GET /sse
+ -> SSE connection closed for session: 426c37c1-3d4b-4c84-a0be-9a341747ac34
+[HTTP] 3:37:15 AM -> GET /sse
+ -> SSE connection closed for session: 663a1448-cd7a-4152-a589-81665bbdb0a5
+[HTTP] 3:37:45 AM -> GET /sse
+ -> SSE connection closed for session: f5e1d6d3-296f-4ccf-87a6-d92f511cea0e
+[HTTP] 3:42:18 AM -> GET /sse
+ -> SSE connection closed for session: d51f8b76-536e-4187-b963-01112f017fff
+[HTTP] 3:42:46 AM -> GET /sse
+ -> SSE connection closed for session: 7f1bdb17-6cc4-456e-a251-dfc4b1370496
+[HTTP] 3:47:18 AM -> GET /sse
+ -> SSE connection closed for session: 949510b1-ec4e-462b-8429-14926bdbf7f6
+[HTTP] 3:47:47 AM -> GET /sse
+ -> SSE connection closed for session: 8f4ceebf-0a76-446c-990f-d7af18e5fdd3
+[HTTP] 3:52:21 AM -> GET /sse
+ -> SSE connection closed for session: 3ec1f5bc-ad2b-48b8-9b3d-5aed63df36f1
+[HTTP] 3:52:48 AM -> GET /sse
+ -> SSE connection closed for session: 220921c3-c58b-44de-9afc-45380a1b290c
+[HTTP] 3:57:24 AM -> GET /sse
+ -> SSE connection closed for session: 27f8b4da-311b-4e61-8070-28e94774418b
+[HTTP] 3:57:49 AM -> GET /sse
+ -> SSE connection closed for session: 4926492f-78d1-458d-9424-7a45327dc4b9
+[HTTP] 4:02:27 AM -> GET /sse
+ -> SSE connection closed for session: 642a2eeb-0990-466b-ae61-95ab2e3bdd74
+[HTTP] 4:02:50 AM -> GET /sse
+ -> SSE connection closed for session: 1227d9e1-168a-4dfc-8bf4-cfa682fcdb84
+[HTTP] 4:07:30 AM -> GET /sse
+ -> SSE connection closed for session: 43a903d0-f411-444a-8187-189a9445a982
+[HTTP] 4:07:51 AM -> GET /sse
+ -> SSE connection closed for session: f605a4c1-c7ed-475d-b061-6155a0d5ad72
+[HTTP] 4:12:33 AM -> GET /sse
+ -> SSE connection closed for session: e6d47390-7683-41b0-ae1b-1d3f556ba11f
+[HTTP] 4:12:52 AM -> GET /sse
+ -> SSE connection closed for session: cf5b8417-3499-4359-b726-eb75cb3cb519
+[HTTP] 4:17:33 AM -> GET /sse
+ -> SSE connection closed for session: 0f160cc0-fb0f-40b1-8b28-3ee1a4e84027
+[HTTP] 4:17:53 AM -> GET /sse
+ -> SSE connection closed for session: 8a86eccb-657c-45bc-b8c3-3e98007462f2
+[HTTP] 4:22:33 AM -> GET /sse
+ -> SSE connection closed for session: 8cd65658-6215-487c-9bcf-09daf4e97534
+[HTTP] 4:22:53 AM -> GET /sse
+ -> SSE connection closed for session: 81a8f2fa-639b-4950-9343-f0e522719e97
+[HTTP] 4:27:33 AM -> GET /sse
+ -> SSE connection closed for session: 31e571c4-445f-482c-a777-df11fc5c4afa
+[HTTP] 4:27:53 AM -> GET /sse
+ -> SSE connection closed for session: 5fa3d5eb-c83f-4267-9ae3-66e2266778a6
+[HTTP] 4:32:33 AM -> GET /sse
+ -> SSE connection closed for session: 586a3aeb-838e-4b6f-a7c2-c8633a3be3fc
+[HTTP] 4:32:53 AM -> GET /sse
+ -> SSE connection closed for session: fa954c2a-1a10-4484-b448-2ece4dcfd84e
+[HTTP] 4:37:33 AM -> GET /sse
+ -> SSE connection closed for session: b6742365-a20e-4435-b657-4a09785cc658
+[HTTP] 4:37:53 AM -> GET /sse
+ -> SSE connection closed for session: 3843f859-2a46-4f5e-bbc2-dd7941b0e5e8
+[HTTP] 4:42:36 AM -> GET /sse
+ -> SSE connection closed for session: 58019dc7-91a2-4ef8-80e0-d5c9b2367dba
+[HTTP] 4:42:53 AM -> GET /sse
+ -> SSE connection closed for session: 5a1b4b47-6c32-49ce-9217-74c14868ad33
+[HTTP] 4:47:36 AM -> GET /sse
+ -> SSE connection closed for session: a2c8088e-21ca-4892-9dcf-4d4083641b2d
+[HTTP] 4:47:53 AM -> GET /sse
+ -> SSE connection closed for session: c5b5cc33-ac26-4686-ae13-3446be294465
+[HTTP] 4:52:39 AM -> GET /sse
+ -> SSE connection closed for session: 32a23beb-9b28-4dda-8f38-f030013792b0
+[HTTP] 4:52:53 AM -> GET /sse
+ -> SSE connection closed for session: 1a7353a6-41bf-4562-93e9-9789399489d6
+[HTTP] 4:57:42 AM -> GET /sse
+ -> SSE connection closed for session: 948995da-55f6-4cd3-b2f6-623c0fef8796
+[HTTP] 4:57:54 AM -> GET /sse
+ -> SSE connection closed for session: b85e876c-79af-4f96-9c75-f638fa6efbfc
+[HTTP] 5:02:45 AM -> GET /sse
+ -> SSE connection closed for session: d3fb2c1a-bbcf-45ba-a29b-309c56b154ef
+[HTTP] 5:02:55 AM -> GET /sse
+ -> SSE connection closed for session: f3c07d2b-43f4-4d14-b059-1fd4b64af81b
+[HTTP] 5:07:48 AM -> GET /sse
+ -> SSE connection closed for session: 90c49ba7-d156-422b-99e9-005807126691
+[HTTP] 5:07:56 AM -> GET /sse
+ -> SSE connection closed for session: 59b748bb-30f9-4b28-bf88-3b3a27a4eb67
+[HTTP] 5:12:51 AM -> GET /sse
+ -> SSE connection closed for session: 346cb4f3-1809-49ab-ae34-c0d1de750e45
+[HTTP] 5:12:57 AM -> GET /sse
+ -> SSE connection closed for session: 730888ab-b8c6-4552-a571-1cd318a94ba3
+[HTTP] 5:17:54 AM -> GET /sse
+ -> SSE connection closed for session: 331704b1-2661-4d64-8992-c9365b0e85b8
+[HTTP] 5:17:58 AM -> GET /sse
+ -> SSE connection closed for session: 122333e5-fef7-4a67-9937-188b67c140f0
+ -> SSE connection closed for session: f9a31940-b423-4ad9-8a73-ed37f00984d0
+[HTTP] 5:22:57 AM -> GET /sse
+[HTTP] 5:22:58 AM -> GET /sse
+ -> SSE connection closed for session: e8a8a6a6-63bc-4578-8d12-84242f6761f9
+ -> SSE connection closed for session: afb48965-27b9-472b-aaad-5a6b177f0db8
+[HTTP] 5:27:59 AM -> GET /sse
+[HTTP] 5:28:00 AM -> GET /sse
+ -> SSE connection closed for session: 241d1aff-f55a-4d75-a811-33fb861fa5b8
+[HTTP] 5:33:00 AM -> GET /sse
+ -> SSE connection closed for session: 730e8531-f493-4145-99a4-eb2c312af90a
+[HTTP] 5:33:03 AM -> GET /sse
+ -> SSE connection closed for session: 7de45db7-622f-4b0b-9b96-b2c3f16194da
+[HTTP] 5:38:01 AM -> GET /sse
+ -> SSE connection closed for session: bf276f6f-147f-4655-ba6d-ef7f589aeab5
+[HTTP] 5:38:06 AM -> GET /sse
+ -> SSE connection closed for session: 2e265b05-5d5f-4ab2-8a2b-80514beb1f76
+[HTTP] 5:43:02 AM -> GET /sse
+ -> SSE connection closed for session: ae60a5d7-4865-48f2-b4b9-5efbc55c7a75
+[HTTP] 5:43:09 AM -> GET /sse
+ -> SSE connection closed for session: a8cc4cc1-c541-4936-9ca9-c72da2ca8903
+[HTTP] 5:48:03 AM -> GET /sse
+ -> SSE connection closed for session: 3e9ff93e-b921-4461-900c-3de1f5bf598c
+[HTTP] 5:48:09 AM -> GET /sse
+ -> SSE connection closed for session: bff61bb7-ebe4-40ff-83cf-8304983bf420
+[HTTP] 5:53:04 AM -> GET /sse
+ -> SSE connection closed for session: ae531b80-2448-41b6-be76-9505839c980b
+[HTTP] 5:53:12 AM -> GET /sse
+ -> SSE connection closed for session: 6ab6aef9-83bb-4ce6-ac03-f2e5430e948f
+[HTTP] 5:58:05 AM -> GET /sse
+ -> SSE connection closed for session: 6b9cde01-cde5-4ca7-aa2f-719ad22f2d0b
+[HTTP] 5:58:15 AM -> GET /sse
+ -> SSE connection closed for session: 4a52ba94-0691-4e96-9b49-dca30c46948e
+[HTTP] 6:03:06 AM -> GET /sse
+ -> SSE connection closed for session: 0247cfbd-2a14-4b61-a3b4-9f5428425800
+[HTTP] 6:03:18 AM -> GET /sse
+ -> SSE connection closed for session: 8e31e0d9-ad72-4971-82b3-6dfc9b763384
+[HTTP] 6:08:07 AM -> GET /sse
+ -> SSE connection closed for session: d5c31c6f-17cc-4855-8e94-c3b37a206682
+[HTTP] 6:08:21 AM -> GET /sse
+ -> SSE connection closed for session: 1a7bd7ae-7ddb-47d1-9354-4b463d5336aa
+[HTTP] 6:13:08 AM -> GET /sse
+ -> SSE connection closed for session: adee13b8-7780-4917-b7fb-f6dbdd59f1ff
+[HTTP] 6:13:24 AM -> GET /sse
+ -> SSE connection closed for session: d891d769-afeb-4894-b9f1-207d6216e79e
+[HTTP] 6:18:09 AM -> GET /sse
+ -> SSE connection closed for session: 7b30e95d-d384-4ecc-9952-5ce7b7a38d92
+[HTTP] 6:18:27 AM -> GET /sse
+ -> SSE connection closed for session: 4d8ad5b6-e2a6-4c57-8fa1-a990c63df6d7
+[HTTP] 6:23:09 AM -> GET /sse
+ -> SSE connection closed for session: 1715e969-dce0-4b81-a181-815ae449d249
+[HTTP] 6:23:30 AM -> GET /sse
+ -> SSE connection closed for session: 7110eb7f-5da1-441c-af1f-5f587670e67d
+[HTTP] 6:28:10 AM -> GET /sse
+ -> SSE connection closed for session: fffe53de-ee24-4da6-a4d3-3ebe138523ae
+[HTTP] 6:28:33 AM -> GET /sse
+ -> SSE connection closed for session: 8236d5bb-9e85-4642-932e-62961f49be16
+[HTTP] 6:33:10 AM -> GET /sse
+ -> SSE connection closed for session: 8f594e28-a9ba-4e5e-bc1b-ff95863e833d
+[HTTP] 6:33:36 AM -> GET /sse
+ -> SSE connection closed for session: 89db2897-e77c-480d-9cfd-cd170587ae38
+[HTTP] 6:38:11 AM -> GET /sse
+ -> SSE connection closed for session: e0502620-34ab-49a6-bd36-ca89220b91d6
+[HTTP] 6:38:39 AM -> GET /sse
+ -> SSE connection closed for session: fbe9959f-733f-4029-96f1-885868599310
+[HTTP] 6:43:12 AM -> GET /sse
+ -> SSE connection closed for session: c2ebe174-38fa-4844-b611-ed9b0f807792
+[HTTP] 6:43:42 AM -> GET /sse
+ -> SSE connection closed for session: 0925ec60-c634-47ce-870f-6962062c0b0e
+[HTTP] 6:48:13 AM -> GET /sse
+ -> SSE connection closed for session: 803088dc-0c06-45a9-8160-998475ebedc3
+[HTTP] 6:48:42 AM -> GET /sse
+ -> SSE connection closed for session: b4f7dcad-cd48-4592-9555-812ee39f44b0
+[HTTP] 6:53:14 AM -> GET /sse
+ -> SSE connection closed for session: 2c9f7503-ee42-485f-a7c4-9f32eb35e0f8
+[HTTP] 6:53:45 AM -> GET /sse
+ -> SSE connection closed for session: c3210ab8-f112-42c7-8ad9-4330ff08ef22
+[HTTP] 6:58:15 AM -> GET /sse
+ -> SSE connection closed for session: 0760d569-745c-446b-9912-b1a27c423758
+[HTTP] 6:58:48 AM -> GET /sse
+ -> SSE connection closed for session: 67db337d-d1e4-4ac2-934e-0d98cacc31fb
+[HTTP] 7:03:16 AM -> GET /sse
+ -> SSE connection closed for session: f316a6ff-b76d-4e77-a758-4d39ef0b6104
+[HTTP] 7:03:51 AM -> GET /sse
+ -> SSE connection closed for session: 4a24a3ec-82a0-4e91-964e-f4ba96e6cee7
+[HTTP] 7:08:17 AM -> GET /sse
+ -> SSE connection closed for session: 588a4494-4e7e-4d2f-8758-86a31e87ff01
+[HTTP] 7:08:54 AM -> GET /sse
+ -> SSE connection closed for session: 3fe434be-b8d4-4361-9eb8-b1ec9d898e4f
+[HTTP] 7:13:18 AM -> GET /sse
+ -> SSE connection closed for session: 142c0dc7-ace6-4503-9636-47191ee101dd
+[HTTP] 7:13:57 AM -> GET /sse
+ -> SSE connection closed for session: 81b9d187-8572-4b5d-81fb-17fd2de34681
+[HTTP] 7:18:19 AM -> GET /sse
+ -> SSE connection closed for session: 8a00d82a-1d4f-45e4-b016-9086d22b9c67
+[HTTP] 7:19:00 AM -> GET /sse
+ -> SSE connection closed for session: be1da18b-d4ae-4c80-b0cc-52156779dace
+[HTTP] 7:23:19 AM -> GET /sse
+ -> SSE connection closed for session: 3f08b7df-67aa-4db7-acdf-6ab81c6947ec
+[HTTP] 7:24:03 AM -> GET /sse
+ -> SSE connection closed for session: e9110af9-ed3b-4c3c-8d12-7433cb9269c3
+[HTTP] 7:28:20 AM -> GET /sse
+ -> SSE connection closed for session: de0ecfe3-f836-4b8c-8ccf-7101fd0e3ac7
+[HTTP] 7:29:07 AM -> GET /sse
+ -> SSE connection closed for session: 48b27ca7-adb3-49ac-9ae1-bc501a5b5809
+[HTTP] 7:33:21 AM -> GET /sse
+ -> SSE connection closed for session: cfce6b1e-f32e-4cc1-a327-a010840f9654
+[HTTP] 7:34:09 AM -> GET /sse
+ -> SSE connection closed for session: 74f0f8e8-f167-41c5-8427-192115e0cfe7
+[HTTP] 7:38:22 AM -> GET /sse
+ -> SSE connection closed for session: 8f44f52e-ae90-4ba2-9321-5a386bd08581
+[HTTP] 7:39:13 AM -> GET /sse
+ -> SSE connection closed for session: 20e4af3d-7bde-43d5-a0a5-3e6e324953c4
+[HTTP] 7:43:23 AM -> GET /sse
+ -> SSE connection closed for session: b22f5bb3-0222-4aa7-a0db-1b62f1f0a93a
+[HTTP] 7:44:15 AM -> GET /sse
+ -> SSE connection closed for session: 169ee796-cff5-40d3-b03c-42de7405af76
+[HTTP] 7:48:24 AM -> GET /sse
+ -> SSE connection closed for session: 8310004f-62cf-4951-a4bf-96fd1d252eb7
+[HTTP] 7:49:16 AM -> GET /sse
+ -> SSE connection closed for session: d0e2c932-e2dd-48c9-85a5-1ee32fa4ed72
+[HTTP] 7:53:25 AM -> GET /sse
+ -> SSE connection closed for session: 5f6556ae-3e27-47d0-930b-b971a9f947ba
+[HTTP] 7:54:18 AM -> GET /sse
+ -> SSE connection closed for session: 3ccb3e90-0493-4413-97fe-944bb2c10ad3
+[HTTP] 7:58:26 AM -> GET /sse
+ -> SSE connection closed for session: d067ab5a-1cbf-4b94-b4e0-fcf215a560b8
+[HTTP] 7:59:22 AM -> GET /sse
+ -> SSE connection closed for session: 830df7ce-2779-4c2e-bf61-b1bf8b003216
+[HTTP] 8:03:27 AM -> GET /sse
+ -> SSE connection closed for session: df8b2982-a7b2-45bf-95d1-0578f774d5c6
+[HTTP] 8:04:25 AM -> GET /sse
+ -> SSE connection closed for session: 1a6b7f32-184f-404c-ad0c-6d6fc691e502
+[HTTP] 8:08:28 AM -> GET /sse
+ -> SSE connection closed for session: 1dc4e53b-2b20-42e2-b998-3fe637d7f514
+[HTTP] 8:09:28 AM -> GET /sse
+ -> SSE connection closed for session: 67105cf9-4a3d-45af-a4c8-0c55c24d9144
+[HTTP] 8:13:29 AM -> GET /sse
+ -> SSE connection closed for session: e58dd238-c0e8-46d9-beef-ebbb26fc7d49
+[HTTP] 8:14:31 AM -> GET /sse
+ -> SSE connection closed for session: 888c16f1-5176-43d1-80c7-32674f355a3a
+[HTTP] 8:18:30 AM -> GET /sse
+ -> SSE connection closed for session: 55697b47-4024-41af-ad88-6883823c2a27
+[HTTP] 8:19:34 AM -> GET /sse
+ -> SSE connection closed for session: 2d5e898c-57ed-4830-afd4-1a26dbb44c61
+[HTTP] 8:23:31 AM -> GET /sse
+ -> SSE connection closed for session: bbcfe0f9-be38-476e-8386-76db10e25f8c
+[HTTP] 8:24:37 AM -> GET /sse
+ -> SSE connection closed for session: 71df2f16-1cc9-48aa-a502-ecdd9a34c05d
+[HTTP] 8:28:32 AM -> GET /sse
+ -> SSE connection closed for session: c69e6826-5546-4fa2-8961-6b133a4202fa
+[HTTP] 8:29:40 AM -> GET /sse
+ -> SSE connection closed for session: a879742b-5dd3-4d73-b678-8b06e286bacc
+[HTTP] 8:33:33 AM -> GET /sse
+ -> SSE connection closed for session: 02734cfa-e6f6-42f8-b088-ee67d500f83a
+[HTTP] 8:34:43 AM -> GET /sse
+ -> SSE connection closed for session: 15560e87-6088-44bd-a3c7-e625050829fb
+[HTTP] 8:38:34 AM -> GET /sse
+ -> SSE connection closed for session: 4c7b821c-f670-4a2f-a252-9f801df9f6b8
+[HTTP] 8:39:46 AM -> GET /sse
+ -> SSE connection closed for session: 66ed63dc-9c1f-498d-8091-8b94eb17630c
+[HTTP] 8:43:35 AM -> GET /sse
+ -> SSE connection closed for session: c1937d5d-42db-4e04-995e-610114bdd4ac
+[HTTP] 8:44:49 AM -> GET /sse
+ -> SSE connection closed for session: afe13fa1-a39c-4e64-b672-6f85ec989ad8
+[HTTP] 8:48:36 AM -> GET /sse
+ -> SSE connection closed for session: 253f999f-290f-4476-81cd-4c698271d643
+[HTTP] 8:49:52 AM -> GET /sse
+ -> SSE connection closed for session: 73482f2f-19a3-4864-a682-90972130bb46
+[HTTP] 8:53:37 AM -> GET /sse
+ -> SSE connection closed for session: 71859ce4-169f-46a3-98f3-8bc38969467f
+[HTTP] 8:54:55 AM -> GET /sse
+ -> SSE connection closed for session: 2d1696a0-37c5-4740-acf3-91cd59f71dd9
+[HTTP] 8:58:38 AM -> GET /sse
+ -> SSE connection closed for session: da5bf939-78e2-4182-a889-cc9998743036
+[HTTP] 8:59:58 AM -> GET /sse
+ -> SSE connection closed for session: f44c9373-2db7-4bed-811e-4781ca8d670c
+[HTTP] 9:03:39 AM -> GET /sse
+ -> SSE connection closed for session: fdf25791-c881-4f17-81f2-1b7dabc5a53f
+[HTTP] 9:05:01 AM -> GET /sse
+ -> SSE connection closed for session: 53e4257e-c0e3-4a31-a93e-38b5556c82b4
+[HTTP] 9:08:40 AM -> GET /sse
+ -> SSE connection closed for session: 3d325829-6900-4010-92a7-a9c049f7b45d
+[HTTP] 9:10:04 AM -> GET /sse
+ -> SSE connection closed for session: 8416a528-108a-46a6-ae65-3b8454336473
+[HTTP] 9:13:41 AM -> GET /sse
+ -> SSE connection closed for session: 32e1eaa4-fa7d-46c9-b5e3-50a447dd0868
+[HTTP] 9:15:07 AM -> GET /sse
+ -> SSE connection closed for session: 6376815f-ff4f-412a-969c-59b1c34390b3
+[HTTP] 9:18:42 AM -> GET /sse
+ -> SSE connection closed for session: 805fae3c-0074-40dc-8732-fd4ad0a86b63
+[HTTP] 9:20:10 AM -> GET /sse
+ -> SSE connection closed for session: 9c260aa9-19bb-4678-91b3-c3ebbeee1d3c
+[HTTP] 9:23:43 AM -> GET /sse
+ -> SSE connection closed for session: 35e336f0-4704-4b79-8286-d2d876d020aa
+[HTTP] 9:25:13 AM -> GET /sse
+ -> SSE connection closed for session: 99b9b0bb-0306-4637-87c1-0ee00e79cab1
+[HTTP] 9:28:44 AM -> GET /sse
+ -> SSE connection closed for session: a249f541-2ded-468b-aa55-357e676229a4
+[HTTP] 9:30:16 AM -> GET /sse
+ -> SSE connection closed for session: d392a59a-14f5-407d-b313-28f636266b42
+[HTTP] 9:33:45 AM -> GET /sse
+ -> SSE connection closed for session: 8ff79a7d-4456-42fc-bb8a-5db16f94eb14
+[HTTP] 9:35:19 AM -> GET /sse
+ -> SSE connection closed for session: c93695ab-0d9c-4450-92a9-a4f2314e4a6c
+[HTTP] 9:38:46 AM -> GET /sse
+ -> SSE connection closed for session: 1071afb1-e809-4690-96be-c06c70e62360
+[HTTP] 9:40:22 AM -> GET /sse
+ -> SSE connection closed for session: cdee3d93-7aa0-401b-bd06-10cf42b8ce6e
+[HTTP] 9:43:47 AM -> GET /sse
+ -> SSE connection closed for session: 2712abb8-5edb-4391-aa56-cebc487e3f3d
+[HTTP] 9:45:25 AM -> GET /sse
+ -> SSE connection closed for session: f5a5e842-8c66-4fd0-9959-ad68bbf6d340
+[HTTP] 9:48:48 AM -> GET /sse
+ -> SSE connection closed for session: 49a27f24-d078-4cc8-b619-b16d89f539f6
+[HTTP] 9:50:25 AM -> GET /sse
+ -> SSE connection closed for session: 372c1206-64b0-4569-8969-f0490ddef57e
+[HTTP] 9:53:49 AM -> GET /sse
+ -> SSE connection closed for session: b15010f9-4964-4eb0-bb1b-9d0428065b08
+[HTTP] 9:55:28 AM -> GET /sse
+ -> SSE connection closed for session: ad652b94-1943-4601-8e15-0fadd66cd3b0
+[HTTP] 9:58:50 AM -> GET /sse
+ -> SSE connection closed for session: 43295d9d-f616-4744-ab64-0a10cc8837a9
+[HTTP] 10:00:31 AM -> GET /sse
+ -> SSE connection closed for session: c0b5452c-6934-4769-b880-d36c8e4556af
+[HTTP] 10:03:51 AM -> GET /sse
+ -> SSE connection closed for session: 7b1b3386-16e9-4d1d-b6f6-f6d515227aa3
+[HTTP] 10:05:34 AM -> GET /sse
+ -> SSE connection closed for session: 15bfe729-0459-41e0-8c84-40625a035c53
+[HTTP] 10:08:52 AM -> GET /sse
+ -> SSE connection closed for session: e67a1352-0f65-49fd-a684-f1c3f42ed52e
+[HTTP] 10:10:37 AM -> GET /sse
+ -> SSE connection closed for session: d66a95cd-0304-46e5-8e38-d29a3febdbef
+[HTTP] 10:13:53 AM -> GET /sse
+ -> SSE connection closed for session: 6a1de6b8-acaf-488a-8ebf-4edea800d1a2
+[HTTP] 10:15:40 AM -> GET /sse
+ -> SSE connection closed for session: 8ad00d04-68f9-4e29-936b-fd8d2790dd56
+[HTTP] 10:18:54 AM -> GET /sse
+ -> SSE connection closed for session: 8d64850f-66da-4273-aeef-2d80422fe098
+[HTTP] 10:20:43 AM -> GET /sse
+ -> SSE connection closed for session: 327b5fa4-3910-47b4-a94d-05dddb313179
+[HTTP] 10:23:55 AM -> GET /sse
+ -> SSE connection closed for session: 0a31c7ec-87f4-486c-b567-74f368883740
+[HTTP] 10:25:46 AM -> GET /sse
+ -> SSE connection closed for session: d5f86122-2b43-4481-af0e-be0d3e405014
+[HTTP] 10:28:56 AM -> GET /sse
+ -> SSE connection closed for session: e2a4b49e-0b69-4f09-81bb-a0f1145fb58e
+[HTTP] 10:30:49 AM -> GET /sse
+ -> SSE connection closed for session: 6083706d-214c-4247-a286-99920c3fe292
+[HTTP] 10:33:57 AM -> GET /sse
+ -> SSE connection closed for session: 90e30d05-9f25-4c27-863e-d011ea330916
+[HTTP] 10:35:49 AM -> GET /sse
+ -> SSE connection closed for session: 25d3035a-3977-4146-91cc-d8625fd1d8a3
+[HTTP] 10:38:57 AM -> GET /sse
+ -> SSE connection closed for session: 4fb9841c-6c24-42eb-aea9-0b47bd57a7ac
+[HTTP] 10:40:52 AM -> GET /sse
+ -> SSE connection closed for session: a481855c-02c8-4240-a97b-9d88b9b9ee65
+[HTTP] 10:43:57 AM -> GET /sse
+ -> SSE connection closed for session: 87695389-7606-4112-af8e-3717ce749096
+[HTTP] 10:45:55 AM -> GET /sse
+ -> SSE connection closed for session: b30cc062-5888-48cd-9b1c-4dbc5633283a
+[HTTP] 10:48:58 AM -> GET /sse
+ -> SSE connection closed for session: 8f7ca688-b6bf-445e-a04c-0ec485685cf6
+[HTTP] 10:50:55 AM -> GET /sse
+ -> SSE connection closed for session: 3e50d1b6-3d08-4b21-8fb1-fe394b009906
+[HTTP] 10:53:58 AM -> GET /sse
+ -> SSE connection closed for session: 81955e8c-f540-49e1-a08b-aa5a92324115
+[HTTP] 10:55:58 AM -> GET /sse
+ -> SSE connection closed for session: d873e913-cf07-49e3-ae46-5d81fe168b9b
+[HTTP] 10:58:58 AM -> GET /sse
+ -> SSE connection closed for session: 037f3fdf-2239-4e94-b0e0-f562a96353ab
+[HTTP] 11:01:01 AM -> GET /sse
+ -> SSE connection closed for session: ce7801c3-8195-4e6e-bd0f-edd116468558
+[HTTP] 11:03:58 AM -> GET /sse
+ -> SSE connection closed for session: a81a9ada-40dc-4488-aaab-6209c6c7fd05
+[HTTP] 11:06:04 AM -> GET /sse
+ -> SSE connection closed for session: 37175353-31aa-4a24-8331-7645a6cf47ef
+[HTTP] 11:08:58 AM -> GET /sse
+ -> SSE connection closed for session: b678fff4-5976-44b6-9411-1f9f352ec109
+[HTTP] 11:11:07 AM -> GET /sse
+ -> SSE connection closed for session: 73e40a2e-5508-4309-b292-67679f8a2004
+[HTTP] 11:13:58 AM -> GET /sse
+ -> SSE connection closed for session: d54d52d2-843e-4c77-bd0d-586eb731e754
+[HTTP] 11:16:10 AM -> GET /sse
+ -> SSE connection closed for session: cef1bc39-7337-418b-98a0-ad78f57a3701
+[HTTP] 11:18:59 AM -> GET /sse
+ -> SSE connection closed for session: ceba1796-93bc-401e-8cae-ab245764f416
+[HTTP] 11:21:13 AM -> GET /sse
+ -> SSE connection closed for session: 20d08e0e-ce02-4a53-88cc-ddb385280f48
+[HTTP] 11:23:59 AM -> GET /sse
+ -> SSE connection closed for session: 9dab4239-f782-4b11-b61a-aa1ca75b8a6b
+[HTTP] 11:26:16 AM -> GET /sse
+ -> SSE connection closed for session: 5180ff31-5224-4da9-ab7f-0cc065c3ccb4
+[HTTP] 11:28:59 AM -> GET /sse
+ -> SSE connection closed for session: 8df143e6-8b58-49b8-b632-99ade5c137e9
+[HTTP] 11:31:19 AM -> GET /sse
+ -> SSE connection closed for session: cb87b054-7ca8-45c5-87a6-805e2a8fb5e4
+[HTTP] 11:33:59 AM -> GET /sse
+ -> SSE connection closed for session: 6f902a71-e309-4502-95c1-783a71c7b3ce
+[HTTP] 11:36:22 AM -> GET /sse
+ -> SSE connection closed for session: 7d505b01-f143-426f-ac91-9f7ea890de14
+ -> SSE connection closed for session: 49393685-6a2b-4234-ac94-dadee7c9624e
+[HTTP] 11:41:25 AM -> GET /sse
+ -> SSE connection closed for session: b945094f-636d-4a34-b9c6-d23a41e13780
+[HTTP] 11:46:25 AM -> GET /sse
+ -> SSE connection closed for session: 6bc81153-b732-4bd7-9b61-ff0e7ef5d037
+[HTTP] 11:51:28 AM -> GET /sse
+ -> SSE connection closed for session: a77060c7-111f-4cd3-b21f-a094cad06c95
+[HTTP] 11:56:31 AM -> GET /sse
+ -> SSE connection closed for session: cb49e6ad-e048-483e-b621-afdf468ebaae
+[HTTP] 12:01:34 PM -> GET /sse
+ -> SSE connection closed for session: eadb28f5-7880-4797-a887-b0d266ee0a9d
+[HTTP] 12:06:37 PM -> GET /sse
+ -> SSE connection closed for session: 753421f9-fbfc-4dbb-9a21-8a86f97a2590
+[HTTP] 12:11:40 PM -> GET /sse
+ -> SSE connection closed for session: cb7a6baf-40f9-430f-a9e4-878b31c2cc45
+[HTTP] 12:16:43 PM -> GET /sse
+ -> SSE connection closed for session: 2f6767d3-48f2-4e2c-b942-9dfcdf9f1281
+[HTTP] 12:21:46 PM -> GET /sse
+ -> SSE connection closed for session: 5f3de224-f817-42d4-9fa3-727900f1456d
+[HTTP] 12:26:49 PM -> GET /sse
+ -> SSE connection closed for session: a77fa16c-8f8e-4d08-ab52-8f3edc578b11
+[HTTP] 12:31:52 PM -> GET /sse
+ -> SSE connection closed for session: 7d269457-998a-4667-a50d-5987eac40394
+[HTTP] 12:36:55 PM -> GET /sse
+ -> SSE connection closed for session: b15760d0-d124-4a8a-92d5-a28344a4c498
+[HTTP] 12:41:58 PM -> GET /sse
+ -> SSE connection closed for session: 19ab263d-bea8-427e-919a-a474436dfa66
+[HTTP] 12:46:58 PM -> GET /sse
+ -> SSE connection closed for session: cd602005-6615-4552-9895-8c09c43b5800
+[HTTP] 12:52:01 PM -> GET /sse
+ -> SSE connection closed for session: b3e0348d-3a54-4c6b-827a-f34e0081e346
+[HTTP] 12:57:04 PM -> GET /sse
+ -> SSE connection closed for session: 2636c0cc-3ca6-4c0b-b42e-eb18385c4633
+[HTTP] 1:02:07 PM -> GET /sse
+ -> SSE connection closed for session: 94331be2-348f-4a41-a0ad-b6054b35166d
+[HTTP] 1:07:10 PM -> GET /sse
+ -> SSE connection closed for session: 323d5938-b91e-44f8-bd5b-1f8ad2fe6a75
+[HTTP] 1:12:48 PM -> GET /sse
+[HTTP] 1:12:48 PM -> GET /sse
+ -> SSE connection closed for session: 3bdc2548-6c4a-4ae8-924c-d45fb0bc43d4
+ -> SSE connection closed for session: a42569ef-20c0-43ed-85f9-b52f07517fee
+[HTTP] 1:17:48 PM -> GET /sse
+[HTTP] 1:19:40 PM -> GET /sse
+[Tool Execution Error - browser_screenshot_analysis]: Unable to resolve image source. File not found on MCP server host at: "/home/sameer/Public/Shared/Work/Projects/CHRO-As-A-Service/cycle1-homepage-light.png". Because the MCP server is hosted remotely, transmit the image as a Base64 Data URI ('data:image/png;base64,...') or an HTTP URL.
+ -> SSE connection closed for session: aaccadfa-4cc4-4b62-bc47-83e916bb8415
+[HTTP] 1:24:38 PM -> GET /sse
+ -> SSE connection closed for session: 591582df-491f-459b-8375-36329b8d9370
+[HTTP] 1:24:48 PM -> GET /sse
+[HTTP] 1:26:14 PM -> GET /sse
+ -> SSE connection closed for session: fe9f0104-4c50-4d9f-a9f1-4f2206cb0b67
+[HTTP] 1:27:00 PM -> GET /sse
+ -> SSE connection closed for session: 39af7e99-fb0a-45b0-829e-036339f395e5
+[HTTP] 1:29:38 PM -> GET /sse
+ -> SSE connection closed for session: 5a1852f9-92d3-4f9f-8c32-09f4830caa7c
+[HTTP] 1:29:48 PM -> GET /sse
+ -> SSE connection closed for session: 00bb6797-a4f3-4a79-b8a5-18da7017c50c
+[HTTP] 1:32:01 PM -> GET /sse
+ -> SSE connection closed for session: 62d673a4-6569-43ce-885d-bfefd648475a
+[HTTP] 1:34:39 PM -> GET /sse
+ -> SSE connection closed for session: 240dce4e-cad3-4876-b651-238d1c69ee08
+[HTTP] 1:34:48 PM -> GET /sse
+ -> SSE connection closed for session: 4229f66e-45cc-48b3-8a75-19f09074f860
+[HTTP] 1:37:01 PM -> GET /sse
+ -> SSE connection closed for session: 0d483b34-aff1-4387-829d-2c23d153f27a
+[HTTP] 1:39:40 PM -> GET /sse
+ -> SSE connection closed for session: f99c4760-5a64-45a6-a88c-08a98e0b0569
+[HTTP] 1:39:48 PM -> GET /sse
+ -> SSE connection closed for session: 2ee63536-990d-4faf-9008-ecb051612bc3
+[HTTP] 1:42:01 PM -> GET /sse
+ -> SSE connection closed for session: 1855bb94-5ab7-474d-8bd9-518e7f7823e9
+[HTTP] 1:44:41 PM -> GET /sse
+ -> SSE connection closed for session: 3f1630f5-600f-4519-a3e1-015cddd125b0
+[HTTP] 1:44:48 PM -> GET /sse
+ -> SSE connection closed for session: 26cb0669-4b2b-4160-97af-b6bce146e64f
+[HTTP] 1:47:04 PM -> GET /sse
+ -> SSE connection closed for session: 7d636081-96c7-40b2-afcd-f106ce06fdea
+[HTTP] 1:49:42 PM -> GET /sse
+ -> SSE connection closed for session: 1b02b452-8189-4fad-9b22-a28c4f6556b3
+[HTTP] 1:49:48 PM -> GET /sse
+ -> SSE connection closed for session: f6e803de-d157-48e1-a666-13c7e3b82e31
+[HTTP] 1:52:07 PM -> GET /sse
+ -> SSE connection closed for session: 86ab7b1c-a1ad-47c9-af25-a541cc1df86f
+[HTTP] 1:54:43 PM -> GET /sse
+ -> SSE connection closed for session: 02d97786-52ae-469f-96ad-715f05343427
+[HTTP] 1:54:48 PM -> GET /sse
+ -> SSE connection closed for session: 3e78b247-7eb9-4380-9bb2-20cf43dec5dd
+[HTTP] 1:57:10 PM -> GET /sse
+ -> SSE connection closed for session: 644e7fa1-cc8c-48fa-8a0a-74b9eb47a8b4
+[HTTP] 1:59:44 PM -> GET /sse
+ -> SSE connection closed for session: cb521430-f0e8-4e1a-9ee2-1bc8c6f18e02
+[HTTP] 1:59:48 PM -> GET /sse
+ -> SSE connection closed for session: 6c5ca35b-9e40-4fcc-862f-d10483bd8f18
+[HTTP] 2:02:10 PM -> GET /sse
+ -> SSE connection closed for session: 1ed7c919-8467-4b9d-8f82-e12d4fa6c771
+ -> SSE connection closed for session: ebad2d24-9e5a-4e69-b298-56255cf3ff59
+[HTTP] 2:04:45 PM -> GET /sse
+[HTTP] 2:04:48 PM -> GET /sse
+ -> SSE connection closed for session: 5803b0af-f6b3-4355-b281-c445b573c8b5
+[HTTP] 2:07:10 PM -> GET /sse
+ -> SSE connection closed for session: 9b934e1c-039a-4f5a-998d-2b0f0fca5bd7
+ -> SSE connection closed for session: ff95e690-543c-441a-a752-7b318759a67e
+[HTTP] 2:09:46 PM -> GET /sse
+[HTTP] 2:09:48 PM -> GET /sse
+ -> SSE connection closed for session: 42142705-da75-469e-abd8-bb97b3b3f210
+[HTTP] 2:12:10 PM -> GET /sse
+ -> SSE connection closed for session: 1ef9c343-2c36-4b60-b6de-60cc0852d123
+ -> SSE connection closed for session: 67d52a25-0eb3-4f2d-8b2c-1dc54e5d5795
+[HTTP] 2:14:47 PM -> GET /sse
+[HTTP] 2:14:48 PM -> GET /sse
+ -> SSE connection closed for session: 5e2449d6-3f61-47cb-bb5a-aaf576d06d09
+[HTTP] 2:17:13 PM -> GET /sse
+ -> SSE connection closed for session: 3d3be7a5-e5ad-4b63-829e-d6f715383652
+ -> SSE connection closed for session: be59f690-8352-4a7f-9015-8a7a438bee9a
+[HTTP] 2:19:48 PM -> GET /sse
+[HTTP] 2:19:48 PM -> GET /sse
+ -> SSE connection closed for session: e311879e-8995-4f46-9468-8a42e8900d8e
+[HTTP] 2:22:16 PM -> GET /sse
+ -> SSE connection closed for session: cbe3c4d6-52e0-40a1-a29b-0be709c2e8d7
+ -> SSE connection closed for session: 58ba1b65-e8f1-43cf-9267-d51c6a329414
+[HTTP] 2:24:48 PM -> GET /sse
+[HTTP] 2:24:48 PM -> GET /sse
+ -> SSE connection closed for session: f167580d-48d7-40b4-8635-9e5ee0265a68
+[HTTP] 2:27:19 PM -> GET /sse
+ -> SSE connection closed for session: 1a8d3c86-5904-4738-8b37-35047eb0dd8a
+ -> SSE connection closed for session: 394a0476-5cbb-409a-9a3f-cbe4ced9b5f8
+[HTTP] 2:29:48 PM -> GET /sse
+[HTTP] 2:29:49 PM -> GET /sse
+[Tool Execution Error - analyze_image]: Unable to resolve image source. File not found on MCP server host at: "./cycle1-initial-light.png". Because the MCP server is hosted remotely, transmit the image as a Base64 Data URI ('data:image/png;base64,...') or an HTTP URL.
+[Tool Execution Error - analyze_image]: Unable to resolve image source. File not found on MCP server host at: "/home/sameer/Shared/Sync/Private/Work/Projects/prufai-webapp/cycle1-initial-light.png". Because the MCP server is hosted remotely, transmit the image as a Base64 Data URI ('data:image/png;base64,...') or an HTTP URL.
+[Tool Execution Error - analyze_image]: Failed to fetch image URL (http://localhost:8899/cycle1-initial-light.png): fetch failed
+[Tool Execution Error - analyze_image]: Upload reference not found: "upload://cycle1-initial-light.png". Upload the image to /upload first.
+[Tool Execution Error - fast_ocr_tesseract]: Unable to resolve image source. File not found on MCP server host at: "/home/sameer/Shared/Sync/Private/Work/Projects/prufai-webapp/cycle1-initial-light.png". Because the MCP server is hosted remotely, transmit the image as a Base64 Data URI ('data:image/png;base64,...') or an HTTP URL.
+ -> SSE connection closed for session: e6e1a134-a291-4e71-9d68-8a54f15075d4
+ -> SSE connection closed for session: ecc86f07-cba9-4b9e-b5b3-990238581d00
+[HTTP] 2:34:48 PM -> GET /sse
+[HTTP] 2:34:50 PM -> GET /sse
+ -> SSE connection closed for session: 8fe2329c-3878-4a19-9066-e31d1fe306ee
+[HTTP] 2:36:19 PM -> GET /sse
+ -> SSE connection closed for session: 27118820-5ee7-493c-b76e-67eaf0a15773
+[HTTP] 2:39:48 PM -> GET /sse
+ -> SSE connection closed for session: 1d94cf6d-b642-48bb-9420-6df34c340ab2
+[HTTP] 2:39:51 PM -> GET /sse
+ -> SSE connection closed for session: eedd7889-867b-40a7-b856-94824a1f6946
+ -> SSE connection closed for session: 2b3e41fe-7a41-452f-819c-35e240db792a
+[HTTP] 2:44:48 PM -> GET /sse
+ -> SSE connection closed for session: f2f94de4-0ffa-4f6a-a6b0-1b36186dff3a
+[HTTP] 2:44:52 PM -> GET /sse
+ -> SSE connection closed for session: 5121c300-41e8-46ce-8258-5f60cb734fd3
+[HTTP] 2:49:48 PM -> GET /sse
+ -> SSE connection closed for session: 3686fddb-cfa3-45d6-b95c-7a017795be13
+[HTTP] 2:49:53 PM -> GET /sse
+ -> SSE connection closed for session: c1409909-a185-43e1-b150-9a5967fbd372
+[HTTP] 2:54:48 PM -> GET /sse
+ -> SSE connection closed for session: 967b8e9c-5ad6-4746-a7fc-f51db6bffc2b
+[HTTP] 2:54:54 PM -> GET /sse
+ -> SSE connection closed for session: 18ceaea9-1cc3-464c-8978-c4ce5815f1ea
+[HTTP] 2:59:48 PM -> GET /sse
+ -> SSE connection closed for session: 2713715f-e802-4c1d-91bc-b6607c84fc9d
+[HTTP] 2:59:55 PM -> GET /sse
+ -> SSE connection closed for session: 5174d2a9-d1a6-4205-a932-4617bd6a4303
+[HTTP] 3:04:48 PM -> GET /sse
+ -> SSE connection closed for session: 4a71daca-ba03-4934-89c8-85857e005072
+[HTTP] 3:04:56 PM -> GET /sse
+ -> SSE connection closed for session: ac40d661-cb0c-4def-bf9b-fee8c9606937
+[HTTP] 3:09:48 PM -> GET /sse
+ -> SSE connection closed for session: 576348c4-b862-4993-8a1d-d6b1357d3da3
+[HTTP] 3:09:57 PM -> GET /sse
+ -> SSE connection closed for session: 218267cf-e624-416f-9e93-ee9c3faf14fd
+[HTTP] 3:14:48 PM -> GET /sse
+ -> SSE connection closed for session: 441e3a68-7bdf-4a8a-af68-43018c98630a
+[HTTP] 3:14:58 PM -> GET /sse
+ -> SSE connection closed for session: 45660137-0b31-44a0-8387-721ae783ba47
+[HTTP] 3:19:48 PM -> GET /sse
+ -> SSE connection closed for session: 69831645-7c94-474a-b2ed-854f1ceea177
+[HTTP] 3:19:59 PM -> GET /sse
+ -> SSE connection closed for session: 14af7d1c-d92f-4e42-9cee-e338c5979f57
+[HTTP] 3:24:48 PM -> GET /sse
+ -> SSE connection closed for session: 724c9d9b-655a-4e27-a7c7-2c61bfddb8e7
+[HTTP] 3:24:59 PM -> GET /sse
+ -> SSE connection closed for session: c471ec06-a513-428d-8c98-8ea4ac15c394
+[HTTP] 3:29:48 PM -> GET /sse
+ -> SSE connection closed for session: a7d729bf-fc87-418a-a290-a65af3502cc3
+[HTTP] 3:30:00 PM -> GET /sse
+ -> SSE connection closed for session: 81a22f20-7e2d-47af-947f-b3d3def4fbc4
+[HTTP] 3:34:48 PM -> GET /sse
+ -> SSE connection closed for session: 052ef9db-af98-4dbb-99b1-5d2072ce7f35
+[HTTP] 3:35:01 PM -> GET /sse
+ -> SSE connection closed for session: 6ef69e94-950a-451d-8423-b1bcced66029
+[HTTP] 3:39:48 PM -> GET /sse
+ -> SSE connection closed for session: 0a62d767-5b53-499a-a8a1-c80da624eae6
+[HTTP] 3:40:02 PM -> GET /sse
+ -> SSE connection closed for session: c81a196d-afe6-48aa-a59b-177a9ada9865
+[HTTP] 3:44:48 PM -> GET /sse
+ -> SSE connection closed for session: 0875194c-98e5-4c1c-b17e-fe4eb6fef2da
+[HTTP] 3:45:04 PM -> GET /sse
+ -> SSE connection closed for session: 34548ddc-5b20-48ec-99d4-2db73d2f442c
+[HTTP] 3:49:48 PM -> GET /sse
+ -> SSE connection closed for session: 1e8fcf2f-8fe0-40f1-8ced-145d40d4a2ab
+[HTTP] 3:50:05 PM -> GET /sse
+ -> SSE connection closed for session: db9a5cca-f274-459e-a6ee-f4766c926b88
+[HTTP] 3:54:48 PM -> GET /sse
+ -> SSE connection closed for session: f99dc0fa-482c-4cb3-9cb3-9d0165739168
+[HTTP] 3:55:06 PM -> GET /sse
+ -> SSE connection closed for session: 710f923a-408e-467f-be0d-d43265b6cd65
+[HTTP] 3:59:48 PM -> GET /sse
+ -> SSE connection closed for session: 7b604fe2-4e89-42ae-a5c7-d3f4414db04a
+[HTTP] 4:00:07 PM -> GET /sse
+ -> SSE connection closed for session: 7d44c0dd-b5fa-4a97-ac1c-7899bc7f1bbb
+[HTTP] 4:04:48 PM -> GET /sse
+ -> SSE connection closed for session: dcc72601-d26f-42d5-b66e-c2e2f5f63a29
+[HTTP] 4:05:08 PM -> GET /sse
+ -> SSE connection closed for session: fdd9aa9e-027e-459e-82bb-f6dd4e364577
+[HTTP] 4:09:48 PM -> GET /sse
+ -> SSE connection closed for session: 51e33069-cfbd-4283-b188-a7be23181d58
+[HTTP] 4:10:09 PM -> GET /sse
+ -> SSE connection closed for session: 718ffa2e-8c0a-4afe-ae0d-4d6627b627dc
+[HTTP] 4:14:48 PM -> GET /sse
+ -> SSE connection closed for session: 7dd73ea5-9a85-4185-b0b5-92cea22eae4b
+[HTTP] 4:15:10 PM -> GET /sse
+[HTTP] 4:16:41 PM -> GET /sse
+ -> SSE connection closed for session: 1ba7410e-594e-4080-9bc3-f6703e8ea4ed
+[HTTP] 4:19:19 PM -> GET /sse
+ -> SSE connection closed for session: 061c36f3-f368-428c-b4ba-dcc8594c272d
+[HTTP] 4:19:48 PM -> GET /sse
+ -> SSE connection closed for session: ec75db60-cd36-4f1f-a131-cb52a27cdeff
+[HTTP] 4:20:11 PM -> GET /sse
+ -> SSE connection closed for session: 5dca6f1a-75cb-413f-99b1-bd98948e1673
+[HTTP] 4:24:21 PM -> GET /sse
+ -> SSE connection closed for session: 63321ad7-9ae7-4cf6-b38a-6611a7685b90
+[HTTP] 4:24:48 PM -> GET /sse
+ -> SSE connection closed for session: a6076e79-74e7-40a3-8b2b-8a8c6b76ee37
+[HTTP] 4:25:11 PM -> GET /sse
+ -> SSE connection closed for session: d694a2a6-c4b0-4bc0-93b4-815fd9119820
+[HTTP] 4:29:21 PM -> GET /sse
+ -> SSE connection closed for session: 481403d3-c7d9-4409-b95a-3b97497655ce
+[HTTP] 4:29:48 PM -> GET /sse
+ -> SSE connection closed for session: 9df517b2-ccc1-41b2-8f54-95f97c2a6b43
+[HTTP] 4:30:12 PM -> GET /sse
+ -> SSE connection closed for session: b32fb6ea-c2c4-481a-beba-46fb7cb858a9
+[HTTP] 4:34:21 PM -> GET /sse
+ -> SSE connection closed for session: 9c98252c-640c-40de-89f9-d36422bb093e
+[HTTP] 4:34:48 PM -> GET /sse
+ -> SSE connection closed for session: 49f69964-a3dc-4a40-8d70-e8630a003456
+[HTTP] 4:35:13 PM -> GET /sse
+ -> SSE connection closed for session: 85a56616-58bb-406d-9de9-9ee3c76cdee7
+[HTTP] 4:39:21 PM -> GET /sse
+ -> SSE connection closed for session: 6901bb8c-d5b8-4913-8042-e083f1caad97
+[HTTP] 4:39:48 PM -> GET /sse
+ -> SSE connection closed for session: 68e74a9f-6a79-4f35-bdfe-6c8f40a8e29f
+[HTTP] 4:40:14 PM -> GET /sse
+ -> SSE connection closed for session: 4216a37f-7bc2-4710-a49a-47d0bebba21c
+[HTTP] 4:44:21 PM -> GET /sse
+ -> SSE connection closed for session: da9f2b89-c8a7-4842-a4ae-f4905a60a56e
+[HTTP] 4:44:48 PM -> GET /sse
+ -> SSE connection closed for session: 8f5e8711-a6a9-42d0-807a-963ad2435df3
+[HTTP] 4:45:15 PM -> GET /sse
+ -> SSE connection closed for session: c9a99ace-c41e-4db6-bdb2-0f3f368ebf42
+[HTTP] 4:49:21 PM -> GET /sse
+ -> SSE connection closed for session: 5bd1cdd2-25b9-41e4-bb02-94612d099a7d
+[HTTP] 4:49:48 PM -> GET /sse
+ -> SSE connection closed for session: bc80a7d6-bc2f-4ce9-af55-6e78775d57fc
+[HTTP] 4:50:16 PM -> GET /sse
+ -> SSE connection closed for session: cbd34728-0575-47d3-9da2-704aa91dc193
+[HTTP] 4:54:21 PM -> GET /sse
+ -> SSE connection closed for session: 7718e3b3-c3db-4800-84cb-5aeb25d34835
+[HTTP] 4:54:48 PM -> GET /sse
+ -> SSE connection closed for session: fc7b6f5d-da1f-44fe-b8a2-f0f5def6e984
+[HTTP] 4:55:16 PM -> GET /sse
+[Tool Execution Error - browser_screenshot_analysis]: File found at "/home/sameer/.local/share/kilo/tool-output/tool_f94a28906001AQLd4l3k8V9QIk", but does not contain valid image header bytes.
+ -> SSE connection closed for session: f90c1b17-73ce-4ab4-a3d3-b6c4d2d6fe1b
+[HTTP] 4:59:21 PM -> GET /sse
+ -> SSE connection closed for session: bbcaa448-c0e4-47ac-95eb-7215fa448e17
+[HTTP] 5:00:17 PM -> GET /sse
+[Tool Execution Error - browser_screenshot_analysis]: Unable to resolve image source. File not found on MCP server host at: "/home/sameer/Public/Shared/Work/Projects/CHRO-As-A-Service/hv-analysis.png". Because the MCP server is hosted remotely, transmit the image as a Base64 Data URI ('data:image/png;base64,...') or an HTTP URL.
+[Tool Execution Error - browser_screenshot_analysis]: Image data was truncated or corrupted in transit (libpng read error). Check if the Base64 payload was truncated by LLM token limits. Consider using the /upload endpoint to send large images.
+ -> SSE connection closed for session: 334b108f-0fb5-41be-b52f-f98961531c03
+[HTTP] 5:04:21 PM -> GET /sse
+ -> SSE connection closed for session: 54e56068-48d0-4676-bca5-4d0ad248b827
+[HTTP] 5:05:17 PM -> GET /sse
+ -> SSE connection closed for session: 15d26846-698d-4b36-bf2f-6880feaece76
+[HTTP] 5:05:48 PM -> GET /sse
+ -> SSE connection closed for session: 25401141-7ee0-470b-9c49-678fb0edd9ee
+ -> SSE connection closed for session: e04d3aa1-132c-414e-afea-1a601a7e0353
+[HTTP] 5:10:17 PM -> GET /sse
+ -> SSE connection closed for session: afd6a60b-5aaf-4f6a-b171-44cafe39cf7e
+[HTTP] 5:10:48 PM -> GET /sse
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT GET /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[HTTP] 5:11:10 PM -> GET /sse
+ -> SSE connection closed for session: 2e242260-f228-423f-b919-07d1425a525a
+
+========================================
+ Hybrid Vision MCP Server Running 
+ Listening on: http://0.0.0.0:11402
+ - Streamable HTTP: http://localhost:11402/mcp
+ - SSE Endpoint:    http://localhost:11402/sse
+========================================
+
+[HTTP] 5:15:28 PM -> GET /sse
+
+========================================
+ Hybrid Vision MCP Server Running 
+ Listening on: http://0.0.0.0:11402
+ - Streamable HTTP: http://localhost:11402/mcp
+ - SSE Endpoint:    http://localhost:11402/sse
+========================================
+
+[HTTP] 5:35:18 PM -> GET /sse
+
+========================================
+ Hybrid Vision MCP Server Running 
+ Listening on: http://0.0.0.0:11402
+ - Streamable HTTP: http://localhost:11402/mcp
+ - SSE Endpoint:    http://localhost:11402/sse
+========================================
+
+[HTTP] 5:35:48 PM -> GET /sse
+[UPLOAD] 127.0.0.1 uploaded 562392c1-5bd6-4bcc-9972-38620a02b4e9.png (67 bytes, image/png, 1x1)
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT GET /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[HTTP] 5:36:09 PM -> GET /sse
+ -> SSE connection closed for session: f0fadd36-59de-4523-9688-0bb8e8e6fd48
+[UPLOAD] 127.0.0.1 uploaded 2135c9e7-d17b-4f14-94d2-0af5523a5403.png (67 bytes, image/png, 1x1)
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT GET /mcp
+[DEBUG] /mcp HIT POST /mcp
+[Tool Execution Error - fast_ocr_tesseract]: Image data was truncated or corrupted in transit (libpng read error). Check if the Base64 payload was truncated by LLM token limits. Consider using the /upload endpoint to send large images.
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT GET /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT POST /mcp
+[DEBUG] /mcp HIT GET /mcp
+[DEBUG] /mcp HIT POST /mcp
+ -> SSE connection closed for session: 2611a51e-eddb-44b1-af59-798faf041239
+[HTTP] 5:40:19 PM -> GET /sse
+ -> SSE connection closed for session: c92ae305-9a53-454f-9c58-2ec0ac8072b8
+[HTTP] 5:45:19 PM -> GET /sse
+ -> SSE connection closed for session: 4dbd9474-974f-4021-a7c5-08d4aa799525
+[HTTP] 5:50:20 PM -> GET /sse
+ -> SSE connection closed for session: 3b5cfd5c-e4fd-447d-b205-16d74feb2fd0
+[HTTP] 5:55:21 PM -> GET /sse
+ -> SSE connection closed for session: 9aa4a08e-0c01-43aa-9f0a-5db238545fb4
+[HTTP] 6:00:22 PM -> GET /sse
+
+========================================
+ Hybrid Vision MCP Server Running 
+ Listening on: http://0.0.0.0:11402
+ - Streamable HTTP: http://localhost:11402/mcp
+ - SSE Endpoint:    http://localhost:11402/sse
+========================================
+

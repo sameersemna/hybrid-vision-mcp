@@ -15,6 +15,31 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 // ==========================================
+// .env Loader (zero-dependency)
+// ==========================================
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.join(__dirname, ".env");
+
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, "utf-8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let value = trimmed.slice(eqIdx + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key && !process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+  console.log(`[CONFIG] Loaded environment from ${envPath}`);
+}
+
+// ==========================================
 // Process Guards
 // ==========================================
 process.on("uncaughtException", (err) => {
@@ -36,6 +61,58 @@ const VISION_MODEL_HEAVY = process.env.VISION_MODEL_HEAVY || "qwen3-vl:30b";
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "/tmp/hvm-uploads";
 const FEEDBACK_DIR = process.env.FEEDBACK_DIR || "/tmp/hvm-feedback";
 const MAX_UPLOAD_AGE_MS = 15 * 60 * 1000;
+const MAX_UPLOAD_SIZE_BYTES = Number(process.env.MAX_UPLOAD_SIZE_MB) * 1024 * 1024 || 20 * 1024 * 1024;
+const ALLOWED_UPLOAD_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/bmp",
+]);
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = Number(process.env.UPLOAD_RATE_LIMIT) || 10;
+const CORS_ORIGINS = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",").map((s) => s.trim()) : [];
+
+const uploadRateLimiter = new Map();
+function checkUploadRateLimit(clientIp) {
+  const now = Date.now();
+  const window = uploadRateLimiter.get(clientIp);
+  if (!window) {
+    uploadRateLimiter.set(clientIp, [now]);
+    return true;
+  }
+  const recent = window.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+  if (recent.length >= RATE_LIMIT_MAX) return false;
+  recent.push(now);
+  uploadRateLimiter.set(clientIp, recent);
+  return true;
+}
+
+function getClientIp(req) {
+  return req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || "unknown";
+}
+
+function setCorsHeaders(req, res) {
+  const origin = req.get("origin");
+  if (CORS_ORIGINS.length === 0 || CORS_ORIGINS.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Content-Length");
+    res.header("Access-Control-Max-Age", "86400");
+  }
+}
+
+function resolveMimeTypeFromMagic(buf, declaredType) {
+  if (buf.length >= 4) {
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return "image/gif";
+    if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46) return "image/webp";
+    if (buf[0] === 0x42 && buf[1] === 0x4d) return "image/bmp";
+  }
+  if (declaredType && ALLOWED_UPLOAD_MIME_TYPES.has(declaredType)) return declaredType;
+  return null;
+}
 
 // ==========================================
 // Helper Functions & Image Validation
@@ -632,7 +709,12 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              image_source: {
+                type: "string",
+                description: "Image to process. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
               language: { type: "string", description: "Language code (e.g., 'eng', 'spa'). Default: 'eng'." },
             },
             required: ["image_source"],
@@ -644,7 +726,12 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              image_source: {
+                type: "string",
+                description: "Image to preprocess. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
               crop: {
                 type: "object",
                 properties: {
@@ -667,7 +754,12 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              image_source: {
+                type: "string",
+                description: "Image to analyze. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
               prompt: { type: "string", description: "Question or instruction for analyzing the image." },
               model: { type: "string", description: "Optional Ollama vision model override." },
             },
@@ -680,7 +772,12 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              image_source: {
+                type: "string",
+                description: "Image to search. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
               query: { type: "string", description: "Target text or element to locate." },
               model: { type: "string", description: "Optional Ollama vision model override." },
             },
@@ -696,11 +793,13 @@ function createMcpServer() {
               image_sources: {
                 type: "array",
                 minItems: 2,
-                items: { 
-                  type: "string", 
-                  description: "Base64 Data URI, HTTP URL, or file path. Must be a string element inside the array, not the array itself." 
+                items: {
+                  type: "string",
+                  description: "Image input. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                  "x-mcp-file": true,
+                  "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
                 },
-                description: "Array of at least 2 image inputs. Must be an array, not a string. Do NOT pass a single stringified array.",
+                description: "Array of image inputs. Each element accepts Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
               },
               prompt: { type: "string", description: "Comparison instructions." },
               model: { type: "string", description: "Optional Ollama vision model override." },
@@ -724,7 +823,12 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              image_source: {
+                type: "string",
+                description: "Screenshot to analyze. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
               focus: { type: "string", description: "Analysis focus area.", enum: ["all", "layout", "components", "accessibility", "design", "content"] },
               detail_level: { type: "string", description: "Level of detail.", enum: ["brief", "standard", "detailed"] },
               model: { type: "string", description: "Optional Ollama vision model override." },
@@ -739,7 +843,12 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              image_source: {
+                type: "string",
+                description: "Image to annotate. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
               annotations: {
                 type: "array",
                 description: "Array of annotation objects to draw on the image. Each object must specify a 'type' field.",
@@ -776,7 +885,12 @@ function createMcpServer() {
                 type: "array",
                 minItems: 2,
                 maxItems: 2,
-                items: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>. First element is 'before', second is 'after'." },
+                items: {
+                  type: "string",
+                  description: "Image input. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                  "x-mcp-file": true,
+                  "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+                },
                 description: "Array of exactly 2 image inputs: [before, after].",
               },
               threshold: { type: "number", description: "Minimum combined RGB delta to mark a pixel as changed (0-255). Default: 15." },
@@ -793,7 +907,12 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              image_source: {
+                type: "string",
+                description: "Screenshot to analyze. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
               element_types: {
                 type: "array",
                 items: { type: "string" },
@@ -812,7 +931,12 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              image_source: { type: "string", description: "Base64 Data URI, HTTP URL, local file path, or upload://<filename>." },
+              image_source: {
+                type: "string",
+                description: "Screenshot for feedback. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
               dom_fragment: { type: "string", description: "Optional HTML DOM fragment as string to include in the feedback." },
               css_snapshot: { type: "string", description: "Optional CSS styles as string to include in the feedback." },
               include_ocr: { type: "boolean", description: "If true, run OCR on the screenshot to extract text. Default: true." },
@@ -940,6 +1064,10 @@ function createMcpServer() {
         const base64 = processedBuffer.toString("base64");
         const meta = await sharp(processedBuffer).metadata();
 
+        const outputFilename = `${Date.now()}-${crypto.randomUUID()}.png`;
+        const outputPath = path.join(FEEDBACK_DIR, outputFilename);
+        fs.writeFileSync(outputPath, processedBuffer);
+
         return {
           content: [
             {
@@ -955,6 +1083,8 @@ function createMcpServer() {
                   grayscale: !!args.grayscale,
                   sharpen: !!args.sharpen,
                 },
+                output_file_path: outputPath,
+                output_file_size: processedBuffer.length,
               }, null, 2),
             },
             { type: "image", data: base64, mimeType: "image/png" },
@@ -1093,6 +1223,10 @@ function createMcpServer() {
         const base64 = annotatedBuffer.toString("base64");
         const dataUri = `data:image/png;base64,${base64}`;
 
+        const outputFilename = `${Date.now()}-${crypto.randomUUID()}-annotated.png`;
+        const outputPath = path.join(FEEDBACK_DIR, outputFilename);
+        fs.writeFileSync(outputPath, annotatedBuffer);
+
         if (args.return_base64 !== false) {
           return {
             content: [
@@ -1105,6 +1239,8 @@ function createMcpServer() {
                   height: meta.height,
                   format: "image/png",
                   data_uri_length: base64.length,
+                  output_file_path: outputPath,
+                  output_file_size: annotatedBuffer.length,
                   data_uri: dataUri,
                 }, null, 2),
               },
@@ -1124,6 +1260,8 @@ function createMcpServer() {
                 height: meta.height,
                 format: "image/png",
                 data_uri_length: base64.length,
+                output_file_path: outputPath,
+                output_file_size: annotatedBuffer.length,
                 data_uri: dataUri,
               }, null, 2),
             },
@@ -1145,6 +1283,7 @@ function createMcpServer() {
         const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
 
         let overlay = null;
+        let overlayPath = null;
         if (args.return_overlay === true) {
           const boxes = [];
           try {
@@ -1176,6 +1315,9 @@ function createMcpServer() {
                 .png()
                 .toBuffer();
               overlay = annotated.toString("base64");
+              const overlayFilename = `${Date.now()}-${crypto.randomUUID()}-overlay.png`;
+              overlayPath = path.join(FEEDBACK_DIR, overlayFilename);
+              fs.writeFileSync(overlayPath, annotated);
             }
           }
         }
@@ -1189,6 +1331,8 @@ function createMcpServer() {
         };
         if (overlay) {
           response.overlay_data_uri = `data:image/png;base64,${overlay}`;
+          response.overlay_file_path = overlayPath;
+          response.overlay_file_size = overlay.length;
         }
 
         const content = [{ type: "text", text: JSON.stringify(response, null, 2) }];
@@ -1267,6 +1411,10 @@ function createMcpServer() {
         const diffBuf = await sharp(diffPixels, { raw: { width: targetWidth, height: targetHeight, channels: 4 } }).png().toBuffer();
         const base64 = diffBuf.toString("base64");
 
+        const diffFilename = `${Date.now()}-${crypto.randomUUID()}-diff.png`;
+        const diffPath = path.join(FEEDBACK_DIR, diffFilename);
+        fs.writeFileSync(diffPath, diffBuf);
+
         let aiDescription = "";
         if (args.analyze !== false) {
           const prompt = "Compare these two screenshots. The first image is the 'before' state, the second is the 'after' state. Describe all visual differences you can identify, including what changed, where on the screen, and any visual regressions or improvements.";
@@ -1285,6 +1433,8 @@ function createMcpServer() {
           highlight_color: highlightColor,
           format: "image/png",
           data_uri_length: base64.length,
+          diff_file_path: diffPath,
+          diff_file_size: diffBuf.length,
           data_uri: `data:image/png;base64,${base64}`,
         };
         if (aiDescription) {
@@ -1536,16 +1686,69 @@ const cleanupFeedback = () => {
 setInterval(cleanupFeedback, 5 * 60 * 1000);
 cleanupFeedback();
 
-app.post("/upload", express.raw({ type: "*/*", limit: "50mb" }), async (req, res) => {
-  if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
-    res.status(400).send("No image binary body received.");
-    return;
+app.post("/upload", express.raw({ type: "*/*", limit: `${MAX_UPLOAD_SIZE_BYTES}mb` }), async (req, res) => {
+  setCorsHeaders(req, res);
+
+  const clientIp = getClientIp(req);
+  if (!checkUploadRateLimit(clientIp)) {
+    return res.status(429).json({ error: "Rate limit exceeded", message: `Maximum ${RATE_LIMIT_MAX} uploads per minute.` });
   }
-  const ext = (req.get("content-type") || "image/octet-stream").split("/")[1] || "bin";
+
+  if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+    return res.status(400).json({ error: "No image binary body received.", message: "Send raw binary image data with Content-Type header (e.g., image/png)." });
+  }
+
+  if (req.body.length > MAX_UPLOAD_SIZE_BYTES) {
+    return res.status(413).json({ error: "Upload too large", maxBytes: MAX_UPLOAD_SIZE_BYTES, received: req.body.length });
+  }
+
+  const declaredType = req.get("content-type") || "";
+  const mimeType = resolveMimeTypeFromMagic(req.body, declaredType);
+  if (!mimeType) {
+    return res.status(415).json({ error: "Unsupported media type", message: "Uploaded file is not a recognized image format (PNG, JPEG, WEBP, GIF, BMP)." });
+  }
+
+  if (!ALLOWED_UPLOAD_MIME_TYPES.has(mimeType)) {
+    return res.status(415).json({ error: "MIME type not allowed", allowed: Array.from(ALLOWED_UPLOAD_MIME_TYPES), received: mimeType });
+  }
+
+  if (!isSupportedImageBuffer(req.body)) {
+    return res.status(422).json({ error: "Invalid image data", message: "File magic numbers do not match the declared image format." });
+  }
+
+  const ext = mimeType.split("/")[1] || "bin";
   const filename = `${crypto.randomUUID()}.${ext}`;
   const fullPath = path.join(UPLOAD_DIR, filename);
-  fs.writeFileSync(fullPath, req.body);
-  res.status(200).json({ uploadRef: `upload://${filename}` });
+
+  try {
+    fs.writeFileSync(fullPath, req.body);
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to save upload", message: err.message });
+  }
+
+  let width = null;
+  let height = null;
+  try {
+    const meta = await sharp(req.body).metadata();
+    width = meta.width;
+    height = meta.height;
+  } catch {}
+
+  console.log(`[UPLOAD] ${clientIp} uploaded ${filename} (${req.body.length} bytes, ${mimeType}, ${width}x${height})`);
+
+  res.status(200).json({
+    uploadRef: `upload://${filename}`,
+    filename,
+    mimeType,
+    size: req.body.length,
+    width,
+    height,
+  });
+});
+
+app.options("/upload", (req, res) => {
+  setCorsHeaders(req, res);
+  res.status(204).send();
 });
 
 app.listen(PORT, "0.0.0.0", () => {
