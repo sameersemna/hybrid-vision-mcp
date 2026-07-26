@@ -3,6 +3,8 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import os from "os";
+import dns from "dns";
+import net from "net";
 import { fileURLToPath } from "url";
 import sharp from "sharp";
 import Tesseract from "tesseract.js";
@@ -75,6 +77,15 @@ const ALLOWED_UPLOAD_MIME_TYPES = new Set([
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = Number(process.env.UPLOAD_RATE_LIMIT) || 10;
 const CORS_ORIGINS = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",").map((s) => s.trim()) : [];
+
+// Roots that generate_repo_graph is permitted to walk. Defaults to the server's own
+// project directory so the tool remains useful out of the box without granting
+// full-filesystem enumeration to any unauthenticated network client. Override with a
+// comma-separated absolute path list if other repos should be mappable.
+const ALLOWED_REPO_ROOTS = (process.env.ALLOWED_REPO_ROOTS
+  ? process.env.ALLOWED_REPO_ROOTS.split(",").map((s) => s.trim()).filter(Boolean)
+  : [__dirname]
+).map((p) => path.resolve(p));
 
 const uploadRateLimiter = new Map();
 function checkUploadRateLimit(clientIp) {
@@ -241,10 +252,78 @@ async function resolveImageToBuffer(input) {
   );
 }
 
+// ==========================================
+// SSRF Guard
+// ==========================================
+// Blocks outbound image fetches from reaching loopback, private (RFC1918), link-local
+// (incl. cloud metadata endpoints like 169.254.169.254), and other non-public address
+// ranges. This is a DNS-resolution-time check: it mitigates the common case (attacker
+// passes a URL whose hostname resolves to an internal address) but does not fully
+// defend against DNS-rebinding attacks (the resolved IP could differ at connect time),
+// since Node's fetch() does not expose a way to pin the connection to the IP we
+// validated. Revisit with a custom dispatcher/lookup override if that threat model
+// matters for this deployment.
+function isBlockedIp(ip) {
+  const type = net.isIP(ip);
+  if (type === 4) {
+    const parts = ip.split(".").map(Number);
+    const [a, b] = parts;
+    if (a === 127) return true; // loopback
+    if (a === 10) return true; // RFC1918
+    if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918
+    if (a === 192 && b === 168) return true; // RFC1918
+    if (a === 169 && b === 254) return true; // link-local / cloud metadata
+    if (a === 0) return true; // "this" network
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    return false;
+  }
+  if (type === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === "::1") return true; // loopback
+    if (lower.startsWith("fe80:") || lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb")) return true; // link-local
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique local
+    if (lower.startsWith("::ffff:")) return isBlockedIp(lower.slice("::ffff:".length)); // IPv4-mapped
+    return false;
+  }
+  return true; // unrecognized -> fail closed
+}
+
+async function assertPublicHttpUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: "${url}"`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Invalid URL: must start with http:// or https://. Received: "${url.substring(0, 80)}"`);
+  }
+  if (parsed.hostname === "localhost" || parsed.hostname.endsWith(".localhost")) {
+    throw new Error(`Blocked URL: "${parsed.hostname}" resolves to the local host. Fetching internal/loopback addresses is not permitted.`);
+  }
+
+  let addresses;
+  try {
+    addresses = await dns.promises.lookup(parsed.hostname, { all: true });
+  } catch (err) {
+    throw new Error(`Could not resolve hostname "${parsed.hostname}": ${err.message}`);
+  }
+  if (addresses.length === 0) {
+    throw new Error(`Hostname "${parsed.hostname}" did not resolve to any address.`);
+  }
+  for (const { address } of addresses) {
+    if (isBlockedIp(address)) {
+      throw new Error(`Blocked URL: "${parsed.hostname}" resolves to a private/internal address (${address}). Fetching internal network destinations is not permitted.`);
+    }
+  }
+}
+
 async function downloadImageToFile(url) {
   if (typeof url !== "string" || (!url.startsWith("http://") && !url.startsWith("https://"))) {
     throw new Error(`Invalid URL: must start with http:// or https://. Received: "${typeof url === "string" ? url.substring(0, 80) : typeof url}"`);
   }
+
+  await assertPublicHttpUrl(url);
 
   let response;
   try {
@@ -633,8 +712,21 @@ function extractSemanticPage(html, minTextLength = 10, includeRaw = false) {
   return controlMap;
 }
 
+function isPathAllowedForRepoGraph(resolvedPath) {
+  return ALLOWED_REPO_ROOTS.some(
+    (root) => resolvedPath === root || resolvedPath.startsWith(root + path.sep)
+  );
+}
+
 async function generateRepoGraph(repoPath, maxDepth = 5, includeNodeModules = false) {
   const resolvedPath = path.resolve(repoPath);
+
+  if (!isPathAllowedForRepoGraph(resolvedPath)) {
+    throw new Error(
+      `Path "${resolvedPath}" is outside the allowed repo root(s) (${ALLOWED_REPO_ROOTS.join(", ")}). ` +
+      `Set ALLOWED_REPO_ROOTS in the server's .env to permit mapping other directories.`
+    );
+  }
 
   try {
     const stat = await fs.promises.stat(resolvedPath);

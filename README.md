@@ -64,6 +64,7 @@ cp .env.example .env
 | `MAX_DOWNLOAD_SIZE_MB` | `50` | Maximum download size in megabytes for URL-based image downloads. |
 | `UPLOAD_RATE_LIMIT` | `10` | Maximum upload requests per minute per client IP. |
 | `CORS_ORIGINS` | *(empty = allow all)* | Comma-separated list of allowed CORS origins for the `/upload` endpoint. |
+| `ALLOWED_REPO_ROOTS` | *(server's own project directory)* | Comma-separated list of absolute directory paths that `generate_repo_graph` is permitted to walk. Prevents unauthenticated clients from enumerating the entire host filesystem. |
 
 ## Running the Server
 
@@ -511,7 +512,7 @@ Generate repository structural map using Graphviz DOT and JSON formats. Analyzes
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `repo_path` | string | **Yes** | — | Absolute path to repository root directory. |
+| `repo_path` | string | **Yes** | — | Absolute path to repository root directory. Must be within `ALLOWED_REPO_ROOTS` (see [Environment Variables](#environment-variables)) or the call is rejected. |
 | `max_depth` | number | No | `5` | Maximum directory depth to traverse. |
 | `include_node_modules` | boolean | No | `false` | If true, include `node_modules` in traversal. |
 
@@ -539,7 +540,7 @@ Download an image from a URL into the server's `DOWNLOAD_DIR` and return a `down
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `url` | string | **Yes** | — | HTTP or HTTPS URL of the image to download. |
+| `url` | string | **Yes** | — | HTTP or HTTPS URL of the image to download. Hostname must resolve to a public IP address — loopback, RFC1918/link-local/CGNAT ranges (including cloud metadata endpoints) are rejected as an SSRF guard. This same check applies transparently whenever any tool's `image_source` is an HTTP(S) URL. |
 | `filename` | string | No | auto-generated | Optional custom filename (without path). |
 
 **Returns**:
