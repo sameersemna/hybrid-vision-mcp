@@ -55,9 +55,20 @@ function createTransport(useStreamableHttp = false) {
   return new SSEClientTransport(new URL(`${BASE_URL}/sse`));
 }
 
+// The MCP SDK's default per-request timeout (60s) is shorter than heavy vision tools can
+// take — documented in README under "MCP SDK Request Timeout" — and became a hard requirement
+// once Ollama calls were serialized (MAX_PARALLEL_OLLAMA_REQUESTS) to prevent host crashes,
+// since a queued request's wait time now counts against the client-side timeout. Every test
+// call gets this generous timeout by default so the suite measures real tool correctness
+// instead of racing the SDK's default clock.
+const TEST_CALL_TIMEOUT_MS = 300000;
+
 async function runTest(name, fn, useStreamableHttp = false) {
   const client = new Client({ name: "test-runner", version: "1.0.0" }, { capabilities: {} });
   const transport = createTransport(useStreamableHttp);
+  const originalCallTool = client.callTool.bind(client);
+  client.callTool = (params, resultSchema, options) =>
+    originalCallTool(params, resultSchema, { timeout: TEST_CALL_TIMEOUT_MS, ...options });
   try {
     await client.connect(transport);
     await fn(client);
@@ -579,6 +590,60 @@ async function main() {
       arguments: {},
     });
     if (!result.isError) throw new Error("Expected error for missing image_source");
+  }));
+
+  // ============================================================
+  // SECTION 8: Security Regression Tests (SSRF guard, repo_path allowlist, Ollama queue)
+  // ============================================================
+  console.log("\n== Security Regressions ==");
+  results.push(await runTest("generate_repo_graph happy path (project root)", async (client) => {
+    const result = await client.callTool({
+      name: "generate_repo_graph",
+      arguments: { repo_path: process.cwd(), max_depth: 1 },
+    });
+    if (result.isError) throw new Error(`generate_repo_graph on project root failed: ${result.content[0].text}`);
+  }));
+
+  results.push(await runTest("generate_repo_graph edge (path outside ALLOWED_REPO_ROOTS)", async (client) => {
+    const result = await client.callTool({
+      name: "generate_repo_graph",
+      arguments: { repo_path: "/etc", max_depth: 1 },
+    });
+    if (!result.isError) throw new Error("Expected error for repo_path outside ALLOWED_REPO_ROOTS");
+    if (!result.content[0].text.toLowerCase().includes("allowed repo root")) {
+      throw new Error(`Expected allowlist error message, got: ${result.content[0].text}`);
+    }
+  }));
+
+  results.push(await runTest("download_image edge (SSRF: loopback URL blocked)", async (client) => {
+    const result = await client.callTool({
+      name: "download_image",
+      arguments: { url: `${BASE_URL}/health` },
+    });
+    if (!result.isError) throw new Error("Expected error for loopback URL (SSRF guard)");
+    if (!result.content[0].text.toLowerCase().includes("internal")) {
+      throw new Error(`Expected SSRF-guard error message, got: ${result.content[0].text}`);
+    }
+  }));
+
+  results.push(await runTest("download_image edge (SSRF: RFC1918 literal IP blocked)", async (client) => {
+    const result = await client.callTool({
+      name: "download_image",
+      arguments: { url: "http://10.0.0.1/image.png" },
+    });
+    if (!result.isError) throw new Error("Expected error for RFC1918 IP literal (SSRF guard)");
+    if (!result.content[0].text.toLowerCase().includes("internal")) {
+      throw new Error(`Expected SSRF-guard error message, got: ${result.content[0].text}`);
+    }
+  }));
+
+  results.push(await runTest("check_vision_health reports Ollama concurrency status", async (client) => {
+    const result = await client.callTool({ name: "check_vision_health", arguments: {} });
+    if (result.isError) throw new Error(`check_vision_health failed: ${result.content[0].text}`);
+    const text = result.content[0].text;
+    if (!text.includes("Ollama Concurrency:")) {
+      throw new Error(`Expected "Ollama Concurrency:" field in health output, got: ${text}`);
+    }
   }));
 
   // ============================================================

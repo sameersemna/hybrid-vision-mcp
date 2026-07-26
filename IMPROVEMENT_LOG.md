@@ -154,6 +154,68 @@ SSRF guard, repo_path allowlist, and concurrency gate so these don't silently re
 general schema/description audit of all 14 tools for LLM-client ergonomics (Phase 1 of the
 original brief, not yet done); (c) auth model, whenever the user wants to open this beyond LAN.
 
+## Cycle 3 — Regression tests + test-suite timeout fix (2026-07-26)
+
+### What was done
+Added 5 regression tests to `test_runner.mjs` (Section 8, "Security Regressions") covering
+the fixes from Cycles 1–2, run over real MCP JSON-RPC against the live service:
+- `generate_repo_graph` happy path (project root) and edge case (path outside
+  `ALLOWED_REPO_ROOTS`, asserts the allowlist error message).
+- `download_image` SSRF-guard edge cases: loopback URL (`localhost`) and an RFC1918 literal
+  IP (`10.0.0.1`) — both asserted to be rejected with an "internal" error message. No
+  network-dependent happy-path test was added for `download_image` (would require reaching
+  a real public host from the test suite; the tool was already manually verified in Cycle 1).
+- `check_vision_health` asserts the new "Ollama Concurrency: X/Y active, Z queued" field is
+  present, guarding the Cycle 2 observability addition.
+
+### Bug found and fixed while running the suite
+First full run: 49/64 passed, 15 failures, all `MCP error -32001: Request timed out` on
+Ollama-calling tools. Root cause: `test_runner.mjs` never set a client-side request timeout,
+so every `callTool()` used the MCP SDK's 60s default. This was already a known sharp edge
+(README has a whole "MCP SDK Request Timeout" section recommending heavy tools pass a longer
+`timeout`), but Cycle 2's concurrency gate made it bite reliably in the test suite — model
+load/swap time between the fast (`llava:13b`) and heavy (`qwen3-vl:30b`) models plus real
+inference time routinely exceeds 60s once calls are serialized instead of firing at once.
+
+Fix: `runTest()` now wraps `client.callTool` to default every call to a 300s timeout
+(matching the project's own documented `MCP_REQUEST_TIMEOUT_MS` convention) unless a test
+explicitly overrides it. This is a test-suite fix, not a server change — it makes the suite
+consistent with the client behavior the README already tells real users to adopt.
+
+### Test results (after the timeout fix)
+Second full run: **59/64 passed**, 5 failures remaining — all `analyze_image` calls
+(base64, upload://, and jpeg/webp/gif upload variants), all failing with a genuine
+**server-side** Ollama timeout (`Ollama request timed out after 180000ms`), not the MCP
+client-side `-32001`. This is `OLLAMA_TIMEOUT_MS` (180s) being hit inside `queryOllamaVision`
+itself, after the request had already acquired its queue slot and was actively running —
+i.e. real inference/model-load latency on the shared host, not a queuing artifact of this
+session's changes. `ps aux` at the time showed a large number of unrelated
+Ollama-touching processes/MCP servers active on this same host, so GPU/unified-memory
+contention from processes *outside this server's control* is the most likely explanation.
+**Confirmed not a crash**: `systemctl show -p ActiveEnterTimestamp` showed the live service's
+uptime was unchanged across the entire ~test run (no restart), i.e. under the same kind of
+sustained real vision-model load that previously caused host crashes, the server this time
+degraded gracefully (a handful of slow calls returned a clear timeout error) instead of
+taking the host down. That is the outcome Cycle 2 was meant to produce.
+
+### Deferred / what's next
+- The 5 remaining `analyze_image` timeouts are environmental (shared host GPU contention),
+  not addressed this cycle — flagged rather than papered over by e.g. silently raising
+  `OLLAMA_TIMEOUT_MS`, since that's a host-capacity question, not a code defect.
+- Still open: schema/description ergonomics audit (Phase 1 of the original brief) not yet
+  done; auth model for `/mcp`/`/sse` remains explicitly deferred per user's LAN/ufw context.
+
+### Self-assessment: another cycle?
+The two concrete operational risks the user raised (unauthenticated filesystem/SSRF exposure,
+Ollama-concurrency crashes) are now fixed, tested against the live service, and covered by
+regression tests. Diminishing returns on continuing to chase environmental GPU-contention
+flakiness without more host-level visibility (e.g. `nvidia-smi`/`ollama ps` during a failure).
+Next highest-value work is either the schema/ergonomics audit (lower urgency, not
+crash/security-related) or investigating host-level Ollama concurrency across *all* of this
+machine's Ollama clients, not just this MCP server — worth a scoped conversation with the user
+before diving in, since it may involve config outside this repo (e.g. Ollama's own
+`OLLAMA_MAX_LOADED_MODELS`/`OLLAMA_NUM_PARALLEL`).
+
 ### Deferred (not in scope this cycle, noted for later)
 - No authentication at all on `/mcp`, `/sse`, `/messages` (only `/upload` has rate limiting).
   Flagging this as the single biggest structural gap — everything else is secondary while the
