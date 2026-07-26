@@ -92,6 +92,68 @@ invasive change (new required header/config for every existing client) so it des
 scoped conversation with the user rather than being bundled here. Stopping this cycle here
 rather than proceeding unprompted into an auth model change.
 
+## Cycle 2 — Ollama concurrency gate (2026-07-26)
+
+### Trigger
+User confirmed the security fixes could stay as-is threat-model-wise (server is LAN-only
+behind ufw, auth deferred), restarted the live systemd service to pick up Cycle 1, and raised
+an operational issue: parallel MCP tool calls that hit Ollama (`analyze_image`,
+`find_text_element`, `compare_images`, `browser_screenshot_analysis`, `detect_ui_elements`,
+`visual_diff`) can crash the host — the box runs a unified-memory GPU (NVIDIA GB10 / Grace
+Blackwell-class, 121GB shared system+GPU memory) shared with a large local Ollama model
+library (100+ models installed), and `queryOllamaVision()` had zero concurrency control: every
+tool call fired an unbounded `fetch()` straight at Ollama.
+
+### Finding
+Confirmed via code read (`index.js` `queryOllamaVision`) — no semaphore, no queue, no cap.
+Any number of concurrent MCP tool calls (from one client issuing parallel requests, or
+multiple clients) would all hit `/api/generate` on Ollama simultaneously, each potentially
+loading/running a multi-GB vision model (`llava:13b` fast, `qwen3-vl:30b` heavy), which is
+consistent with the reported crashes.
+
+### Fix
+Added an in-process concurrency gate around `queryOllamaVision()`:
+- `MAX_PARALLEL_OLLAMA_REQUESTS` (default `1`) — hard cap on simultaneous Ollama calls; extras
+  queue in-process (FIFO) instead of being sent to Ollama concurrently.
+- `MAX_OLLAMA_QUEUE_SIZE` (default `20`) — bounds the wait queue so a burst of clients fails
+  fast with a clear error instead of piling up unboundedly in server memory.
+- Queue wait happens *before* the per-request `OLLAMA_TIMEOUT_MS` clock starts, so time spent
+  queued doesn't eat into a request's inference timeout budget (though the caller's own MCP
+  client-side timeout still spans the whole wait+inference duration — documented in README).
+- `check_vision_health` now reports live queue depth (`Ollama Concurrency: X/Y active, Z queued`)
+  for operational visibility.
+- Kept as a simple in-memory semaphore (no external queue/broker) — appropriate for a
+  single-process server with no clustering, and avoids adding a new dependency for a
+  same-process synchronization problem.
+
+### Test results
+- `node --check index.js` — passes.
+- Started a throwaway instance (`MAX_PARALLEL_OLLAMA_REQUESTS=1`, default) on port 11499, fired
+  3 concurrent `analyze_image` calls via real MCP JSON-RPC against a real local Ollama
+  (`llava:13b`): server log showed `[OLLAMA QUEUE] Slot busy (1/1 active) — queuing (position 1/2)`
+  for the 2nd and 3rd calls; `check_vision_health` mid-flight reported `1/1 active, 2 queued`;
+  the three responses completed serially (~130ms apart) rather than simultaneously — confirms
+  requests are no longer sent to Ollama in parallel.
+- Live systemd service restarted by user after Cycle 1; re-verified `generate_repo_graph`
+  allowlist rejection against the live port (11402) post-restart. Cycle 2's queue change will
+  go live on the next restart.
+
+### Deferred / what's next
+- Current design blocks the whole tool-call `await` while queued — for `MAX_OLLAMA_QUEUE_SIZE=20`
+  worth of queued heavy vision calls this could hold open many MCP requests/connections at
+  once even though only one is actually running; fine for expected LAN-scale usage, worth
+  revisiting if usage grows.
+- No per-client fairness (FIFO only) — one client issuing many calls can starve others. Not
+  addressed since current usage is small-scale/trusted LAN clients.
+- Still open from Cycle 0: no auth on `/mcp`/`/sse` (explicitly deferred by user this cycle,
+  acceptable given LAN + ufw restriction).
+
+### Self-assessment: another cycle?
+Yes — reasonable next candidates: (a) extend `test_runner.mjs` with regression tests for the
+SSRF guard, repo_path allowlist, and concurrency gate so these don't silently regress; (b)
+general schema/description audit of all 14 tools for LLM-client ergonomics (Phase 1 of the
+original brief, not yet done); (c) auth model, whenever the user wants to open this beyond LAN.
+
 ### Deferred (not in scope this cycle, noted for later)
 - No authentication at all on `/mcp`, `/sse`, `/messages` (only `/upload` has rate limiting).
   Flagging this as the single biggest structural gap — everything else is secondary while the

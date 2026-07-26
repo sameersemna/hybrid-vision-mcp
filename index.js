@@ -58,6 +58,13 @@ process.on("unhandledRejection", (reason) => {
 const PORT = process.env.PORT || 11402;
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
 const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS) || 180000;
+// Vision models are heavy (VRAM/unified-memory bound); running several concurrently has been
+// observed to crash the host. Default to strictly serialized Ollama calls; raise only if the
+// host has headroom to run more than one vision inference at a time.
+const MAX_PARALLEL_OLLAMA_REQUESTS = Math.max(1, Number(process.env.MAX_PARALLEL_OLLAMA_REQUESTS) || 1);
+// Caps how many callers can be queued waiting for a slot before new requests are rejected
+// outright, so a burst of clients fails fast instead of piling up indefinitely.
+const MAX_OLLAMA_QUEUE_SIZE = Math.max(0, Number(process.env.MAX_OLLAMA_QUEUE_SIZE) || 20);
 const MCP_REQUEST_TIMEOUT_MS = Number(process.env.MCP_REQUEST_TIMEOUT_MS) || 300000;
 const VISION_MODEL_FAST = process.env.VISION_MODEL_FAST || "llava:13b";
 const VISION_MODEL_HEAVY = process.env.VISION_MODEL_HEAVY || "qwen3-vl:30b";
@@ -408,43 +415,85 @@ async function normalizeToPngBuffer(buffer) {
   }
 }
 
+// ==========================================
+// Ollama Concurrency Gate
+// ==========================================
+// A single Node process serves every MCP session, but Ollama vision inference is
+// GPU/unified-memory bound; letting concurrent tool calls hit Ollama in parallel has been
+// observed to crash the host. This gate serializes (or caps, via MAX_PARALLEL_OLLAMA_REQUESTS)
+// access to queryOllamaVision so requests queue in-process instead of piling onto Ollama.
+let activeOllamaRequests = 0;
+const ollamaWaitQueue = [];
+
+function acquireOllamaSlot() {
+  if (activeOllamaRequests < MAX_PARALLEL_OLLAMA_REQUESTS) {
+    activeOllamaRequests++;
+    return Promise.resolve();
+  }
+  if (ollamaWaitQueue.length >= MAX_OLLAMA_QUEUE_SIZE) {
+    return Promise.reject(
+      new Error(
+        `Ollama request queue is full (${MAX_OLLAMA_QUEUE_SIZE} already waiting, ${activeOllamaRequests} running). ` +
+        `Try again shortly, or raise MAX_OLLAMA_QUEUE_SIZE / MAX_PARALLEL_OLLAMA_REQUESTS if the host has headroom.`
+      )
+    );
+  }
+  console.log(`[OLLAMA QUEUE] Slot busy (${activeOllamaRequests}/${MAX_PARALLEL_OLLAMA_REQUESTS} active) — queuing (position ${ollamaWaitQueue.length + 1}).`);
+  return new Promise((resolve) => ollamaWaitQueue.push(resolve));
+}
+
+function releaseOllamaSlot() {
+  const next = ollamaWaitQueue.shift();
+  if (next) {
+    // Hand the slot directly to the next waiter; activeOllamaRequests stays occupied.
+    next();
+  } else {
+    activeOllamaRequests--;
+  }
+}
+
 async function queryOllamaVision(model, prompt, imageBuffers) {
-  const imagesBase64 = imageBuffers.map((buf) => buf.toString("base64"));
-
-  const payload = {
-    model: model,
-    prompt: prompt,
-    images: imagesBase64,
-    stream: false,
-  };
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
-
-  let response;
+  await acquireOllamaSlot();
   try {
-    response = await fetch(`${OLLAMA_HOST}/api/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err.name === "AbortError") {
-      throw new Error(`Ollama request timed out after ${OLLAMA_TIMEOUT_MS}ms. Try a lighter model (e.g., llava:7b), reduce image size, or increase OLLAMA_TIMEOUT_MS.`);
+    const imagesBase64 = imageBuffers.map((buf) => buf.toString("base64"));
+
+    const payload = {
+      model: model,
+      prompt: prompt,
+      images: imagesBase64,
+      stream: false,
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
+
+    let response;
+    try {
+      response = await fetch(`${OLLAMA_HOST}/api/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err.name === "AbortError") {
+        throw new Error(`Ollama request timed out after ${OLLAMA_TIMEOUT_MS}ms. Try a lighter model (e.g., llava:7b), reduce image size, or increase OLLAMA_TIMEOUT_MS.`);
+      }
+      throw new Error(`Could not connect to Ollama service at ${OLLAMA_HOST}: ${err.message}`);
+    } finally {
+      clearTimeout(timer);
     }
-    throw new Error(`Could not connect to Ollama service at ${OLLAMA_HOST}: ${err.message}`);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Ollama API error (${response.status}): ${errText || response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.response;
   } finally {
-    clearTimeout(timer);
+    releaseOllamaSlot();
   }
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Ollama API error (${response.status}): ${errText || response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.response;
 }
 
 function normalizeImageSources(input) {
@@ -1168,6 +1217,7 @@ function createMcpServer() {
           `- Installed Ollama Models: ${modelsList.length > 0 ? modelsList.join(", ") : "None detected"}`,
           "- Tesseract OCR Engine: Ready (WebAssembly)",
           "- Sharp CV Engine: Ready",
+          `- Ollama Concurrency: ${activeOllamaRequests}/${MAX_PARALLEL_OLLAMA_REQUESTS} active, ${ollamaWaitQueue.length} queued (max queue ${MAX_OLLAMA_QUEUE_SIZE}).`,
         ].join("\n");
 
         return { content: [{ type: "text", text: healthText }] };

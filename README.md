@@ -54,6 +54,8 @@ cp .env.example .env
 | `PORT` | `11402` | Express listener port. |
 | `OLLAMA_HOST` | `http://localhost:11434` | Base URL for the local Ollama inference service. |
 | `OLLAMA_TIMEOUT_MS` | `180000` | Timeout for Ollama vision requests in milliseconds. |
+| `MAX_PARALLEL_OLLAMA_REQUESTS` | `1` | Maximum number of Ollama vision requests allowed to run concurrently. Extra calls queue in-process rather than hitting Ollama simultaneously — vision models are GPU/unified-memory bound and concurrent inference has been observed to crash the host. |
+| `MAX_OLLAMA_QUEUE_SIZE` | `20` | Maximum number of requests allowed to wait for a free Ollama slot before new ones are rejected outright. |
 | `MCP_REQUEST_TIMEOUT_MS` | `300000` | Timeout for MCP client request/response in milliseconds. Heavy vision tools may exceed the default 60s SDK timeout; set this to match or exceed `OLLAMA_TIMEOUT_MS`. |
 | `VISION_MODEL_FAST` | `llava:13b` | Default vision model for `analyze_image` and `detect_ui_elements`. |
 | `VISION_MODEL_HEAVY` | `qwen3-vl:30b` | Default vision model for `find_text_element`, `compare_images`, `browser_screenshot_analysis`, `visual_diff`, and `detect_ui_elements`. |
@@ -169,6 +171,15 @@ const helper = new MCPUploadHelper("http://localhost:11402", 300000);
 ```
 
 The `MCP_REQUEST_TIMEOUT_MS` environment variable can be used to configure this value. See the [Environment Variables](#environment-variables) table above.
+
+## Ollama Request Queuing
+
+All tools that call Ollama (`analyze_image`, `find_text_element`, `compare_images`, `browser_screenshot_analysis`, `detect_ui_elements`, `visual_diff`) share a single in-process concurrency gate. Vision models are GPU/unified-memory bound, and running several inference calls in parallel has been observed to crash the host — so by default (`MAX_PARALLEL_OLLAMA_REQUESTS=1`) only one Ollama request runs at a time; additional calls wait in an in-process queue rather than being sent to Ollama concurrently.
+
+- Increase `MAX_PARALLEL_OLLAMA_REQUESTS` only if the host has confirmed headroom to run more than one vision model inference simultaneously.
+- `MAX_OLLAMA_QUEUE_SIZE` (default `20`) caps how many callers may wait for a slot; once exceeded, new requests fail fast with a clear error instead of piling up indefinitely.
+- Waiting for a queue slot happens before the per-request Ollama timeout clock starts, so a busy queue doesn't erode a caller's `OLLAMA_TIMEOUT_MS` budget — but a client-side MCP request timeout (`MCP_REQUEST_TIMEOUT_MS` / `timeout` in `callTool()`) still applies across the whole wait-plus-inference duration.
+- `check_vision_health` reports current queue depth (`Ollama Concurrency: X/Y active, Z queued`).
 
 ## File Input Schema Annotations
 
