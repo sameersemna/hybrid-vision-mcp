@@ -1,11 +1,11 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
-import os from "os";
-import dns from "dns";
-import net from "net";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import os from "node:os";
+import dns from "node:dns";
+import net from "node:net";
+import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import Tesseract from "tesseract.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -15,12 +15,23 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
+import { resolveWithinBase, isPathWithinAllowedRoots } from "./lib/validation.js";
 
 // ==========================================
 // .env Loader (zero-dependency)
 // ==========================================
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(__dirname, ".env");
+const LOG_PREFIX = "[hybrid-vision-mcp]";
+
+function logInfo(message, ...details) {
+  console.error(`${LOG_PREFIX} ${message}`, ...details);
+}
+
+function logWarn(message, ...details) {
+  console.error(`${LOG_PREFIX} WARN ${message}`, ...details);
+}
 
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, "utf-8");
@@ -38,18 +49,18 @@ if (fs.existsSync(envPath)) {
       process.env[key] = value;
     }
   }
-  console.log(`[CONFIG] Loaded environment from ${envPath}`);
+  logInfo(`[CONFIG] Loaded environment from ${envPath}`);
 }
 
 // ==========================================
 // Process Guards
 // ==========================================
 process.on("uncaughtException", (err) => {
-  console.error("[SERVER GUARD] Caught Uncaught Exception:", err.message);
+  logWarn("Caught uncaught exception:", err.message);
 });
 
 process.on("unhandledRejection", (reason) => {
-  console.error("[SERVER GUARD] Caught Unhandled Rejection:", reason);
+  logWarn("Caught unhandled rejection:", reason);
 });
 
 // ==========================================
@@ -74,6 +85,7 @@ const DOWNLOAD_DIR = path.resolve(process.env.DOWNLOAD_DIR || "./tmp/hvm-downloa
 const MAX_UPLOAD_AGE_MS = 15 * 60 * 1000;
 const MAX_UPLOAD_SIZE_BYTES = Number(process.env.MAX_UPLOAD_SIZE_MB) * 1024 * 1024 || 20 * 1024 * 1024;
 const MAX_DOWNLOAD_SIZE_BYTES = (Number(process.env.MAX_DOWNLOAD_SIZE_MB) || 50) * 1024 * 1024;
+const MAX_RESPONSE_TEXT_CHARS = Number(process.env.MAX_RESPONSE_TEXT_CHARS) || 12000;
 const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -154,6 +166,16 @@ function sanitizeBase64(input) {
   return cleaned.replace(/ /g, "+").replace(/[\r\n\s]/g, "");
 }
 
+function truncateForClient(text) {
+  if (typeof text !== "string") {
+    return text;
+  }
+  if (text.length <= MAX_RESPONSE_TEXT_CHARS) {
+    return text;
+  }
+  return `${text.slice(0, MAX_RESPONSE_TEXT_CHARS)}\n\n[truncated for client context limits]`;
+}
+
 function isSupportedImageBuffer(buf) {
   if (!buf || buf.length < 4) return false;
   // PNG: 89 50 4E 47
@@ -205,7 +227,7 @@ async function resolveImageToBuffer(input) {
   // 4. HTTP / HTTPS URL — download to disk, then return buffer
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     const result = await downloadImageToFile(trimmed);
-    return fs.readFileSync(result.filePath);
+    return fs.promises.readFile(result.filePath);
   }
 
   // 5. Local File Path (Only works if client and MCP server share a filesystem)
@@ -213,7 +235,7 @@ async function resolveImageToBuffer(input) {
     const filename = trimmed.slice("upload://".length);
     const fullPath = path.join(UPLOAD_DIR, filename);
     if (fs.existsSync(fullPath)) {
-      const buf = fs.readFileSync(fullPath);
+      const buf = await fs.promises.readFile(fullPath);
       if (buf.length === 0) throw new Error(`Uploaded file "${filename}" is empty.`);
       if (!isSupportedImageBuffer(buf)) throw new Error(`Uploaded file "${filename}" is not a supported image format.`);
       return buf;
@@ -226,7 +248,7 @@ async function resolveImageToBuffer(input) {
     const filename = trimmed.slice("download://".length);
     const fullPath = path.join(DOWNLOAD_DIR, filename);
     if (fs.existsSync(fullPath)) {
-      const buf = fs.readFileSync(fullPath);
+      const buf = await fs.promises.readFile(fullPath);
       if (buf.length === 0) throw new Error(`Downloaded file "${filename}" is empty.`);
       if (!isSupportedImageBuffer(buf)) throw new Error(`Downloaded file "${filename}" is not a supported image format.`);
       return buf;
@@ -235,7 +257,7 @@ async function resolveImageToBuffer(input) {
   }
 
   if (fs.existsSync(trimmed)) {
-    const buf = fs.readFileSync(trimmed);
+    const buf = await fs.promises.readFile(trimmed);
     if (buf.length === 0) {
       throw new Error(`File at "${trimmed}" is 0 bytes (empty file).`);
     }
@@ -394,7 +416,7 @@ async function downloadImageToFile(url) {
 
   const downloadRef = `download://${filename}`;
 
-  console.log(`[DOWNLOAD] Saved ${url} -> ${filePath} (${buf.length} bytes, ${mimeType}, ${width}x${height})`);
+  logInfo(`[DOWNLOAD] Saved ${url} -> ${filePath} (${buf.length} bytes, ${mimeType}, ${width}x${height})`);
 
   return { filePath, originalUrl: url, mimeType, size: buf.length, width, height, downloadRef };
 }
@@ -438,7 +460,7 @@ function acquireOllamaSlot() {
       )
     );
   }
-  console.log(`[OLLAMA QUEUE] Slot busy (${activeOllamaRequests}/${MAX_PARALLEL_OLLAMA_REQUESTS} active) — queuing (position ${ollamaWaitQueue.length + 1}).`);
+  logInfo(`[OLLAMA QUEUE] Slot busy (${activeOllamaRequests}/${MAX_PARALLEL_OLLAMA_REQUESTS} active) — queuing (position ${ollamaWaitQueue.length + 1}).`);
   return new Promise((resolve) => ollamaWaitQueue.push(resolve));
 }
 
@@ -762,13 +784,11 @@ function extractSemanticPage(html, minTextLength = 10, includeRaw = false) {
 }
 
 function isPathAllowedForRepoGraph(resolvedPath) {
-  return ALLOWED_REPO_ROOTS.some(
-    (root) => resolvedPath === root || resolvedPath.startsWith(root + path.sep)
-  );
+  return isPathWithinAllowedRoots(resolvedPath, ALLOWED_REPO_ROOTS);
 }
 
 async function generateRepoGraph(repoPath, maxDepth = 5, includeNodeModules = false) {
-  const resolvedPath = path.resolve(repoPath);
+  const resolvedPath = resolveWithinBase(__dirname, repoPath);
 
   if (!isPathAllowedForRepoGraph(resolvedPath)) {
     throw new Error(
@@ -889,6 +909,11 @@ async function generateRepoGraph(repoPath, maxDepth = 5, includeNodeModules = fa
 // MCP Server Factory
 // ==========================================
 function createMcpServer() {
+  const toolSchemas = {
+    imageSource: z.string().min(1).describe("Image input as data URI, URL, file path, upload://, or download:// reference."),
+    imageSources: z.array(z.string().min(1)).min(2).describe("Array of image inputs."),
+    optionalString: z.string().optional(),
+  };
   const server = new Server(
     {
       name: "hybrid-vision-mcp",
@@ -901,7 +926,6 @@ function createMcpServer() {
     }
   );
 
-  // Streamable HTTP Transports (/mcp)
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
       tools: [
@@ -1195,6 +1219,15 @@ function createMcpServer() {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
 
+    const parseArgs = (schema) => {
+      const result = schema.safeParse(args);
+      if (!result.success) {
+        const issues = result.error.issues.map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`).join("; ");
+        throw new Error(`Invalid tool arguments: ${issues}`);
+      }
+      return result.data;
+    };
+
     try {
       if (name === "check_vision_health") {
         let ollamaStatus = "Disconnected";
@@ -1224,9 +1257,10 @@ function createMcpServer() {
       }
 
       if (name === "fast_ocr_tesseract") {
-        const rawBuf = await resolveImageToBuffer(args.image_source);
+        const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, language: toolSchemas.optionalString }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
         const pngBuf = await normalizeToPngBuffer(rawBuf);
-        const lang = args.language || "eng";
+        const lang = parsed.language || "eng";
 
         const { data } = await Tesseract.recognize(pngBuf, lang);
 
@@ -1234,25 +1268,26 @@ function createMcpServer() {
           content: [
             {
               type: "text",
-              text: `[Tesseract OCR Engine - Language: ${lang} - Confidence: ${data.confidence}%]\n\n${data.text || "(No text detected)"}`,
+              text: truncateForClient(`[Tesseract OCR Engine - Language: ${lang} - Confidence: ${data.confidence}%]\n\n${data.text || "(No text detected)"}`),
             },
           ],
         };
       }
 
       if (name === "preprocess_and_crop") {
-        const rawBuf = await resolveImageToBuffer(args.image_source);
+        const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, crop: z.object({ left: z.number(), top: z.number(), width: z.number(), height: z.number() }).optional(), grayscale: z.boolean().optional(), sharpen: z.boolean().optional() }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
         let pipeline = sharp(rawBuf);
 
-        if (args.crop) {
+        if (parsed.crop) {
           const meta = await pipeline.metadata();
           const imgWidth = meta.width || 1;
           const imgHeight = meta.height || 1;
 
-          const cropLeft = Math.round(args.crop.left || 0);
-          const cropTop = Math.round(args.crop.top || 0);
-          const cropWidth = Math.round(args.crop.width || 1);
-          const cropHeight = Math.round(args.crop.height || 1);
+          const cropLeft = Math.round(parsed.crop.left || 0);
+          const cropTop = Math.round(parsed.crop.top || 0);
+          const cropWidth = Math.round(parsed.crop.width || 1);
+          const cropHeight = Math.round(parsed.crop.height || 1);
 
           if (cropLeft < 0 || cropTop < 0 || cropWidth <= 0 || cropHeight <= 0) {
             throw new Error("Crop dimensions must be positive numbers.");
@@ -1269,10 +1304,10 @@ function createMcpServer() {
           pipeline = pipeline.extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight });
         }
 
-        if (args.grayscale) {
+        if (parsed.grayscale) {
           pipeline = pipeline.grayscale();
         }
-        if (args.sharpen) {
+        if (parsed.sharpen) {
           pipeline = pipeline.sharpen();
         }
 
@@ -1295,9 +1330,9 @@ function createMcpServer() {
                 height: meta.height,
                 format: meta.format,
                 operations: {
-                  crop: args.crop || null,
-                  grayscale: !!args.grayscale,
-                  sharpen: !!args.sharpen,
+                  crop: parsed.crop || null,
+                  grayscale: !!parsed.grayscale,
+                  sharpen: !!parsed.sharpen,
                 },
                 output_file_path: outputPath,
                 output_file_size: processedBuffer.length,
@@ -1309,31 +1344,32 @@ function createMcpServer() {
       }
 
       if (name === "analyze_image") {
-        const rawBuf = await resolveImageToBuffer(args.image_source);
+        const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, prompt: toolSchemas.optionalString, model: toolSchemas.optionalString }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
         await normalizeToPngBuffer(rawBuf);
 
-        const prompt = args.prompt || "Describe this image in detail.";
-        const model = args.model || VISION_MODEL_FAST;
+        const prompt = parsed.prompt || "Describe this image in detail.";
+        const model = parsed.model || VISION_MODEL_FAST;
 
         const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
-        return { content: [{ type: "text", text: textResult }] };
+        return { content: [{ type: "text", text: truncateForClient(textResult) }] };
       }
 
       if (name === "find_text_element") {
-        const rawBuf = await resolveImageToBuffer(args.image_source);
+        const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, query: z.string().min(1), model: toolSchemas.optionalString }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
         await normalizeToPngBuffer(rawBuf);
 
-        if (!args.query) throw new Error("Parameter 'query' is required.");
-
-        const prompt = `Locate the element or text matching: "${args.query}". Provide the bounding box coordinates or visual position within the image.`;
-        const model = args.model || VISION_MODEL_HEAVY;
+        const prompt = `Locate the element or text matching: "${parsed.query}". Provide the bounding box coordinates or visual position within the image.`;
+        const model = parsed.model || VISION_MODEL_HEAVY;
 
         const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
-        return { content: [{ type: "text", text: textResult }] };
+        return { content: [{ type: "text", text: truncateForClient(textResult) }] };
       }
 
       if (name === "compare_images") {
-        const rawSources = normalizeImageSources(args.image_sources);
+        const parsed = parseArgs(z.object({ image_sources: toolSchemas.imageSources, prompt: toolSchemas.optionalString, model: toolSchemas.optionalString }));
+        const rawSources = normalizeImageSources(parsed.image_sources);
         if (!rawSources || rawSources.length < 2) {
           throw new Error(
             "Parameter 'image_sources' must be a JSON array containing at least 2 image strings. " +
@@ -1349,19 +1385,20 @@ function createMcpServer() {
           buffers.push(buf);
         }
 
-        const prompt = args.prompt || "Compare these images in detail and highlight any differences or similarities.";
-        const model = args.model || VISION_MODEL_HEAVY;
+        const prompt = parsed.prompt || "Compare these images in detail and highlight any differences or similarities.";
+        const model = parsed.model || VISION_MODEL_HEAVY;
 
         const textResult = await queryOllamaVision(model, prompt, buffers);
-        return { content: [{ type: "text", text: textResult }] };
+        return { content: [{ type: "text", text: truncateForClient(textResult) }] };
       }
 
       if (name === "browser_screenshot_analysis") {
-        const rawBuf = await resolveImageToBuffer(args.image_source);
+        const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, focus: z.enum(["all", "layout", "components", "accessibility", "design", "content"]).optional(), detail_level: z.enum(["brief", "standard", "detailed"]).optional(), model: toolSchemas.optionalString }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
         await normalizeToPngBuffer(rawBuf);
 
-        const focus = String(args.focus || "all").toLowerCase();
-        const detailLevel = String(args.detail_level || "standard").toLowerCase();
+        const focus = (parsed.focus || "all").toLowerCase();
+        const detailLevel = (parsed.detail_level || "standard").toLowerCase();
 
         const prompts = {
           brief: `Provide a concise summary of this browser screenshot. Identify the page type (login, dashboard, form, etc.), primary content, and any obvious UI anomalies. Focus: ${focus}.`,
@@ -1369,7 +1406,7 @@ function createMcpServer() {
           detailed: `Perform a comprehensive visual and semantic analysis of this browser screenshot. Describe the full layout structure, grid system, visual hierarchy, color palette, typography choices, spacing rhythm, component types, interactive elements, content groupings, potential UX issues, and the overall aesthetic vibe. Focus: ${focus}.`,
         };
 
-        const model = args.model || VISION_MODEL_HEAVY;
+        const model = parsed.model || VISION_MODEL_HEAVY;
         const prompt = prompts[detailLevel] || prompts.standard;
 
         const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
@@ -1381,14 +1418,11 @@ function createMcpServer() {
       }
 
       if (name === "browser_screenshot_annotation") {
-        const rawBuf = await resolveImageToBuffer(args.image_source);
+        const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, annotations: z.array(z.object({ type: z.enum(["label", "box", "arrow", "circle"]), text: z.string().optional(), x: z.number().optional(), y: z.number().optional(), width: z.number().optional(), height: z.number().optional(), target_x: z.number().optional(), target_y: z.number().optional(), color: z.string().optional(), font_size: z.number().optional() })).min(1), return_base64: z.boolean().optional() }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
         await normalizeToPngBuffer(rawBuf);
 
-        if (!args.annotations || !Array.isArray(args.annotations) || args.annotations.length === 0) {
-          throw new Error("Parameter 'annotations' must be a non-empty array of annotation objects.");
-        }
-
-        const invalid = args.annotations.find((a) => !a || typeof a !== "object" || !a.type);
+        const invalid = parsed.annotations.find((a) => !a || typeof a !== "object" || !a.type);
         if (invalid) {
           return {
             content: [
@@ -1412,7 +1446,7 @@ function createMcpServer() {
           throw new Error("Could not determine image dimensions for annotation overlay.");
         }
 
-        const overlayBuffer = buildAnnotationOverlay(args.annotations, meta.width, meta.height);
+        const overlayBuffer = buildAnnotationOverlay(parsed.annotations, meta.width, meta.height);
         if (!overlayBuffer) {
           return {
             content: [
@@ -1422,7 +1456,7 @@ function createMcpServer() {
                   error: true,
                   code: "NO_VALID_ANNOTATIONS",
                   message: "No valid annotations could be rendered. Check that each annotation has the required fields for its type.",
-                  received: args.annotations.map((a) => ({ type: a.type, hasText: !!a.text, textLength: (a.text || "").length })),
+                  received: parsed.annotations.map((a) => ({ type: a.type, hasText: !!a.text, textLength: (a.text || "").length })),
                   suggestions: ["Ensure 'label' annotations include 'text'", "Ensure coordinate fields (x, y) are numbers"],
                 }, null, 2),
               },
@@ -1443,14 +1477,14 @@ function createMcpServer() {
         const outputPath = path.join(FEEDBACK_DIR, outputFilename);
         fs.writeFileSync(outputPath, annotatedBuffer);
 
-        if (args.return_base64 !== false) {
+        if (parsed.return_base64 !== false) {
           return {
             content: [
               {
                 type: "text",
                 text: JSON.stringify({
                   success: true,
-                  message: `Annotation applied. ${args.annotations.length} annotation(s) rendered.`,
+                  message: `Annotation applied. ${parsed.annotations.length} annotation(s) rendered.`,
                   width: meta.width,
                   height: meta.height,
                   format: "image/png",
@@ -1486,21 +1520,22 @@ function createMcpServer() {
       }
 
       if (name === "detect_ui_elements") {
-        const rawBuf = await resolveImageToBuffer(args.image_source);
+        const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, element_types: z.array(z.string()).optional(), return_overlay: z.boolean().optional(), model: toolSchemas.optionalString }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
         await normalizeToPngBuffer(rawBuf);
 
         const meta = await sharp(rawBuf).metadata();
-        const elementTypes = Array.isArray(args.element_types)
-          ? args.element_types.join(", ")
+        const elementTypes = Array.isArray(parsed.element_types)
+          ? parsed.element_types.join(", ")
           : "buttons, text inputs, links/images acting as links, cards, navigation bars, modals, dropdowns, checkboxes, radio buttons, tables, lists, icons, headings, and form labels";
 
         const prompt = `Analyze this screenshot and detect the following UI elements: ${elementTypes}. For each element you identify, provide: 1) the element type, 2) a brief label describing what it is or the text it contains, 3) approximate bounding box coordinates in pixels as [x, y, width, height] where (x,y) is the top-left corner. Return the results as a JSON array where each item has keys: "type", "label", "x", "y", "width", "height". If an element type is not visible, omit it from the array. Focus on accuracy for both labels and coordinates.`;
-        const model = args.model || VISION_MODEL_HEAVY;
+        const model = parsed.model || VISION_MODEL_HEAVY;
         const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
 
         let overlay = null;
         let overlayPath = null;
-        if (args.return_overlay === true) {
+        if (parsed.return_overlay === true) {
           const boxes = [];
           try {
             const jsonMatch = textResult.match(/\[[\s\S]*\]/);
@@ -1559,7 +1594,8 @@ function createMcpServer() {
       }
 
       if (name === "visual_diff") {
-        const rawSources = normalizeImageSources(args.image_sources);
+        const parsed = parseArgs(z.object({ image_sources: toolSchemas.imageSources, threshold: z.number().min(0).max(255).optional(), highlight_color: z.string().optional(), analyze: z.boolean().optional() }));
+        const rawSources = normalizeImageSources(parsed.image_sources);
         if (!rawSources || rawSources.length < 2) {
           throw new Error(
             "Parameter 'image_sources' must be a JSON array with at least 2 images. " +
@@ -1576,8 +1612,8 @@ function createMcpServer() {
           metas.push(await sharp(buf).metadata());
         }
 
-        const threshold = Math.max(0, Math.min(255, Number(args.threshold) || 15));
-        const highlightColor = args.highlight_color || "#FF00FF";
+        const threshold = Math.max(0, Math.min(255, Number(parsed.threshold) || 15));
+        const highlightColor = parsed.highlight_color || "#FF00FF";
         const rgb = hexToRgb(highlightColor);
 
         const w1 = metas[0].width || 400;
@@ -1632,7 +1668,7 @@ function createMcpServer() {
         fs.writeFileSync(diffPath, diffBuf);
 
         let aiDescription = "";
-        if (args.analyze !== false) {
+        if (parsed.analyze !== false) {
           const prompt = "Compare these two screenshots. The first image is the 'before' state, the second is the 'after' state. Describe all visual differences you can identify, including what changed, where on the screen, and any visual regressions or improvements.";
           aiDescription = await queryOllamaVision(VISION_MODEL_HEAVY, prompt, buffers);
         }
@@ -1666,15 +1702,16 @@ function createMcpServer() {
       }
 
       if (name === "textual_visual_feedback") {
-        const rawBuf = await resolveImageToBuffer(args.image_source);
+        const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, dom_fragment: z.string().optional(), css_snapshot: z.string().optional(), include_ocr: z.boolean().optional(), ocr_language: z.string().optional() }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
         const pngBuf = await normalizeToPngBuffer(rawBuf);
         const meta = await sharp(pngBuf).metadata();
 
         let ocrText = "";
         let ocrConfidence = 0;
-        if (args.include_ocr !== false) {
+        if (parsed.include_ocr !== false) {
           try {
-            const lang = args.ocr_language || "eng";
+            const lang = parsed.ocr_language || "eng";
             const { data } = await Tesseract.recognize(pngBuf, lang);
             ocrText = data.text || "";
             ocrConfidence = data.confidence || 0;
@@ -1683,8 +1720,8 @@ function createMcpServer() {
           }
         }
 
-        const domFragment = normalizeDomFragment(args.dom_fragment);
-        const cssSnapshot = normalizeCssSnapshot(args.css_snapshot);
+        const domFragment = normalizeDomFragment(parsed.dom_fragment);
+        const cssSnapshot = normalizeCssSnapshot(parsed.css_snapshot);
 
         const base64 = pngBuf.toString("base64");
         const filename = `${Date.now()}-${crypto.randomUUID()}.png`;
@@ -1702,8 +1739,8 @@ function createMcpServer() {
             file_path: filePath
           },
           ocr: {
-            enabled: args.include_ocr !== false,
-            language: args.ocr_language || "eng",
+            enabled: parsed.include_ocr !== false,
+            language: parsed.ocr_language || "eng",
             confidence: ocrConfidence,
             text: ocrText
           },
@@ -1727,14 +1764,15 @@ function createMcpServer() {
       }
 
       if (name === "extract_semantic_page") {
-        if (!args.html_content || typeof args.html_content !== "string" || args.html_content.trim().length < 3) {
+        const parsed = parseArgs(z.object({ html_content: z.string().min(3), min_text_length: z.number().optional(), include_raw: z.boolean().optional() }));
+        if (!parsed.html_content || typeof parsed.html_content !== "string" || parsed.html_content.trim().length < 3) {
           throw new Error("Parameter 'html_content' must be a non-empty HTML string.");
         }
 
-        const minTextLength = Math.max(0, Number(args.min_text_length) || 10);
-        const includeRaw = !!args.include_raw;
+        const minTextLength = Math.max(0, Number(parsed.min_text_length) || 10);
+        const includeRaw = !!parsed.include_raw;
 
-        const controlMap = extractSemanticPage(args.html_content, minTextLength, includeRaw);
+        const controlMap = extractSemanticPage(parsed.html_content, minTextLength, includeRaw);
 
         return {
           content: [
@@ -1744,14 +1782,15 @@ function createMcpServer() {
       }
 
       if (name === "generate_repo_graph") {
-        if (!args.repo_path || typeof args.repo_path !== "string") {
+        const parsed = parseArgs(z.object({ repo_path: z.string().min(1), max_depth: z.number().optional(), include_node_modules: z.boolean().optional() }));
+        if (!parsed.repo_path || typeof parsed.repo_path !== "string") {
           throw new Error("Parameter 'repo_path' must be a non-empty string.");
         }
 
-        const maxDepth = Math.max(1, Math.min(20, Number(args.max_depth) || 5));
-        const includeNodeModules = !!args.include_node_modules;
+        const maxDepth = Math.max(1, Math.min(20, Number(parsed.max_depth) || 5));
+        const includeNodeModules = !!parsed.include_node_modules;
 
-        const result = await generateRepoGraph(args.repo_path, maxDepth, includeNodeModules);
+        const result = await generateRepoGraph(parsed.repo_path, maxDepth, includeNodeModules);
 
         const response = {
           success: true,
@@ -1769,11 +1808,12 @@ function createMcpServer() {
       }
 
       if (name === "download_image") {
-        if (!args.url || typeof args.url !== "string") {
+        const parsed = parseArgs(z.object({ url: z.string().min(1), filename: z.string().optional() }));
+        if (!parsed.url || typeof parsed.url !== "string") {
           throw new Error("Parameter 'url' must be a non-empty string.");
         }
 
-        const result = await downloadImageToFile(args.url);
+        const result = await downloadImageToFile(parsed.url);
 
         return {
           content: [
@@ -1797,7 +1837,7 @@ function createMcpServer() {
 
       throw new Error(`Unknown tool requested: ${name}`);
     } catch (err) {
-      console.error(`[Tool Execution Error - ${name}]:`, err.message);
+      logWarn(`[Tool Execution Error - ${name}]:`, err.message);
       return {
         content: [
           {
@@ -1831,7 +1871,7 @@ app.get("/", (req, res) => {
 const streamableTransports = new Map();
 
 app.all("/mcp", async (req, res) => {
-  console.log("[DEBUG] /mcp HIT", req.method, req.path);
+  logInfo(`[HTTP] ${req.method} ${req.path}`);
   const sessionId = req.headers["mcp-session-id"] || req.query.sessionId;
   let transport = streamableTransports.get(sessionId);
 
@@ -1860,13 +1900,13 @@ app.all("/mcp", async (req, res) => {
 const sseTransports = new Map();
 
 app.get("/sse", async (req, res) => {
-  console.log(`[HTTP] ${new Date().toLocaleTimeString()} -> GET /sse`);
+  logInfo(`[HTTP] ${new Date().toLocaleTimeString()} -> GET /sse`);
 
   const transport = new SSEServerTransport("/messages", res);
   sseTransports.set(transport.sessionId, transport);
 
   transport.onclose = () => {
-    console.log(` -> SSE connection closed for session: ${transport.sessionId}`);
+    logInfo(` -> SSE connection closed for session: ${transport.sessionId}`);
     sseTransports.delete(transport.sessionId);
   };
 
@@ -1995,7 +2035,7 @@ app.post("/upload", express.raw({ type: "*/*", limit: `${MAX_UPLOAD_SIZE_BYTES}m
     height = meta.height;
   } catch {}
 
-  console.log(`[UPLOAD] ${clientIp} uploaded ${filename} (${req.body.length} bytes, ${mimeType}, ${width}x${height})`);
+  logInfo(`[UPLOAD] ${clientIp} uploaded ${filename} (${req.body.length} bytes, ${mimeType}, ${width}x${height})`);
 
   res.status(200).json({
     uploadRef: `upload://${filename}`,
@@ -2013,7 +2053,7 @@ app.options("/upload", (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`
+  logInfo(`
 ========================================
  Hybrid Vision MCP Server Running 
  Listening on: http://0.0.0.0:${PORT}
