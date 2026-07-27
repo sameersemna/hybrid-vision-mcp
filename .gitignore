@@ -6,3 +6,4 @@ screenshots/
 visual_qa_report_*.md
 .env
 tmp/
+*.log
