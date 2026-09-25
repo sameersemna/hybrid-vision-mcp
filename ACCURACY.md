@@ -689,6 +689,119 @@ names the ports tried and how to override (`PORT=11402 npm run verify:background
 | live MCP (new code, port 11498) | F1 agree YES, F2 null YES, F4 2/2 YES |
 | non-vacuity | 9 + 11 + 7 + **5 (round 3)** all non-vacuous |
 
+## 5e. Fourth audit: multi-panel backgrounds and the adequacy gate
+
+A fourth independent audit found the worst kind of defect yet: on a two-panel UI
+the tool reported `all_meet_aa: true` while a sidebar string at **1.64:1** was
+present and visible. This section records the mechanism, the fix, and the
+non-regression that protects the earlier rounds.
+
+### The defect (F5)
+
+Fixture: 900x420, a dark sidebar (30%, `#161616`) and a bright content panel
+(70%, `#d2d2d2`), with `#3c3c3c` text on the sidebar (1.64:1, **fails AA**).
+
+Reproduced exactly as reported: `colour_count: 1`, `failing_count: 0`,
+`all_meet_aa: true`, and `#3c3c3c` absent from **every** channel — not in
+`colours`, `merged_anti_aliasing`, `excluded`, `skipped`, `suspected_noise` or
+`notes`. A crop of the sidebar alone found it at 1.64:1 with 14 components, so it
+is real, text-like, and merely invisible at full frame.
+
+**Mechanism (confirmed, not hypothesised).** Two effects compounded:
+
+1. **Panel-as-ink.** The ink mask uses ONE background. The whole dark sidebar
+   differs from the modal `#d2d2d2`, so all ~113k sidebar pixels became "ink" —
+   one connected region, box `{0,0,270,420}`, `fill_ratio: 1.0`. A component's
+   colour is its most extreme pixel, so that blob's "colour" was the panel FILL
+   `#161616`. The sidebar text lived *inside* that blob and was absorbed.
+2. **AA fold of real text.** Content text `#282828` (on the bright panel, 11
+   components) is collinear on the segment 210→22, so it folded into `#161616`
+   as an "anti-aliasing shade".
+
+The audit's adequacy hypothesis was also right: `explained_fraction` was **0.693**
+because 70% of the image *is* one flat colour. `adequate: frac >= 0.5` can never
+fault a UI whose modal panel is large — which is almost every UI.
+
+### The fix: multi-plateau background modelling
+
+*This was the audit's recommendation 1, implemented as recommended, not as an
+approximation.*
+
+`detectPlateaus()` finds large flat colour regions (panels, cards, page fill).
+When **two or more** are present, the enumeration switches to a multi-plateau
+model:
+
+- a pixel is background if it is within `ink_threshold` of **any** plateau, so a
+  panel is no longer ink;
+- each text colour is measured against the **surrounding fill** it sits on (a
+  small ring of non-ink pixels around the component), not the modal colour and
+  not merely its nearest colour — this is what makes `#282828` measure 9.75:1
+  against `#d2d2d2` instead of 1.23:1 against the far dark panel;
+- every colour reports `measured_against`, and panel fills are moved to
+  `panel_fills[]` and disclosed in `notes`;
+- `background_model: "multi-plateau"` and `plateaus[]` (with share, largest
+  component, flatness, dominance) are reported, and the region is disclosed as
+  multi-plateau **even though the single-colour fit is ~0.69** — closing the
+  adequacy gap the audit identified.
+
+**A plateau must pass four measured tests** — each was calibrated against
+fixtures, and each is separately pinned by a non-vacuity case:
+
+| test | real panel | rejects |
+|---|---|---|
+| largest connected region ≥ 2% of area | 69–29% | small swatches/AA |
+| **dominance** ≥ 0.5 (largest blob / colour's pixels) | 0.78–1.0 | text in a tight crop (glyph strokes are many blobs) |
+| **flatness** ≥ 0.85 (one exact colour / region) | 0.99+ | a smooth gradient band (~0.10–0.18) |
+| connectivity (flood fill) | one blob | scattered specks |
+
+Two of these were **necessary and found by measurement, not assumed**: a thick
+38px glyph stroke is a big solid blob (so an early version mistook text for a
+panel and deleted it — caught by the existing tight-region test), and a smooth
+gradient's quantised bands are genuinely flat (flatness 1.0 at zero noise), so
+`0.85` — sitting in the measured gap between 0.18 and 0.99 — is what stops a
+gradient becoming a panel.
+
+### §3.1 — `local_background` is now actually delivered
+
+The round-3 note promised that "each colour carries `local_background`", but it
+only existed on the internal `components[]`. Every returned `colours[]` entry now
+carries `local_background` **and** `measured_against`.
+
+### §3.2 — structural, not contrast-dependent
+
+The high-contrast sidebar variant (near-equal tones) previously returned
+`colour_count: 1`. It is now correctly multi-plateau: the number of panels is a
+**structural** finding and does not depend on whether any text on them is legible.
+
+### Non-regression (this is the important part)
+
+| fixture | plateaus | behaviour |
+|---|---|---|
+| acceptance fixture (one flat bg) | **1** | unchanged: 5 colours / 1.04 / 13.42 / 2 |
+| flat fixture, local mode | 1 | byte-identical, `effT 4` |
+| gradient/photo | **0** | falls back to the existing model; still warns |
+| dense dashboard | 3 | still measures; no regression |
+| bravo tight crop | 1 | still `#484f58 @ 2.14` |
+
+With fewer than two plateaus the code takes the **original** path, so the whole
+of §1-§5d is preserved by construction rather than by re-tuning.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **61/61** (was 54; +7 round-4 tests) |
+| F5 sidebar text, global **and** local | reported at 1.64:1, `all_meet_aa: false` |
+| F5 content text | 9.75:1 against its OWN panel (`measured_against: #d2d2d2`) |
+| F5 model/plateaus | `multi-plateau`, 2 plateaus, disclosed in `notes` |
+| §3.1 | every colour carries `local_background` |
+| §3.2 | high-contrast variant still 2 plateaus |
+| §1 acceptance numbers | 5 colours / 1.04 / 13.42 / 2, boxes 4, decorative disclosed |
+| flat/local equivalence | byte-identical, `effT 4` |
+| gradient | 0 plateaus, falls back, warning intact |
+| live MCP (new code, port 11498) | F5 fixed: YES in both modes |
+| non-vacuity | 9 + 11 + 7 + 5 + **6 (round 4)** all non-vacuous |
+
 ## 9. New module map
 
 | File | Responsibility |

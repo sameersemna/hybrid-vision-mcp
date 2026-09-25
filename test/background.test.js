@@ -29,6 +29,7 @@ import {
   partitionSuspectedNoise,
   mergeAntiAliasing,
   isAntiAliasingBlend,
+  detectPlateaus,
 } from "../lib/measure.js";
 import {
   buildContrastFixture,
@@ -36,7 +37,9 @@ import {
   buildDenseFlatFixture,
   buildGradientTextFixture,
   buildFlatTextFixture,
+  buildTwoPanelFixture,
   FIXTURE,
+  TWO_PANEL,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -397,5 +400,144 @@ test("F3: verify:background discovers the service port instead of hard-coding 11
   assert.doesNotMatch(src, /process\.env\.PORT \|\| 11499/, "must not silently default to 11499");
   assert.match(src, /11402/, "must probe the deployed service port");
   assert.match(src, /PORT=/, "must name how to override the port");
+});
+
+// ==========================================================================
+// Fourth-audit acceptance tests (F5 multi-panel, plus 3.1/3.2). Non-vacuous:
+// reverting the multi-plateau model restores the false negative these assert
+// against (verified by verify/nonvacuity-round4.mjs).
+// ==========================================================================
+
+// ------------------- F5: two-panel UI does not hide failing text -----------
+
+test("F5: plateau detection finds both panels and NOT a text colour", async () => {
+  const png = await buildTwoPanelFixture();
+  const pixels = await loadPixels(png);
+  const plateaus = detectPlateaus(pixels, TWO_PANEL.region);
+
+  const hexes = plateaus.map((p) => p.hex);
+  assert.equal(plateaus.length, 2, `exactly the two panels (got ${hexes.join(", ")})`);
+  assert.ok(hexes.includes("#d2d2d2"), "bright content panel is a plateau");
+  assert.ok(hexes.includes("#161616"), "dark sidebar is a plateau");
+  assert.ok(
+    !plateaus.some((p) => p.hex === TWO_PANEL.sidebarText),
+    "sidebar TEXT must not be mistaken for a plateau",
+  );
+
+  // Real text on a tight crop must not become a plateau either (the thick side
+  // of a 38px glyph is one big solid blob, but the colour has many such blobs).
+  const tight = detectPlateaus(pixels, TWO_PANEL.sidebarCrop);
+  assert.ok(
+    !tight.some((p) => p.hex === TWO_PANEL.sidebarText),
+    "large text in a tight crop must not be detected as a plateau",
+  );
+});
+
+test("F5: whole-image contrast reports the failing sidebar text (global + local)", async () => {
+  const png = await buildTwoPanelFixture();
+  const pixels = await loadPixels(png);
+
+  for (const mode of ["global", "local"]) {
+    const r = contrastInRegion(pixels, TWO_PANEL.region, { backgroundMode: mode });
+    const sidebar = r.colours.find((c) => c.foreground === TWO_PANEL.sidebarText);
+
+    assert.ok(
+      sidebar,
+      `[${mode}] the 1.64:1 sidebar text must be reported, not absorbed (colours: ${r.colours.map((c) => c.foreground).join(", ") || "none"})`,
+    );
+    assert.equal(sidebar.contrast_ratio, TWO_PANEL.sidebarRatio, `[${mode}] sidebar measured against its own panel`);
+    assert.equal(sidebar.wcag_aa, false);
+    assert.equal(r.all_meet_aa, false, `[${mode}] must not claim everything passes while a 1.64:1 run exists`);
+    assert.ok(r.failing_count >= 1, `[${mode}] failing_count must count the sidebar text`);
+
+    // The content text (dark, but on the BRIGHT panel at 9.75:1) is measured
+    // against the panel it sits on, not the far-away dark sidebar.
+    const content = r.colours.find((c) => c.foreground === TWO_PANEL.contentText);
+    assert.ok(content, `[${mode}] content text must be reported`);
+    assert.equal(content.contrast_ratio, TWO_PANEL.contentRatio, `[${mode}] content measured against the bright panel`);
+    assert.equal(content.measured_against, "#d2d2d2");
+    assert.equal(r.background_model, "multi-plateau");
+  }
+});
+
+test("F5: multi-plateau adequacy is disclosed even though the modal colour dominates", async () => {
+  const png = await buildTwoPanelFixture();
+  const pixels = await loadPixels(png);
+  const r = contrastInRegion(pixels, TWO_PANEL.region);
+
+  // The modal colour explains ~69% — a single-colour "fit" would call this
+  // adequate. Multi-plateau detection must still flag the region.
+  assert.equal(r.background_fit.adequate, true, "the single-colour fit alone is genuinely ~0.69");
+  assert.equal(r.background_model, "multi-plateau", "but the model must be reported as multi-plateau");
+  assert.ok(r.plateaus.length >= 2);
+  assert.ok(
+    r.notes.some((n) => /Multi-plateau region/.test(n)),
+    "the two-panel structure must be disclosed in notes",
+  );
+  // Every colour states what it was measured against.
+  for (const c of r.colours) {
+    assert.ok(c.measured_against, `colour ${c.foreground} must report measured_against`);
+  }
+});
+
+test("§3.1: every returned colour carries local_background, not just components", async () => {
+  const png = await buildTwoPanelFixture();
+  const pixels = await loadPixels(png);
+  const r = contrastInRegion(pixels, TWO_PANEL.region, { backgroundMode: "local" });
+  assert.ok(r.colours.length > 0);
+  for (const c of r.colours) {
+    assert.ok(
+      c.local_background !== undefined,
+      `colour ${c.foreground} must carry local_background (the note promises it)`,
+    );
+  }
+});
+
+test("§3.2: the high-contrast sidebar variant is still structurally multi-plateau", async () => {
+  // Near-equal tones (sidebar text ~#dcdcdc beside the #d2d2d2 panel) must not
+  // change the STRUCTURAL finding: two panels is still two panels.
+  const png = await buildTwoPanelFixture({ sidebarText: "#dcdcdc" });
+  const pixels = await loadPixels(png);
+  const r = contrastInRegion(pixels, TWO_PANEL.region);
+  assert.equal(r.background_model, "multi-plateau");
+  assert.ok(r.plateaus.length >= 2);
+});
+
+// ------------------- non-regression: single-plateau still works ------------
+
+test("F5 does not regress a single-plateau tight region (large text is not a plateau)", async () => {
+  const png = await buildContrastFixture();
+  const pixels = await loadPixels(png);
+  // The bravo region is a tight crop around 40px #484f58 text. Its glyph strokes
+  // are large solid blobs; they must NOT be detected as a plateau.
+  const r = contrastInRegion(pixels, FIXTURE.regions.bravo);
+  assert.equal(r.worst.contrast_ratio, 2.14, "the tight-region number must be unchanged");
+  assert.equal(r.worst.foreground.toLowerCase(), "#484f58");
+  assert.equal(r.failing_count, 1);
+});
+
+test("F5 does not invent plateaus on a gradient (falls back, still warns)", async () => {
+  // With text present, a gradient breaks into pieces so nothing reaches the
+  // plateau floor: the model must fall back to the single background and still
+  // emit the inadequate-fit warning.
+  const png = await buildPhotographicFixture({ noise: 8, text: true });
+  const pixels = await loadPixels(png);
+  const region = { left: 0, top: 0, width: 700, height: 360 };
+  const r = contrastInRegion(pixels, region);
+  assert.equal(r.plateaus.length, 0, "a noisy gradient has no large flat plateau");
+  assert.equal(r.background_model, "global", "so the model falls back to the single background");
+  assert.equal(r.background_fit.adequate, false, "and the gradient is still warned about");
+  assert.ok(r.notes.some((n) => /Background fit warning/.test(n)));
+
+  // A SMOOTH (noiseless) gradient is the hard case: its quantised bands ARE flat
+  // and large, so the flatness test is what stops them becoming "plateaus".
+  // Without it this image yields several spurious plateaus.
+  const smooth = await buildPhotographicFixture({ noise: 0, text: false });
+  const s = contrastInRegion(await loadPixels(smooth), region);
+  assert.ok(
+    s.plateaus.length < 2,
+    `a smooth gradient must not be treated as multi-plateau (got ${s.plateaus.length}: ${s.plateaus.map((p) => p.hex).join(", ")})`,
+  );
+  assert.equal(s.background_model, "global");
 });
 

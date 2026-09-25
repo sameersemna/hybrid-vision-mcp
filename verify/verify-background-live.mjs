@@ -152,4 +152,32 @@ console.log("\n=== 3. round-3 checks (F1 mode consistency, F2 null background, F
   console.log(`  F4 merged_anti_aliasing global=${JSON.stringify(twoRes.measurements.contrast.merged_anti_aliasing.map((m) => m.hex))}`);
 }
 
+// Round-4 checks (fourth audit F5 multi-panel), over the real MCP transport.
+async function twoPanel() {
+  const w = 900, h = 420, split = 270;
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="${split}" height="${h}" fill="#161616"/>
+    <rect x="${split}" y="0" width="${w - split}" height="${h}" fill="#d2d2d2"/>
+    <text x="30" y="108" font-family="DejaVu Sans, sans-serif" font-size="38" fill="#3c3c3c">SIDEBAR</text>
+    <text x="30" y="188" font-family="DejaVu Sans, sans-serif" font-size="38" fill="#3c3c3c">SETTINGS</text>
+    <text x="${split + 30}" y="108" font-family="DejaVu Sans, sans-serif" font-size="38" fill="#282828">CONTENT-OK</text>
+  </svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 4. round-4 checks (F5 two-panel multi-plateau) ===");
+{
+  const panel = toUri(await twoPanel());
+  const region = { left: 0, top: 0, width: 900, height: 420 };
+  for (const mode of ["global", "local"]) {
+    const r = await call("measure_image", { image_source: panel, mode: "contrast", region, background_mode: mode });
+    const c = r.measurements.contrast;
+    const sidebar = c.colours.find((x) => x.foreground === "#3c3c3c");
+    const content = c.colours.find((x) => x.foreground === "#282828");
+    console.log(`  [${mode}] model=${c.background_model} plateaus=${c.plateaus?.length} colours=${c.colours.length}`);
+    console.log(`  [${mode}] sidebar #3c3c3c = ${sidebar ? sidebar.contrast_ratio + ":1" : "MISSING"}  all_meet_aa=${c.all_meet_aa}  failing=${c.failing_count}`);
+    console.log(`  [${mode}] content #282828 = ${content ? content.contrast_ratio + ":1 vs " + content.measured_against : "MISSING"}`);
+    console.log(`  [${mode}] local_background on colours: ${c.colours.every((x) => x.local_background !== undefined) ? "YES" : "NO"}  -> F5 fixed: ${sidebar && sidebar.contrast_ratio === 1.64 && c.all_meet_aa === false ? "YES" : "NO"}`);
+  }
+}
+
 await client.close();

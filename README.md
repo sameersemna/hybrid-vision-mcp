@@ -605,7 +605,6 @@ even when Ollama is unavailable or contended. **No vision model is consulted.**
 behaviour selected only the most legible colour, which meant an image containing
 large text at 2.14:1 and 1.04:1 could be summarised as `wcag_aa: true` — reading
 as "no contrast problems". Now:
-
 ```json
 "contrast": {
   "worst":  { "foreground": "#1e1c18", "contrast_ratio": 1.04, "wcag_aa": false },
@@ -643,7 +642,6 @@ appear under `suspected_noise` (also excluded from the verdict, also disclosed).
 **Photographic and gradient images.** A single global background colour only
 models flat UI screenshots well. When it explains less than half the region, the
 result carries a `background_fit` block and a warning in `notes`:
-
 ```json
 "background_fit": {
   "background": "#90877d",
@@ -660,6 +658,35 @@ text-free photo that yields **zero** reported colours (rather than the whole
 gradient counting as one), and it recovers text tones a global background misses.
 The mode is opt-in because a tile straddling two flat panels can
 over-threshold — measured, not assumed. See `ACCURACY.md` §5c.
+
+**Multi-panel UIs (sidebar + content).** A single background colour cannot model
+a UI with two or more large flat panels: the non-modal panel used to become one
+enormous "ink" blob whose colour was the panel *fill*, and text sitting on that
+panel disappeared entirely — so a 1.64:1 sidebar string could be reported as
+`all_meet_aa: true`. When two or more large flat plateaus are detected, every
+plateau is treated as background and **each text colour is measured against the
+fill it actually sits on**:
+
+```json
+"background_model": "multi-plateau",
+"plateaus": [ { "hex": "#d2d2d2", "share": 0.6928 }, { "hex": "#161616", "share": 0.2892 } ],
+"colours": [
+  { "foreground": "#3c3c3c", "contrast_ratio": 1.64, "wcag_aa": false,
+    "measured_against": "#161616", "measured_against_plateau": "#161616", "local_background": "#161616" },
+  { "foreground": "#282828", "contrast_ratio": 9.75, "wcag_aa": true,
+    "measured_against": "#d2d2d2", "measured_against_plateau": "#d2d2d2" }
+],
+"panel_fills": [ { "foreground": "#d2d2d2", "reason": "panel fill: a large near-solid region ..." } ],
+"notes": [ "Multi-plateau region: 2 large flat colour plates were detected ..." ]
+```
+
+This is structural, so it fires even when the modal colour explains most of the
+area (a 30/70 layout scores `explained_fraction: 0.693`, which a single-colour
+adequacy test would call fine). A plateau must pass four measured tests —
+minimum region size, component dominance (a panel is ONE blob; large text is
+many), flatness (a panel is one exact colour; a gradient band is not) and
+connectivity. With fewer than two plateaus the result is unchanged. See
+`ACCURACY.md` §5e.
 
 ---
 
@@ -701,8 +728,15 @@ asserted as a failing text colour. It is excluded from
 
 **Local mode has no single background.** Under `background_mode: "local"`,
 `background` is `null` (there is no single background by construction, and the
-global modal colour can coincide with a text tone). Each colour carries its own
-`local_background`.
+global modal colour can coincide with a text tone).
+
+**Every colour says what it was measured against.** Each `colours[]` entry carries
+`measured_against` (the fill the text sits on) and `local_background`, so a caller
+never has to infer which background produced a ratio.
+
+**Panel fills are not text colours.** In a multi-plateau region the large
+near-solid panel colours are returned under `panel_fills[]` and excluded from the
+text enumeration, so a panel's own fill is never reported as a "failing colour".
 
 ---
 

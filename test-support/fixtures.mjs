@@ -162,3 +162,40 @@ export async function buildFlatTextFixture({
     `</svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
+
+/**
+ * Two large flat panels: a dark sidebar (left) and a bright content panel
+ * (right), with text on each. Reproduces the third-audit F5 layout.
+ *
+ * The sidebar text is the point: it is low-contrast against its OWN panel
+ * (default #3c3c3c on #161616 = 1.64:1, failing) but high-contrast against the
+ * modal panel. A single-background model used to absorb it into the sidebar and
+ * report `all_meet_aa: true`.
+ *
+ * @param {{ w?:number, h?:number, split?:number, sidebar?:string, content?:string,
+ *           sidebarText?:string, contentText?:string, fontSize?:number }} [opts]
+ */
+export async function buildTwoPanelFixture({
+  w = 900, h = 420, split = 270,
+  sidebar = "#161616", content = "#d2d2d2",
+  sidebarText = "#3c3c3c", contentText = "#282828",
+  fontSize = 38,
+} = {}) {
+  const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect x="0" y="0" width="${split}" height="${h}" fill="${sidebar}"/>` +
+    `<rect x="${split}" y="0" width="${w - split}" height="${h}" fill="${content}"/>` +
+    `<text x="30" y="108" font-family="DejaVu Sans, sans-serif" font-size="${fontSize}" fill="${sidebarText}">SIDEBAR</text>` +
+    `<text x="30" y="188" font-family="DejaVu Sans, sans-serif" font-size="${fontSize}" fill="${sidebarText}">SETTINGS</text>` +
+    `<text x="${split + 30}" y="108" font-family="DejaVu Sans, sans-serif" font-size="${fontSize}" fill="${contentText}">CONTENT-OK</text>` +
+    `</svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+export const TWO_PANEL = {
+  region: { left: 0, top: 0, width: 900, height: 420 },
+  sidebarText: "#3c3c3c",
+  sidebarRatio: 1.64,
+  contentText: "#282828",
+  contentRatio: 9.75,
+  sidebarCrop: { left: 20, top: 60, width: 240, height: 130 },
+};

@@ -60,8 +60,8 @@ const cases = [
     id: "AA merge renderer independence",
     test: "renderer independence",
     file: "lib/measure.js",
-    from: "  const { clusters: finalClusters, merged_anti_aliasing: mergedAA } =\n    mergeAntiAliasing(clusters, background);",
-    to: "  const { clusters: finalClusters, merged_anti_aliasing: mergedAA } = { clusters, merged_anti_aliasing: [] }; // REVERTED: no AA merge",
+    from: "  const { clusters: finalClusters, merged_anti_aliasing: mergedAA } =\n    mergeAntiAliasing(textClusters, background);",
+    to: "  const { clusters: finalClusters, merged_anti_aliasing: mergedAA } = { clusters: textClusters, merged_anti_aliasing: [] }; // REVERTED: no AA merge",
   },
   {
     id: "AA blend discriminator protects dark text",

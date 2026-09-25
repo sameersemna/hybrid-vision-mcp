@@ -1,5 +1,65 @@
 # Changelog
 
+## Fourth-audit follow-up: multi-panel backgrounds (F5) — 2026-09-25
+
+A fourth independent audit found the most serious defect of the whole effort: on
+a **two-panel UI** the tool reported `all_meet_aa: true` while a sidebar string at
+**1.64:1** was present and visible. See `ACCURACY.md` §5e.
+
+### Fixed
+
+- **F5 — a failing text colour is no longer hidden by a multi-panel layout.**
+  With one background reference, the whole non-modal panel became a single
+  "ink" component whose colour was the panel FILL; text inside it was absorbed
+  and appeared in no channel. `measure_image` now detects large flat plateaus
+  (panels) and, when there are two or more, treats every plateau as background
+  and measures each text colour against the fill it actually sits on. The
+  sidebar text is now reported at 1.64:1 with `all_meet_aa: false`, in both
+  `global` and `local` modes.
+- **F5 — the adequacy gate now covers multi-panel UIs.** A 30/70 layout has a
+  modal fraction of ~0.69, so `adequate: frac >= 0.5` could never fault it. The
+  region is now reported as `background_model: "multi-plateau"` with the
+  individual `plateaus[]`, and disclosed in `notes`, regardless of the modal
+  fraction.
+- **§3.1 — `local_background` is actually delivered.** It was promised in a note
+  but only existed on the internal `components[]`; every returned `colours[]`
+  entry now carries `local_background` and `measured_against`.
+- **§3.2 — the layout finding is structural.** A near-equal-tone sidebar variant
+  is now correctly multi-plateau; the number of panels no longer depends on
+  whether any text on them happens to be legible.
+
+### Added
+
+- `detectPlateaus()`, `nearestPlateau()` in `lib/measure.js`. A plateau must pass
+  four measured tests (min region share, component dominance, flatness,
+  connectivity); two of these were necessary and found by measurement — a thick
+  glyph stroke is a large solid blob, and a smooth gradient's quantised bands are
+  genuinely flat.
+- Result keys: `background_model` (`"global"` | `"local"` | `"multi-plateau"`),
+  `plateaus[]`, `plateaus_without_text[]`, `panel_fills[]`, and per-colour
+  `measured_against` / `measured_against_plateau` / `local_background`.
+- `buildTwoPanelFixture()` in `test-support/fixtures.mjs`; 7 tests in
+  `test/background.test.js` (now 24).
+- `verify/nonvacuity-round4.mjs` — 6 non-vacuous cases reverting each round-4
+  guard.
+- `verify/verify-background-live.mjs` now also prints the round-4 (F5) checks.
+
+### Deliberately NOT changed
+
+- **The WCAG formula** and all §1-§5e verified behaviour.
+- **The single-plateau path** — with fewer than two plateaus the code takes the
+  original branch, so the flat fixture and every earlier acceptance number are
+  preserved by construction rather than by re-tuning.
+- **`background_mode: "local"` remains opt-in**; multi-plateau detection is
+  independent of it.
+- **Known residual (disclosed, not hidden):** a *smooth*, noise-free gradient can
+  produce flat quantised bands that pass the plateau tests. With realistic noise
+  in every tested case `plateaus = 0` and the model falls back correctly; the
+  flatness threshold (0.85) sits in the measured gap (gradient bands ≤ 0.18,
+  real panels ≥ 0.99) but a synthetic gradient with zero noise can still band.
+
+---
+
 ## Third-audit follow-up: mode consistency, local backgrounds, AA folding — 2026-09-25
 
 A third independent audit re-verified the earlier work and found four residual
