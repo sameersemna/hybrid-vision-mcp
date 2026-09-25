@@ -110,3 +110,55 @@ export async function buildDenseFlatFixture() {
 }
 
 export const PHOTO_TEXT_COLOURS = ["#ffffff", "#2b2b2b", "#f2b8b8"];
+
+/**
+ * Grayscale gradient + uniform noise, with known text lines.
+ *
+ * Reproduces the third-audit fixtures (F2/F4): a non-flat background plus text
+ * tones that are collinear on the grey ramp, so a mid tone sits exactly between
+ * the dark background and a brighter text run.
+ *
+ * @param {{ w?:number, h?:number, noise?:number, seed?:number,
+ *           lines?: Array<{text:string,y:number,fill:string,size?:number}> }} [opts]
+ */
+export async function buildGradientTextFixture({
+  w = 900, h = 420, noise = 14, seed = 7,
+  lines = [
+    { text: "BRIGHT-ONE", y: 60, fill: "#f0f0f0" },
+    { text: "FAILING-TWO", y: 170, fill: "#5a5a5a" },
+  ],
+} = {}) {
+  let s = seed >>> 0;
+  const rnd = () => { s |= 0; s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const buf = Buffer.alloc(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const base = 20 + 120 * (x / w);
+      const n = Math.round((rnd() * 2 - 1) * noise);
+      const v = Math.max(0, Math.min(255, Math.round(base + n)));
+      const i = (y * w + x) * 3;
+      buf[i] = v; buf[i + 1] = v; buf[i + 2] = v;
+    }
+  }
+  const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    lines.map((l) => `<text x="40" y="${l.y}" font-family="DejaVu Sans, sans-serif" font-size="${l.size ?? 44}" fill="${l.fill}">${l.text}</text>`).join("") +
+    `</svg>`;
+  return sharp(buf, { raw: { width: w, height: h, channels: 3 } })
+    .composite([{ input: Buffer.from(svg), blend: "over" }])
+    .png().toBuffer();
+}
+
+/** Flat background with known text lines (control for the gradient fixture). */
+export async function buildFlatTextFixture({
+  w = 900, h = 420, background = "#141414",
+  lines = [
+    { text: "BRIGHT-ONE", y: 60, fill: "#f0f0f0" },
+    { text: "MID-TWO", y: 170, fill: "#969696" },
+  ],
+} = {}) {
+  const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>` +
+    lines.map((l) => `<text x="40" y="${l.y}" font-family="DejaVu Sans, sans-serif" font-size="${l.size ?? 44}" fill="${l.fill}">${l.text}</text>`).join("") +
+    `</svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}

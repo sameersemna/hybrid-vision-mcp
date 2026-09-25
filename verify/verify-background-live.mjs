@@ -2,9 +2,16 @@
 // Confirms: the flat fixture is unchanged; a photographic image is warned about
 // on the default path and improved by the opt-in local mode.
 //
+// Port discovery: this probes the deployed service port first (11402 is what the
+// systemd unit listens on) and falls back to 11499 (the throwaway test instance).
+// A previous version hard-coded 11499, so the advertised "live" check silently
+// targeted a different configuration than the one actually deployed.
+//
 //   python3 verify/make-fixture.py
-//   PORT=11499 node index.js &
+//   node index.js &                     # or: PORT=11402 node index.js &
 //   node verify/verify-background-live.mjs
+//
+// Override with PORT=<port> if your service listens elsewhere.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import fs from "node:fs";
@@ -12,9 +19,38 @@ import path from "node:path";
 import sharp from "sharp";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const PORT = process.env.PORT || 11499;
 const FIXTURE = path.join(ROOT, "fixture.png");
 if (!fs.existsSync(FIXTURE)) { console.error("Run: python3 verify/make-fixture.py"); process.exit(1); }
+
+// Candidate ports, in priority order: explicit override first, then the deployed
+// service port, then the throwaway test port. De-duplicated.
+const CANDIDATE_PORTS = [...new Set(
+  [process.env.PORT ? Number(process.env.PORT) : null, 11402, 11499].filter((p) => Number.isFinite(p)),
+)];
+
+/** Find the first candidate port answering the health endpoint. */
+async function discoverPort() {
+  const tried = [];
+  for (const port of CANDIDATE_PORTS) {
+    tried.push(port);
+    try {
+      const res = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(1500) });
+      if (res.ok) return port;
+    } catch {
+      // not listening — try the next candidate
+    }
+  }
+  console.error(
+    `\nCould not reach a hybrid-vision service. Tried port(s): ${tried.join(", ")}.\n` +
+      `Start the service, or point this check at the right port explicitly:\n` +
+      `  PORT=<the port your service listens on> npm run verify:background\n` +
+      `e.g. PORT=11402 npm run verify:background\n`,
+  );
+  process.exit(1);
+}
+
+const PORT = await discoverPort();
+console.log(`Using hybrid-vision service on port ${PORT}.\n`);
 
 const toUri = (buf) => "data:image/png;base64," + buf.toString("base64");
 
@@ -76,6 +112,44 @@ console.log("\n=== 2. PHOTOGRAPHIC image ===");
   const cl = l.measurements.contrast;
   console.log(`  local   : bright_tones=${brightTones(cl)} failing_tones=${failingTones(cl)} groups=${cl.colours.length} effT=${Math.round(cl.median_ink_threshold)} mode=${cl.background_mode}`);
   console.log(`  -> local resolves more bright text tones: ${brightTones(cl) > brightTones(cd) ? "YES" : "no"}`);
+}
+
+// Round-3 checks (third audit F1/F2/F4), exercised over the real MCP transport.
+async function twoToneFlat() {
+  const w = 900, h = 420;
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${w}" height="${h}" fill="#141414"/>
+    <text x="40" y="80" font-family="DejaVu Sans, sans-serif" font-size="44" fill="#f0f0f0">BRIGHT-ONE</text>
+    <text x="40" y="190" font-family="DejaVu Sans, sans-serif" font-size="44" fill="#969696">MID-TWO</text>
+  </svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 3. round-3 checks (F1 mode consistency, F2 null background, F4 no text-run fold) ===");
+{
+  const flat = toUri(fs.readFileSync(FIXTURE));
+  const region = { left: 0, top: 0, width: 900, height: 420 };
+
+  // F1: with NO region, mode "contrast" and mode "all" must answer identically.
+  const onlyContrast = await call("measure_image", { image_source: flat, mode: "contrast" });
+  const all = await call("measure_image", { image_source: flat, mode: "all" });
+  const w1 = onlyContrast.measurements.contrast?.worst?.contrast_ratio;
+  const w2 = all.measurements.contrast?.worst?.contrast_ratio;
+  const f1 = onlyContrast.measurements.contrast?.failing_count === all.measurements.contrast?.failing_count;
+  console.log(`  F1 contrast-only worst=${w1}  all worst=${w2}  -> agree: ${w1 === w2 && f1 ? "YES" : "NO"}`);
+  console.log(`  F1 scope note disclosed: ${/WHOLE image/.test((onlyContrast.notes || []).join(" ")) ? "YES" : "no"}`);
+
+  // F2: local mode must report NO single background colour.
+  const local = await call("measure_image", { image_source: flat, mode: "contrast", region, background_mode: "local" });
+  console.log(`  F2 local background field = ${JSON.stringify(local.measurements.contrast.background)} -> null: ${local.measurements.contrast.background === null ? "YES" : "NO"}`);
+
+  // F4: two collinear tones (240 / 150) on a FLAT background must both survive.
+  const two = toUri(await twoToneFlat());
+  const twoRes = await call("measure_image", { image_source: two, mode: "contrast", region });
+  const twoLocal = await call("measure_image", { image_source: two, mode: "contrast", region, background_mode: "local" });
+  const n = twoRes.measurements.contrast.colours.length;
+  const nl = twoLocal.measurements.contrast.colours.length;
+  console.log(`  F4 two-tone colours global=${n} local=${nl} -> both recovered: ${n === 2 && nl === 2 ? "YES" : "NO"}`);
+  console.log(`  F4 merged_anti_aliasing global=${JSON.stringify(twoRes.measurements.contrast.merged_anti_aliasing.map((m) => m.hex))}`);
 }
 
 await client.close();

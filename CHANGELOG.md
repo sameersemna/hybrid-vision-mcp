@@ -1,5 +1,76 @@
 # Changelog
 
+## Third-audit follow-up: mode consistency, local backgrounds, AA folding — 2026-09-25
+
+A third independent audit re-verified the earlier work and found four residual
+issues in the new `background_mode` code. See `ACCURACY.md` §5d.
+
+### Fixed
+
+- **F1 — `mode: "contrast"` and `mode: "all"` now agree.** With no `region`,
+  `contrast` used to abstain while `all` silently measured the whole frame, so
+  the same question got two answers depending only on `mode`, and the divergence
+  was undocumented. Both modes now measure the whole frame and both disclose the
+  full-frame scope in `notes`.
+- **F2 — local mode no longer reports a single `background`.** On a gradient the
+  modal colour could be a *text* tone (reproduced: `background: #5a5a5a` was the
+  text fill). Under `background_mode: "local"`, `background` is now `null`.
+- **F2 — noise is not asserted as failing text.** A weak, untext-like cluster
+  (audit: 291px, 1 component, 1.06:1) is now classified as suspected noise and
+  excluded from `worst`/`failing_count`/`all_meet_aa`, while still being returned
+  in `suspected_noise` and named in `notes`. Real near-background text
+  (`#1e1c18`, 1.04:1, 20 components) is never reclassified.
+- **F4 — a genuine text run is no longer folded as anti-aliasing.** A mid-grey
+  text line collinear between the background and a brighter run was being
+  swallowed. The colour-only blend test is now gated by component geometry:
+  real text is few, large components; AA halos are many, tiny ones.
+- **F3 — `npm run verify:background` reaches the deployed service.** The script
+  no longer hard-codes port `11499`; it probes `11402` first, then `11499`, and
+  honours `PORT`. It prints the port used and, on failure, names the ports tried
+  and the override.
+
+### BREAKING (response shape)
+
+- Under `background_mode: "local"`, `measurements.contrast.background` is now
+  **`null`** (previously `{ hex, rgb }`). This is deliberate: local mode has no
+  single background, and the previous value could be a text colour presented as
+  a background. Per-colour `local_background` is unchanged. Global mode is
+  unchanged.
+
+### Added
+
+- `measurements.contrast.suspected_noise[]` — clusters classified as residual
+  background noise (with `component_count`, `mean_component_area`, `reason`).
+- `merged_anti_aliasing[]` records now carry `component_count` and
+  `mean_component_area`.
+- Exported `looksLikeIndependentText()`, `isSuspectedNoiseCluster()`,
+  `partitionSuspectedNoise()` in `lib/measure.js`.
+- `buildGradientTextFixture()` / `buildFlatTextFixture()` in
+  `test-support/fixtures.mjs`.
+- 8 tests in `test/background.test.js` (now 17) covering the four findings.
+- `verify/nonvacuity-round3.mjs` — reverts each new guard and confirms the
+  matching test fails (5 non-vacuous cases).
+- `verify/verify-background-live.mjs` now also exercises F1/F2/F4 over the real
+  MCP transport; npm script `verify:background` unchanged.
+
+### Deliberately NOT changed
+
+- **The WCAG ratio formula** and all §1-§5c verified behaviour.
+- **Default `background_mode: "global"`** — local mode is still opt-in.
+- **`isAntiAliasingBlend`'s colour semantics** — so its existing unit tests keep
+  their meaning; the new geometry check sits above it in `mergeAntiAliasing`.
+
+### Corrected claim
+
+The audit reported F4 as local-mode-only (flat+`global` correct). That does not
+reproduce independently: two collinear text tones on a flat background fold in
+**both** modes on the previous code. The defect was the colour-only guard, not
+local mode. The audit's suggested spatial-overlap test was also measured and
+found unworkable (0% overlap for genuine AA *and* the false fold); the working
+discriminator is component geometry.
+
+---
+
 ## Background modelling for photographic images — 2026-09-25 (follow-up)
 
 Closes the last open item: the fixed ink threshold (`?? 4` RGB units from the

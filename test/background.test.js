@@ -14,6 +14,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 
 import {
@@ -23,13 +24,21 @@ import {
   extractInkComponents,
   tileBackgroundField,
   assessBackgroundFit,
+  looksLikeIndependentText,
+  isSuspectedNoiseCluster,
+  partitionSuspectedNoise,
+  mergeAntiAliasing,
+  isAntiAliasingBlend,
 } from "../lib/measure.js";
 import {
   buildContrastFixture,
   buildPhotographicFixture,
   buildDenseFlatFixture,
+  buildGradientTextFixture,
+  buildFlatTextFixture,
   FIXTURE,
 } from "../test-support/fixtures.mjs";
+import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
 
 // ------------------------------------------------------------ helpers ------
@@ -232,3 +241,161 @@ test("dense flat UI demonstrates why local mode is opt-in rather than automatic"
   const viaDefault = contrastInRegion(pixels, region);
   assert.equal(viaDefault.background_mode, "global");
 });
+
+// ==========================================================================
+// Third-audit acceptance tests (F1-F4). Each is written to be non-vacuous:
+// reverting the corresponding guard makes a specific assertion here fail.
+// ==========================================================================
+
+const GRADIENT_REGION = { left: 0, top: 0, width: 900, height: 420 };
+
+// ------------------------------- F1: mode consistency ----------------------
+
+test("F1: region-less contrast agrees between mode 'contrast' and mode 'all'", async () => {
+  const png = await buildContrastFixture();
+  const a = await measureImage({ imageBuffer: png, mode: "contrast" });
+  const b = await measureImage({ imageBuffer: png, mode: "all" });
+  const ca = a.measurements.contrast;
+  const cb = b.measurements.contrast;
+
+  assert.ok(ca && cb, "both modes must measure contrast over the full frame");
+  assert.equal(ca.worst.contrast_ratio, cb.worst.contrast_ratio, "the same question must get the same answer");
+  assert.equal(ca.best.contrast_ratio, cb.best.contrast_ratio);
+  assert.equal(ca.failing_count, cb.failing_count);
+  assert.equal(ca.measurable, cb.measurable);
+
+  // The full-frame scope is disclosed in BOTH modes rather than silently assumed.
+  assert.ok(a.notes.some((n) => /WHOLE image/.test(n)), "contrast mode must disclose full-frame scope");
+  assert.ok(b.notes.some((n) => /WHOLE image/.test(n)), "all mode must disclose full-frame scope");
+
+  // And the validated acceptance numbers are untouched.
+  assert.equal(ca.worst.contrast_ratio, 1.04);
+  assert.equal(ca.best.contrast_ratio, 13.42);
+  assert.equal(ca.failing_count, 2);
+});
+
+// ------------------- F2: no phantom background, no noise-as-text -----------
+
+test("F2: local mode reports no single background colour", async () => {
+  const png = await buildGradientTextFixture();
+  const pixels = await loadPixels(png);
+
+  const local = contrastInRegion(pixels, GRADIENT_REGION, { backgroundMode: "local" });
+  assert.equal(local.background, null, "local mode must not present a single background colour");
+  assert.equal(local.background_mode, "local");
+  assert.ok(
+    local.notes.some((n) => /NO single background/.test(n)),
+    "the null background must be explained in notes",
+  );
+
+  // Global mode keeps its modal background (no silent change on the default path).
+  const global = contrastInRegion(pixels, GRADIENT_REGION);
+  assert.ok(global.background && global.background.hex, "global mode keeps its modal background");
+});
+
+test("F2: a 1-component low-contrast blob is noise, not failing text", () => {
+  // Exactly the auditor's reported cluster: 291px, 1 component, 1.06:1.
+  const blob = { foreground: "#565656", pixel_count: 291, component_count: 1, contrast_ratio_raw: 1.06, contrast_ratio: 1.06 };
+  assert.equal(isSuspectedNoiseCluster(blob).suspected, true, "a weak single-component blob is noise");
+  assert.equal(looksLikeIndependentText(blob), false);
+
+  // Genuine low-contrast TEXT (acceptance fixture #1e1c18: 1.04:1, 2174px,
+  // 20 components) must NOT be dismissed as noise.
+  const realText = { foreground: "#1e1c18", pixel_count: 2174, component_count: 20, contrast_ratio_raw: 1.04, contrast_ratio: 1.04 };
+  assert.equal(isSuspectedNoiseCluster(realText).suspected, false, "real low-contrast text is not noise");
+  assert.equal(looksLikeIndependentText(realText), true);
+
+  // A small-but-multi-component run (MID-TWO: 2254px / 7 comps) is not noise.
+  assert.equal(isSuspectedNoiseCluster({ pixel_count: 2254, component_count: 7, contrast_ratio_raw: 3.73 }).suspected, false);
+
+  // And the partition itself (the wiring the enumeration uses) separates them,
+  // so this test fails if the filter stops excluding noise or over-excludes text.
+  const { kept, suspected } = partitionSuspectedNoise([blob, realText], "local");
+  assert.equal(suspected.length, 1, "exactly the noise blob is removed");
+  assert.equal(suspected[0].foreground, "#565656");
+  assert.equal(kept.length, 1, "the real text colour is kept");
+  assert.equal(kept[0].foreground, "#1e1c18");
+
+  // In global mode nothing is reclassified.
+  assert.equal(partitionSuspectedNoise([blob, realText], "global").suspected.length, 0);
+});
+
+test("F2: suspected noise never sets the verdict, but is always disclosed", async () => {
+  const png = await buildPhotographicFixture({ noise: 8, text: false });
+  const pixels = await loadPixels(png);
+  const local = contrastInRegion(pixels, PHOTO_REGION, { backgroundMode: "local" });
+
+  // Text-free photo: either nothing assessable, or only disclosed noise.
+  assert.equal(local.colours.length, 0);
+  if (local.suspected_noise.length > 0) {
+    assert.ok(
+      local.notes.some((n) => /SUSPECTED BACKGROUND NOISE/.test(n)),
+      "suspected noise must be named as such in notes, not asserted as failing text",
+    );
+  }
+  assert.equal(local.failing_count, 0, "noise must not drive failing_count");
+});
+
+// ------------------- F4: a real text run is not folded as AA ---------------
+
+test("F4: a genuine mid-tone text run is not folded as anti-aliasing", async () => {
+  const png = await buildGradientTextFixture({
+    lines: [
+      { text: "BRIGHT-ONE", y: 60, fill: "#f0f0f0" },
+      { text: "MID-TWO", y: 170, fill: "#969696" },
+      { text: "DARK-THREE", y: 280, fill: "#3c3c3c" },
+    ],
+  });
+  const pixels = await loadPixels(png);
+  const local = contrastInRegion(pixels, GRADIENT_REGION, { backgroundMode: "local" });
+
+  const mid = local.colours.find((c) => rgbDistance(c.rgb, parseColor("#969696")) < 24);
+  assert.ok(
+    mid,
+    `MID-TWO must survive as its own colour, not be folded (got: ${local.colours.map((c) => c.foreground).join(", ") || "none"})`,
+  );
+  assert.ok(mid.component_count >= 3, "and it must keep its multi-component text structure");
+  assert.ok(
+    !(local.merged_anti_aliasing || []).some((m) => m.hex === mid.foreground),
+    "a colour with its own multi-component run must not appear as a merge source",
+  );
+});
+
+test("F4: the structural guard stops the fold that colour alone would allow", () => {
+  const bg = parseColor("#1a1814");
+  const bright = { hex: "#f0f0f0", rgb: parseColor("#f0f0f0"), pixel_count: 3113, component_count: 10, boxes: [], hollow: 0 };
+  const mid = { hex: "#969696", rgb: parseColor("#969696"), pixel_count: 2254, component_count: 7, boxes: [], hollow: 0 };
+
+  // The colour test alone WOULD fold MID-TWO into the bright tone...
+  assert.equal(isAntiAliasingBlend(mid.rgb, bright.rgb, bg), true, "colour alone would fold it");
+  // ...but the structural guard must prevent it.
+  const { merged_anti_aliasing } = mergeAntiAliasing([bright, mid], bg);
+  assert.equal(merged_anti_aliasing.length, 0, "the structural guard must prevent the fold");
+
+  // A genuine AA fragment (few, tiny components) is still folded.
+  const frag = { hex: "#787065", rgb: parseColor("#787065"), pixel_count: 68, component_count: 2, boxes: [], hollow: 0 };
+  const parent = { hex: "#a09588", rgb: parseColor("#a09588"), pixel_count: 699, component_count: 14, boxes: [], hollow: 0 };
+  const r2 = mergeAntiAliasing([parent, frag], bg);
+  assert.equal(r2.merged_anti_aliasing.length, 1, "a real AA fragment must still fold");
+  assert.equal(r2.merged_anti_aliasing[0].hex, "#787065");
+});
+
+test("F4: flat images yield the same colour set in both modes (control)", async () => {
+  const png = await buildFlatTextFixture();
+  const pixels = await loadPixels(png);
+  const global = contrastInRegion(pixels, GRADIENT_REGION);
+  const local = contrastInRegion(pixels, GRADIENT_REGION, { backgroundMode: "local" });
+  const key = (r) => r.colours.map((c) => [c.foreground, c.contrast_ratio]).sort();
+  assert.deepEqual(key(local), key(global), "flat background: the two models must agree");
+  assert.equal(global.colours.length, 2, "both text tones must be recovered");
+});
+
+// ------------------------------- F3: live port discovery -------------------
+
+test("F3: verify:background discovers the service port instead of hard-coding 11499", async () => {
+  const src = await readFile(new URL("../verify/verify-background-live.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /process\.env\.PORT \|\| 11499/, "must not silently default to 11499");
+  assert.match(src, /11402/, "must probe the deployed service port");
+  assert.match(src, /PORT=/, "must name how to override the port");
+});
+

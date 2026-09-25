@@ -636,7 +636,9 @@ as "no contrast problems". Now:
 **Nothing is silently dropped.** Excluded (decorative) and skipped (sub-threshold)
 colours are listed with their ratio and pixel count and described in `notes`, and
 they are excluded from `all_meet_aa`. If no text colour is assessable the result
-is `measurable: false` with an `abstained[]` entry rather than a verdict.
+is `measurable: false` with an `abstained[]` entry rather than a verdict. In
+`background_mode: "local"`, clusters judged to be residual noise rather than text
+appear under `suspected_noise` (also excluded from the verdict, also disclosed).
 
 **Photographic and gradient images.** A single global background colour only
 models flat UI screenshots well. When it explains less than half the region, the
@@ -685,9 +687,22 @@ over-threshold — measured, not assumed. See `ACCURACY.md` §5c.
 }
 ```
 
-**Honest abstention**: `contrast` mode with no `region` abstains (contrast is only
-meaningful for a region that contains text); `boxes` mode without `box_color`
-abstains (counting without knowing the border colour would be a guess).
+**Honest abstention**: `boxes` mode without `box_color` abstains (counting without
+knowing the border colour would be a guess). `contrast` mode with no `region` does
+**not** abstain — it measures the whole frame and says so in `notes`, exactly as
+`mode: "all"` does, so the same question always gets the same answer regardless of
+`mode`. Pass a `region` when the question is about specific text.
+
+**Noise is not called out as text.** A weak cluster that is not shaped like text
+(fewer than 3 components or a sub-100px mean component area) is returned under
+`suspected_noise` and named as suspected noise in `notes`, rather than being
+asserted as a failing text colour. It is excluded from
+`worst`/`failing_count`/`all_meet_aa` but never hidden.
+
+**Local mode has no single background.** Under `background_mode: "local"`,
+`background` is `null` (there is no single background by construction, and the
+global modal colour can coincide with a text tone). Each colour carries its own
+`local_background`.
 
 ---
 

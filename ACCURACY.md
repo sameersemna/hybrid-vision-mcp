@@ -585,6 +585,110 @@ Node's test runner to **register those 9 tests twice**. The shared fixtures now
 live in `test-support/fixtures.mjs` (outside `test/`, which Node treats entirely
 as tests), and the suite count is correct: 46 = 15 + 9 + 9 + 7 + 2 + 3 + 1.
 
+## 5d. Follow-up audit: mode consistency, honest local backgrounds, and text runs
+
+A third independent audit re-verified §1-§5c and found four residual issues in
+the new `background_mode` work. All four are fixed here. The class of failure is
+the same one the earlier rounds removed, one layer further in: a **confident,
+precise-sounding verdict about pixels the code did not correctly classify**.
+
+### F1 — `mode: "contrast"` and `mode: "all"` gave different answers
+
+With no `region`, `mode: "contrast"` abstained while `mode: "all"` silently
+measured the whole frame. The same question produced two different answers that
+depended only on `mode`, and the abstention text was documented nowhere.
+
+**Fix:** both modes now measure the whole frame when no region is supplied, and
+both push a `notes` entry disclosing that the figure is full-frame, so a caller
+cannot receive a number without knowing its scope. Asserted by
+`test/background.test.js` "F1: region-less contrast agrees between mode
+'contrast' and mode 'all'", which also pins the unchanged valid numbers
+(worst 1.04, best 13.42, failing 2).
+
+### F2 — in local mode a *text* colour could be reported as the `background`
+
+`enumerateRegionContrast` always returned a `background: { hex, rgb }` derived
+from the region's modal colour. On a gradient that modal value can coincide with
+a text tone — reproduced on the audit fixture, where local mode reported
+`background: #5a5a5a`, which is exactly the `FAILING-TWO` **text** fill.
+
+**Fix:** under `background_mode: "local"` there is no single background by
+construction, so `background` is now `null` (a documented response-shape change,
+see CHANGELOG). Each colour still carries its own `local_background`, and a note
+explains the null.
+
+Separately, `worst` could be set by a single small cluster of residual noise
+(the audit measured 291px in 1 component at 1.06:1). Noise is now separated:
+a cluster is classified as **suspected noise** only when it is weak
+(`contrast < 1.25:1`) **and** structurally untext-like (fewer than 3 components
+or mean component area < 100px). Suspected-noise clusters are returned in
+`suspected_noise`, named in `notes` as suspected noise, and excluded from
+`worst`/`failing_count`/`all_meet_aa` — never silently dropped. Genuine
+near-background text (acceptance fixture `#1e1c18`, 1.04:1, 20 components) is
+never reclassified. `partitionSuspectedNoise()` / `isSuspectedNoiseCluster()` are
+exported and directly tested with the audit's own numbers.
+
+### F4 — anti-aliasing folding swallowed a whole text run
+
+This was the most serious finding, and the audit flagged it as *not proven*: on a
+gradient, a mid-grey text line is exactly collinear between the dark background
+and a brighter text run, so `isAntiAliasingBlend` returned true and the run was
+folded as an "anti-aliasing shade". Reproduced: three known text runs in, one
+colour out (`all_meet_aa: true`).
+
+**Counter-evidence to the audit's control claim.** The audit reported the defect
+as local-mode-only, with flat+`global` behaving correctly. That does **not**
+reproduce on an independently generated fixture: two collinear text tones on a
+flat background fold in **both** `global` and `local` on the previous code. The
+defect is a property of the colour-only guard, not of local mode. (Recorded
+rather than asserted — the audit invited exactly this.)
+
+**Why the audit's suggested spatial test does not work.** Box-overlap between a
+would-be AA candidate and its parent was measured at **0% for both genuine AA
+fragments and the false fold** — the fragments are already merged into the
+parent's boxes. The working discriminator is **component geometry**:
+
+| cluster | components | mean component area | should fold? |
+|---|---|---|---|
+| genuine AA fragment (`#787065 -> #a09588`) | 2 | 34px | yes |
+| genuine AA fragment (`#847c70 -> #a09588`) | 1 | 34px | yes |
+| real text run (MID-TWO) | 7 | 322px | **no** |
+
+Real text is *few, large* components; AA halos are *tiny and numerous*.
+
+**Fix:** `mergeAntiAliasing` now requires the candidate to be **not**
+independently text-like (`looksLikeIndependentText`: components < 3 **or** mean
+area < 100px or < 0.5x the parent's mean area). The colour test is unchanged, so
+genuine AA fragments still fold (#787065 and #847c70 still merge into #a09588 —
+otherwise the acceptance fixture would report 5 colours instead of 5+2). Merge
+records now also carry `component_count` and `mean_component_area`.
+
+### F3 — the advertised live check targeted the wrong port
+
+`verify-background-live.mjs` hard-coded `11499` (a throwaway test port) while the
+systemd unit listens on `11402`, so `npm run verify:background` failed with
+`ECONNREFUSED` or, worse, silently described a different configuration than the
+one deployed.
+
+**Fix:** the script probes the deployed port (`11402`) first, then `11499`, then
+honours an explicit `PORT` override, prints which port it used, and on failure
+names the ports tried and how to override (`PORT=11402 npm run verify:background`).
+
+### Acceptance evidence for §5d
+
+| check | result |
+|---|---|
+| `npm test` | **54/54** (was 46; +8 round-3 tests) |
+| F1 contrast vs all, no region | agree (worst 1.04 / failing 2 / measurable true) |
+| F2 local `background` | `null` on the audit fixture; global unchanged |
+| F2 noise vs text partition | 291px/1comp/1.06 -> noise; 2174px/20comp/1.04 -> text |
+| F4 mid-tone run | reported as its own colour (7 components), `all_meet_aa: false` |
+| F4 flat control | 2 colours in **both** modes |
+| §1 flat/local equivalence | byte-identical; `effective_ink_threshold: 4` |
+| §1 acceptance numbers | 5 colours / worst 1.04 / best 13.42 / failing 2 |
+| live MCP (new code, port 11498) | F1 agree YES, F2 null YES, F4 2/2 YES |
+| non-vacuity | 9 + 11 + 7 + **5 (round 3)** all non-vacuous |
+
 ## 9. New module map
 
 | File | Responsibility |

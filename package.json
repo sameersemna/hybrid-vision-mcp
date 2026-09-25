@@ -13,6 +13,7 @@
     "test:nonvacuity": "node verify/nonvacuity.mjs",
     "test:nonvacuity:contrast": "node verify/nonvacuity-contrast.mjs",
     "test:nonvacuity:background": "node verify/nonvacuity-background.mjs",
+    "test:nonvacuity:round3": "node verify/nonvacuity-round3.mjs",
     "fixture:make": "python3 verify/make-fixture.py",
     "verify:contrast-live": "node verify/verify-contrast-live.mjs",
     "verify:background": "node verify/verify-background-live.mjs",
