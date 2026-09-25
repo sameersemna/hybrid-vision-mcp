@@ -12,6 +12,7 @@ A Model Context Protocol (MCP) server that exposes vision capabilities over HTTP
   - **AI Analysis**: Local Ollama vision models for description, comparison, element localization, rich browser screenshot analysis, visual diff, UI element detection, textual visual feedback generation, and semantic page extraction.
   - **Annotation Engine**: SVG-based overlay system for rendering labels, bounding boxes, arrows, and circles on images, returned as annotated PNGs.
   - **Repository Analysis**: Structural repo mapping via Graphviz DOT and JSON outputs for deep codebase understanding.
+- **Accuracy Hardening**: Deterministic measurement (`measure_image`), schema-constrained and cross-validated analysis (`analyze_image_structured`), WCAG contrast maths, OCR cross-validation of model-read text, and full provenance on every response. See [`ACCURACY.md`](ACCURACY.md).
 - **Flexible Image Input**: Accepts Base64 Data URIs, HTTP(S) URLs, `file://` URIs, local filesystem paths, `upload://` references, and direct file uploads via `/upload`.
 - **Structured Responses**: Tools return JSON metadata in text blocks and full image data in `image` content blocks per MCP spec. Large output images are saved to disk and referenced by path to reduce payload bloat.
 - **Hardened Upload Endpoint**: Binary image upload via `/upload` with MIME validation, magic-number verification, rate limiting, CORS support, and automatic cleanup of stale files.
@@ -218,7 +219,6 @@ Tools annotated with `x-mcp-file`:
 - `textual_visual_feedback`
 
 > **Note**: `x-mcp-file` is a non-standard extension aligned with the MCP File Uploads Working Group's SEP-2356 direction. Existing clients ignore unknown schema properties, so this is fully backward-compatible.
-
 ## Client Helper Library
 
 `upload-helper.js` automates the upload-then-reference flow for Node.js MCP clients. It detects `File`, `Blob`, `ArrayBuffer`, `Buffer`, or string inputs; uploads binary data to `/upload`; and replaces the argument with an `upload://` reference before calling the tool.
@@ -575,6 +575,287 @@ Download an image from a URL into the server's `DOWNLOAD_DIR` and return a `down
 - Empty response
 - File exceeds `MAX_DOWNLOAD_SIZE_MB`
 ```
+
+---
+
+### 15. `measure_image`
+
+Answer **measurable** questions with code instead of a language model. WCAG
+contrast, dominant/background colours, box counts, and region content are
+computed from pixels using Sharp, so results are reproducible and available
+even when Ollama is unavailable or contended. **No vision model is consulted.**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `image_source` | string | **Yes** | — | Base64 Data URI, HTTP URL, local path, or `upload://<filename>`. |
+| `mode` | string | No | `"all"` | `contrast`, `colors`, `boxes`, `layout`, or `all`. |
+| `region` | object | No | — | Region of interest `{ left, top, width, height }`. **Required for meaningful contrast.** |
+| `box_color` | string | No | — | Border colour (hex) of the boxes to count. Required for `boxes`. |
+| `background_color` | string | No | — | Explicit background colour. If omitted, the region's modal colour is used. |
+| `tolerance` | number | No | `24` | RGB distance tolerance for colour matching (0-255). |
+| `large_text` | boolean | No | `false` | Assess against WCAG large-text thresholds (3:1). |
+| `ink_threshold` | number | No | `4` | RGB distance from the background above which a pixel counts as ink. Lower it to catch text closer to the background. |
+| `background_mode` | string | No | `"global"` | `"global"` = one modal background colour (correct for flat UI screenshots). `"local"` = per-tile robust background with a noise-scaled threshold, for photographic/gradient/multi-tone images. |
+| `tile_size` | number | No | `48` | Tile edge in pixels for `background_mode: "local"`. |
+| `noise_factor` | number | No | `4` | `k` in `threshold = max(ink_threshold, k * local_noise_sigma)` for local mode. |
+| `include_decorative` | boolean | No | `false` | Include decorative (thin hollow rectangle) colours in the summary instead of reporting them separately. |
+| `decorative_colors` | array[string] | No | — | Hex colours to treat as decorative explicitly. |
+
+**Contrast enumerates every text colour and reports the worst case.** The old
+behaviour selected only the most legible colour, which meant an image containing
+large text at 2.14:1 and 1.04:1 could be summarised as `wcag_aa: true` — reading
+as "no contrast problems". Now:
+
+```json
+"contrast": {
+  "worst":  { "foreground": "#1e1c18", "contrast_ratio": 1.04, "wcag_aa": false },
+  "best":   { "foreground": "#e8dfd0", "contrast_ratio": 13.42, "wcag_aa": true },
+  "failing_count": 2,
+  "passing_count": 3,
+  "evaluated_count": 5,
+  "all_meet_aa": false,
+  "wcag_aa": false,
+  "contrast_ratio": 1.04,
+  "colours": [
+    { "foreground": "#1e1c18", "pixel_count": 2241, "contrast_ratio": 1.04, "wcag_aa": false, "meets_aa": false },
+    { "foreground": "#484f58", "pixel_count": 2792, "contrast_ratio": 2.14, "wcag_aa": false, "meets_aa": false },
+    { "foreground": "#a09588", "pixel_count": 639,  "contrast_ratio": 6.03, "wcag_aa": true },
+    { "foreground": "#7daa7a", "pixel_count": 1052, "contrast_ratio": 6.67, "wcag_aa": true },
+    { "foreground": "#e8dfd0", "pixel_count": 4539, "contrast_ratio": 13.42, "wcag_aa": true }
+  ],
+  "excluded": [ { "foreground": "#4a433c", "contrast_ratio": 1.82, "reason": "decorative: thin hollow rectangle geometry (border/rule), not text" } ],
+  "notes": ["...", "2 of 5 evaluated text colour(s) fail WCAG AA: ..."]
+}
+```
+
+> **Semantics change:** `wcag_aa` at the contrast level now aliases the **worst**
+> case (`all_meet_aa`) — `true` only when every evaluated text colour passes.
+> `best.contrast_ratio` preserves the previous number, and `foreground` /
+> `contrast_ratio` now refer to the worst case. See `ACCURACY.md` §5b.
+
+**Nothing is silently dropped.** Excluded (decorative) and skipped (sub-threshold)
+colours are listed with their ratio and pixel count and described in `notes`, and
+they are excluded from `all_meet_aa`. If no text colour is assessable the result
+is `measurable: false` with an `abstained[]` entry rather than a verdict.
+
+**Photographic and gradient images.** A single global background colour only
+models flat UI screenshots well. When it explains less than half the region, the
+result carries a `background_fit` block and a warning in `notes`:
+
+```json
+"background_fit": {
+  "background": "#90877d",
+  "explained_fraction": 0.007,
+  "tolerance": 8,
+  "adequate": false,
+  "warnings": ["A single global background colour accounts for only 0.7% ..."]
+}
+```
+
+For such images pass `background_mode: "local"`, which uses a per-tile median
+background with a threshold that scales with each tile's measured noise. On a
+text-free photo that yields **zero** reported colours (rather than the whole
+gradient counting as one), and it recovers text tones a global background misses.
+The mode is opt-in because a tile straddling two flat panels can
+over-threshold — measured, not assumed. See `ACCURACY.md` §5c.
+
+---
+
+**Returns** (excerpt):
+```json
+{
+  "success": true,
+  "mode": "contrast",
+  "dimensions": { "width": 1200, "height": 760, "format": "png" },
+  "measurements": {
+    "contrast": {
+      "background": { "hex": "#1a1814", "rgb": { "r": 26, "g": 24, "b": 20 } },
+      "foreground": { "hex": "#484f58", "rgb": { "r": 72, "g": 79, "b": 88 } },
+      "contrast_ratio": 2.14,
+      "wcag_aa": false,
+      "wcag_aaa": false,
+      "required_aa": 4.5,
+      "measurable": true,
+      "method": "pixel-histogram/exact-colour-mode+max-luminance-delta"
+    }
+  },
+  "abstained": [],
+  "provenance": { "model": null, "image": { "sent_dimensions": { "width": 1200, "height": 760 }, "downscaled": false } },
+  "disclaimer": "Deterministic measurement. Reproducible without a vision model..."
+}
+```
+
+**Honest abstention**: `contrast` mode with no `region` abstains (contrast is only
+meaningful for a region that contains text); `boxes` mode without `box_color`
+abstains (counting without knowing the border colour would be a guess).
+
+---
+
+### 16. `analyze_image_structured`
+
+Analyze an image and return **structured, evidence-backed** output instead of
+free prose. Every statement is a `claims[]` entry carrying its own bounding box
+and confidence; transcribed text is cross-validated against Tesseract OCR and
+flagged as `unverified` when it has no OCR support and no plausible box (the
+fabrication signature). Abstention is first-class. Quantitative questions are
+answered by deterministic measurement in code, never by the model.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `image_source` | string | **Yes** | — | Base64 Data URI, HTTP URL, local path, or `upload://<filename>`. |
+| `prompt` | string | No | `""` | What to find out. A quantitative prompt is routed to measurement. |
+| `model` | string | No | `VISION_MODEL_FAST` | Optional Ollama vision model override. |
+| `crop` | object | No | — | `{ left, top, width, height }`. Physically applied before analysis. |
+| `cross_validate` | boolean | No | `true` | Cross-validate transcribed text against Tesseract OCR. |
+| `ocr_language` | string | No | `"eng"` | OCR language for cross-validation. |
+| `timeout_ms` | number | No | `OLLAMA_TIMEOUT_MS` | Per-request Ollama timeout. |
+| `keep_alive` | string | No | `OLLAMA_KEEP_ALIVE` | e.g. `"5m"`, or `"0"` to unload after the call. |
+| `seed` | number | No | `42` | Sampling seed for reproducibility. |
+| `temperature` | number | No | `0` | Sampling temperature. |
+
+**Returns** (excerpt):
+```json
+{
+  "success": true,
+  "parsed": true,
+  "summary": "...",
+  "claims": [
+    { "claim": "...", "kind": "text", "box": { "left": 40, "top": 40, "width": 200, "height": 40 },
+      "confidence": 0.8, "source": "vl", "verified": false, "basis": "vision-model-observation" }
+  ],
+  "unsupported_claims": [],
+  "text_items": [
+    { "text": "ALPHA-ONE", "source": "vl+ocr", "confidence": 1, "verified": true, "flags": [] }
+  ],
+  "cross_validation": {
+    "agreement_rate": 1,
+    "unverified_text": [],
+    "unverified_count": 0,
+    "ocr_only": [],
+    "ocr_only_count": 0,
+    "ocr_word_count": 7
+  },
+  "measurements": null,
+  "abstained": [],
+  "crop_applied": null,
+  "provenance": {
+    "model": "llava:13b",
+    "options": { "temperature": 0, "seed": 42, "num_predict": 2048 },
+    "request": { "format": "json-schema", "keep_alive": null },
+    "image": { "input_dimensions": { "width": 1200, "height": 760 },
+               "sent_dimensions": { "width": 1200, "height": 760 },
+               "downscaled": false, "coordinate_space": "sent_dimensions" },
+    "metrics": { "time_to_first_token_ms": 210, "total_ms": 7400, "likely_model_load": false },
+    "warnings": []
+  }
+}
+```
+
+**Text classification (`source`)**:
+
+| `source` | Meaning | Confidence |
+|----------|---------|-----------|
+| `vl+ocr` | Vision model and OCR agree | raised (max 1) |
+| `vl` | Only the model saw it, but the box is plausible and in-crop | halved, flagged `single_source_unverified` |
+| `unverified` | No OCR support **and** no plausible box | quartered, flagged `no_ocr_support` + `no_plausible_box` |
+| `ocr` | Tesseract read it but the model did not report it | OCR confidence; flagged `ocr_only_not_reported_by_model` |
+
+`text_items[]` includes OCR-sourced entries, so iterating it yields the text the
+server actually believes is present rather than only what the model volunteered.
+`cross_validation.text_items_count` and `text_items_sources` let a consumer check
+that the two views agree.
+
+`unreadable[]` entries carry `source: "model"` and `verified: false`. An entry is
+marked `contested` when OCR read corresponding text — `contest_type: "precise"`
+(the named text was read) or `"blanket"` (a generic "too small to read" claim
+while OCR read strings in the same image) — with the OCR evidence in
+`contested_by` and a warning raised.
+
+**Quantitative requests** return `answered_by: "deterministic-measurement"` and
+`model_consulted: false`, with numbers taken from the `measurements` block. The
+model is not consulted, so the answer remains correct when Ollama is down.
+
+**Failure to parse** is reported, not hidden: if the model returns prose,
+`parsed` is `false`, `claims` is empty, a warning explains the refusal, and the
+raw text is retained under `raw_model_output`.
+
+**Large responses stay valid JSON.** Responses are capped at
+`MAX_RESPONSE_TEXT_CHARS` (default 12000). Rather than slicing the text mid-token
+(which produced unparseable output), the server shortens the largest string
+fields and then trims the longest arrays, always returning a parseable document.
+A `_truncation` block records exactly what happened:
+
+```json
+"_truncation": {
+  "truncated": true,
+  "max_chars": 12000,
+  "actions": [
+    { "action": "shortened_string", "path": "$.summary", "original_chars": 260 },
+    { "action": "dropped_array_items", "path": "$.text_items", "dropped": 3, "remaining": 9, "was": 12 }
+  ],
+  "note": "... treat trimmed lists as incomplete."
+}
+```
+
+Treat any list named in `actions` as **incomplete** — `remaining` tells you how
+many items were kept. Raise `MAX_RESPONSE_TEXT_CHARS` to avoid trimming
+altogether.
+
+---
+
+## Accuracy and Provenance
+
+This server is deliberately conservative about what it will assert. See
+[`ACCURACY.md`](ACCURACY.md) for the full design and evidence.
+
+**Principles**
+
+1. **Measure, don't guess.** Anything with a numeric answer (contrast, counts,
+   sizes, colours) is computed from pixels. Asking a vision model for a
+   measurement is not supported.
+2. **Constrain the output.** Structured calls send Ollama a JSON schema via
+   `format`, with `temperature: 0` and an explicit `seed`.
+3. **Cross-validate.** Model-read text is checked against Tesseract OCR.
+   Unsupported text is flagged rather than reported as fact.
+4. **Encourage abstention.** The schema requires an `abstained[]` field, and the
+   prompt states a missing answer is better than a wrong one.
+5. **Always report provenance.** Every response says which model answered, with
+   what sampling options, at what resolution, and whether anything was
+   downscaled.
+
+**Provenance footer on legacy tools**
+
+The pre-existing text tools (`analyze_image`, `find_text_element`,
+`compare_images`, `browser_screenshot_analysis`, `detect_ui_elements`) append a
+footer to their text output:
+
+```
+[provenance] model=llava:13b temperature=0 seed=42 ttft_ms=210 total_ms=7400 sent=1200x760 downscaled=false
+[warnings] ...
+```
+
+**Honest timeouts**
+
+Vision requests are streamed so the server can tell *loading a model* from
+*inferring*. A timeout error reports the model, elapsed time, first-token time,
+which models currently hold memory (`/api/ps`), a diagnosis, and the vision
+models **actually installed on this host**. It no longer suggests a model that
+may not be installed.
+
+**Model residency in health checks**
+
+`check_vision_health` reports which models are resident right now and how much
+VRAM each holds, plus installed vision models — the context needed to explain a
+slow first call.
+
+**Environment variables for accuracy tuning**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VISION_TEMPERATURE` | `0` | Sampling temperature for vision calls. |
+| `VISION_SEED` | `42` | Sampling seed for reproducibility. |
+| `VISION_NUM_PREDICT` | `2048` | Cap on generated tokens per call. |
+| `OLLAMA_KEEP_ALIVE` | *(Ollama default, 5m)* | How long a model stays resident. `0` unloads after each call. |
 
 ---
 

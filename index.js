@@ -18,6 +18,17 @@ import {
 import { z } from "zod";
 import { resolveWithinBase, isPathWithinAllowedRoots } from "./lib/validation.js";
 
+// --- Accuracy hardening modules (additive) ---
+import { queryOllamaVisionText, getModelResidency, listInstalledVisionModels } from "./lib/vision.js";
+import { measureImage, analyzeStructured } from "./lib/analyze.js";
+import { CLAIM_SCHEMA, detectQuantitativeQuestion } from "./lib/prompts.js";
+import { crossValidateText } from "./lib/crossvalidate.js";
+import { buildProvenance, prepareForVision, DEFAULT_LEGIBILITY_FLOOR } from "./lib/legibility.js";
+import {
+  truncateForClient,
+  truncateJsonForClient as truncateJsonForClientImpl,
+} from "./lib/response.js";
+
 // ==========================================
 // .env Loader (zero-dependency)
 // ==========================================
@@ -79,11 +90,34 @@ const MAX_OLLAMA_QUEUE_SIZE = Math.max(0, Number(process.env.MAX_OLLAMA_QUEUE_SI
 const MCP_REQUEST_TIMEOUT_MS = Number(process.env.MCP_REQUEST_TIMEOUT_MS) || 300000;
 const VISION_MODEL_FAST = process.env.VISION_MODEL_FAST || "llava:13b";
 const VISION_MODEL_HEAVY = process.env.VISION_MODEL_HEAVY || "qwen3-vl:30b";
+// How long Ollama keeps a model resident after a request (Ollama default is 5m).
+// Passed through so callers can pin or pre-load models deliberately.
+const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || undefined;
+// Sampling is pinned for reproducibility. A vision model given temperature 0
+// plus an explicit seed produces stable output for the same input.
+const VISION_TEMPERATURE = Number(process.env.VISION_TEMPERATURE ?? 0);
+const VISION_SEED = Number(process.env.VISION_SEED ?? 42);
+const VISION_NUM_PREDICT = Number(process.env.VISION_NUM_PREDICT ?? 2048);
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "/tmp/hvm-uploads";
 const FEEDBACK_DIR = process.env.FEEDBACK_DIR || "/tmp/hvm-feedback";
 const DOWNLOAD_DIR = path.resolve(process.env.DOWNLOAD_DIR || "./tmp/hvm-downloads");
 const MAX_UPLOAD_AGE_MS = 15 * 60 * 1000;
-const MAX_UPLOAD_SIZE_BYTES = Number(process.env.MAX_UPLOAD_SIZE_MB) * 1024 * 1024 || 20 * 1024 * 1024;
+// Parse the configured megabyte value *first*, then scale. The previous form
+// `Number(env) * 1024 * 1024 || 20 * 1024 * 1024` only fell back to 20MB because
+// NaN propagates through the multiplication, which is opaque and silently
+// swallowed a typo'd value. This mirrors the MAX_DOWNLOAD_SIZE_BYTES idiom
+// immediately below and warns when the configured value is unusable.
+const MAX_UPLOAD_SIZE_MB = (() => {
+  const raw = process.env.MAX_UPLOAD_SIZE_MB;
+  if (raw === undefined || raw === "") return 20;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    logWarn(`[CONFIG] MAX_UPLOAD_SIZE_MB="${raw}" is not a positive number; using default 20MB.`);
+    return 20;
+  }
+  return parsed;
+})();
+const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;
 const MAX_DOWNLOAD_SIZE_BYTES = (Number(process.env.MAX_DOWNLOAD_SIZE_MB) || 50) * 1024 * 1024;
 const MAX_RESPONSE_TEXT_CHARS = Number(process.env.MAX_RESPONSE_TEXT_CHARS) || 12000;
 const ALLOWED_UPLOAD_MIME_TYPES = new Set([
@@ -166,14 +200,22 @@ function sanitizeBase64(input) {
   return cleaned.replace(/ /g, "+").replace(/[\r\n\s]/g, "");
 }
 
-function truncateForClient(text) {
-  if (typeof text !== "string") {
-    return text;
-  }
-  if (text.length <= MAX_RESPONSE_TEXT_CHARS) {
-    return text;
-  }
-  return `${text.slice(0, MAX_RESPONSE_TEXT_CHARS)}\n\n[truncated for client context limits]`;
+/**
+ * Truncate a JSON-serialisable value while keeping the result VALID JSON.
+ *
+ * Delegates to lib/response.js so the behaviour is unit-tested directly
+ * (index.js is a server entrypoint and exports nothing).
+ *
+ * A plain string slice cut structured responses mid-token, producing output
+ * that could not be parsed (observed live when a structured analysis response
+ * exceeded the cap).
+ *
+ * @param {any} value
+ * @param {number} [maxChars]
+ * @returns {string} valid JSON
+ */
+function truncateJsonForClient(value, maxChars = MAX_RESPONSE_TEXT_CHARS) {
+  return truncateJsonForClientImpl(value, maxChars);
 }
 
 function isSupportedImageBuffer(buf) {
@@ -474,48 +516,53 @@ function releaseOllamaSlot() {
   }
 }
 
-async function queryOllamaVision(model, prompt, imageBuffers) {
+// Vision inference goes through the hard-won concurrency gate (kept intact:
+// parallel vision inference has crashed this host). The HTTP layer itself is
+// now delegated to the hardened streaming client, which pins sampling params,
+// distinguishes model *loading* from *inferring*, and produces timeout errors
+// grounded in what is actually resident/installed on this host (F5).
+//
+// Returns `{ text, metrics, warnings, request }`.
+async function queryOllamaVision(model, prompt, imageBuffers, opts = {}) {
   await acquireOllamaSlot();
   try {
-    const imagesBase64 = imageBuffers.map((buf) => buf.toString("base64"));
-
-    const payload = {
-      model: model,
-      prompt: prompt,
-      images: imagesBase64,
-      stream: false,
-    };
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS);
-
-    let response;
-    try {
-      response = await fetch(`${OLLAMA_HOST}/api/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      if (err.name === "AbortError") {
-        throw new Error(`Ollama request timed out after ${OLLAMA_TIMEOUT_MS}ms. Try a lighter model (e.g., llava:7b), reduce image size, or increase OLLAMA_TIMEOUT_MS.`);
-      }
-      throw new Error(`Could not connect to Ollama service at ${OLLAMA_HOST}: ${err.message}`);
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Ollama API error (${response.status}): ${errText || response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.response;
+    return await queryOllamaVisionText({
+      model,
+      prompt,
+      images: imageBuffers,
+      ollamaHost: OLLAMA_HOST,
+      timeoutMs: opts.timeoutMs || OLLAMA_TIMEOUT_MS,
+      keepAlive: opts.keepAlive !== undefined ? opts.keepAlive : OLLAMA_KEEP_ALIVE,
+      temperature: opts.temperature !== undefined ? opts.temperature : VISION_TEMPERATURE,
+      seed: opts.seed !== undefined ? opts.seed : VISION_SEED,
+      numPredict: opts.numPredict !== undefined ? opts.numPredict : VISION_NUM_PREDICT,
+      onProgress: opts.onProgress,
+    });
   } finally {
     releaseOllamaSlot();
   }
+}
+
+// Build a compact, always-present provenance line appended to legacy text
+// responses, so an agent can see which model answered, with what settings, at
+// what resolution, and whether any warnings apply (§5.7).
+function provenanceFooter(res, { model, sentDimensions = null, downscaled = false } = {}) {
+  const m = res?.metrics || {};
+  const parts = [
+    `model=${model}`,
+    `temperature=${res?.request?.options?.temperature ?? VISION_TEMPERATURE}`,
+    `seed=${res?.request?.options?.seed ?? VISION_SEED}`,
+    m.time_to_first_token_ms != null ? `ttft_ms=${m.time_to_first_token_ms}` : null,
+    m.total_ms != null ? `total_ms=${m.total_ms}` : null,
+    sentDimensions ? `sent=${sentDimensions.width}x${sentDimensions.height}` : null,
+    `downscaled=${downscaled}`,
+  ].filter(Boolean);
+  const warns = (res?.warnings || []).filter(Boolean);
+  let footer = `\n\n[provenance] ${parts.join(" ")}`;
+  if (warns.length) {
+    footer += `\n[warnings] ${warns.join(" | ")}`;
+  }
+  return footer;
 }
 
 function normalizeImageSources(input) {
@@ -1212,6 +1259,126 @@ function createMcpServer() {
             required: ["url"],
           },
         },
+        {
+          name: "measure_image",
+          title: "Measure Image (deterministic)",
+          description:
+            "Answer MEASURABLE questions about an image with code, not a language model: WCAG contrast ratio, " +
+            "dominant/background colours, box counts, region content. Uses exact pixel maths (Sharp), so results are " +
+            "reproducible and remain available even when Ollama is unavailable or contended. No vision model is consulted. " +
+            "Use this instead of asking a vision tool any question involving numbers.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              image_source: {
+                type: "string",
+                description: "Image to measure. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
+              mode: {
+                type: "string",
+                enum: ["contrast", "colors", "boxes", "layout", "all"],
+                description: "Which measurement(s) to perform. Default: 'all'.",
+              },
+              region: {
+                type: "object",
+                description: "Region of interest for contrast/content measures: { left, top, width, height } in pixels.",
+                properties: {
+                  left: { type: "number" },
+                  top: { type: "number" },
+                  width: { type: "number" },
+                  height: { type: "number" },
+                },
+                required: ["left", "top", "width", "height"],
+              },
+              box_color: {
+                type: "string",
+                description: "Border colour (hex) of the boxes to count. Required for mode 'boxes' — counting without it would be a guess.",
+              },
+              background_color: {
+                type: "string",
+                description: "Optional explicit background colour (hex). If omitted, the modal colour of the region is used.",
+              },
+              tolerance: { type: "number", description: "RGB distance tolerance for colour matching (0-255). Default: 24." },
+              large_text: { type: "boolean", description: "Assess against WCAG large-text thresholds (3:1) instead of 4.5:1." },
+              ink_threshold: {
+                type: "number",
+                description:
+                  "RGB distance from the background above which a pixel counts as 'ink' during contrast enumeration. " +
+                  "Default: 4. Lower it to catch text closer to the background colour (a 1.04:1 string sits ~7 units away).",
+              },
+              include_decorative: {
+                type: "boolean",
+                description:
+                  "Include decorative (thin hollow rectangle) colours in the contrast summary. Default: false — such " +
+                  "colours are reported separately under 'excluded' with an explicit note.",
+              },
+              decorative_colors: {
+                type: "array",
+                items: { type: "string" },
+                description: "Hex colours to treat as decorative explicitly (excluded from worst/best unless include_decorative is true).",
+              },
+              background_mode: {
+                type: "string",
+                enum: ["global", "local"],
+                description:
+                  "How the background is modelled for contrast. 'global' (default) is a single modal colour and is " +
+                  "correct for flat UI screenshots. 'local' uses a per-tile robust background with a noise-scaled " +
+                  "threshold, which handles photographic, gradient or multi-tone images — note that a 48px tile " +
+                  "straddling two flat panels can over-threshold, so it is opt-in rather than automatic.",
+              },
+              tile_size: { type: "number", description: "Tile edge in pixels for background_mode 'local'. Default: 48." },
+              noise_factor: {
+                type: "number",
+                description: "k in `threshold = max(ink_threshold, k * local_noise_sigma)` for background_mode 'local'. Default: 4.",
+              },
+            },
+            required: ["image_source"],
+          },
+        },
+        {
+          name: "analyze_image_structured",
+          title: "Analyze Image (schema-constrained, cross-validated)",
+          description:
+            "Analyze an image and return STRUCTURED, EVIDENCE-BACKED output instead of free prose. Every statement is a " +
+            "claims[] entry carrying its own box and confidence; transcribed text is cross-validated against Tesseract OCR and " +
+            "flagged as 'unverified' when it has no OCR support and no plausible box (the fabrication signature). " +
+            "Abstention is first-class: the model is instructed to use abstained[] rather than guess. " +
+            "Quantitative questions are answered by deterministic measurement in code, never by the model. " +
+            "Includes full provenance: model, sampling options, dimensions actually sent, and any warnings.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              image_source: {
+                type: "string",
+                description: "Image to analyze. Accepts: Base64 Data URI, HTTP URL, local file path, or upload://<filename>.",
+                "x-mcp-file": true,
+                "x-mcp-file-accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+              },
+              prompt: { type: "string", description: "What to find out. A quantitative question here is routed to deterministic measurement." },
+              model: { type: "string", description: "Optional Ollama vision model override." },
+              crop: {
+                type: "object",
+                description: "Optional region to physically crop to before analysis: { left, top, width, height }. Text outside the crop cannot appear in the result.",
+                properties: {
+                  left: { type: "number" },
+                  top: { type: "number" },
+                  width: { type: "number" },
+                  height: { type: "number" },
+                },
+                required: ["left", "top", "width", "height"],
+              },
+              cross_validate: { type: "boolean", description: "Cross-validate transcribed text against Tesseract OCR. Default: true." },
+              ocr_language: { type: "string", description: "OCR language code for cross-validation. Default: 'eng'." },
+              timeout_ms: { type: "number", description: "Per-request Ollama timeout in ms. Default: OLLAMA_TIMEOUT_MS." },
+              keep_alive: { type: "string", description: "Ollama keep_alive value, e.g. '5m' or '0' to unload the model after this call." },
+              seed: { type: "number", description: "Sampling seed for reproducibility. Default: 42." },
+              temperature: { type: "number", description: "Sampling temperature. Default: 0 (deterministic)." },
+            },
+            required: ["image_source"],
+          },
+        },
       ],
     };
   });
@@ -1244,16 +1411,130 @@ function createMcpServer() {
           ollamaStatus = `Connection Error: ${e.message}`;
         }
 
-        const healthText = [
+        const healthLines = [
           "=== Vision MCP Health Status ===",
           `- Ollama Service: ${ollamaStatus}`,
           `- Installed Ollama Models: ${modelsList.length > 0 ? modelsList.join(", ") : "None detected"}`,
           "- Tesseract OCR Engine: Ready (WebAssembly)",
           "- Sharp CV Engine: Ready",
           `- Ollama Concurrency: ${activeOllamaRequests}/${MAX_PARALLEL_OLLAMA_REQUESTS} active, ${ollamaWaitQueue.length} queued (max queue ${MAX_OLLAMA_QUEUE_SIZE}).`,
-        ].join("\n");
+        ];
+
+        // --- Additive (F5): report which models actually hold memory right now.
+        // A different model being resident is the single most common cause of a
+        // slow first vision call, and the old health check never showed it.
+        try {
+          const residency = await getModelResidency(OLLAMA_HOST);
+          if (residency.loaded.length > 0) {
+            healthLines.push(
+              `- Models Resident Now: ${residency.loaded
+                .map((m) => `${m.name} (~${(m.size_vram / 1e9).toFixed(1)}GB VRAM${m.expires_at ? `, expires ${m.expires_at}` : ""})`)
+                .join("; ")}`,
+            );
+            const targetResident = residency.loaded.some(
+              (m) => m.name === VISION_MODEL_HEAVY || m.name === VISION_MODEL_FAST,
+            );
+            if (!targetResident) {
+              healthLines.push(
+                `- Residency Note: neither configured default vision model (${VISION_MODEL_FAST}, ${VISION_MODEL_HEAVY}) is resident. ` +
+                  `The next heavy vision call must load a model from disk, and will time out sooner while another model holds memory (the observed F5 failure mode).`,
+              );
+            }
+          } else {
+            healthLines.push("- Models Resident Now: none (the next vision call will load a model from disk).");
+          }
+          const visionModels = await listInstalledVisionModels(OLLAMA_HOST);
+          healthLines.push(
+            `- Installed Vision Models: ${visionModels.length ? visionModels.map((m) => m.name).join(", ") : "none detected"}`,
+          );
+        } catch (e) {
+          healthLines.push(`- Residency Check: unavailable (${e.message})`);
+        }
+
+        const healthText = healthLines.join("\n");
 
         return { content: [{ type: "text", text: healthText }] };
+      }
+
+      if (name === "measure_image") {
+        const parsed = parseArgs(z.object({
+          image_source: toolSchemas.imageSource,
+          mode: z.enum(["contrast", "colors", "boxes", "layout", "all"]).optional(),
+          region: z.object({ left: z.number(), top: z.number(), width: z.number(), height: z.number() }).optional(),
+          box_color: toolSchemas.optionalString,
+          background_color: toolSchemas.optionalString,
+          tolerance: z.number().optional(),
+          large_text: z.boolean().optional(),
+          ink_threshold: z.number().optional(),
+          include_decorative: z.boolean().optional(),
+          decorative_colors: z.array(z.string()).optional(),
+          background_mode: z.enum(["global", "local"]).optional(),
+          tile_size: z.number().optional(),
+          noise_factor: z.number().optional(),
+        }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
+        const pngBuf = await normalizeToPngBuffer(rawBuf);
+
+        const result = await measureImage({
+          imageBuffer: pngBuf,
+          mode: parsed.mode || "all",
+          region: parsed.region || null,
+          boxColor: parsed.box_color || null,
+          backgroundColor: parsed.background_color || null,
+          tolerance: parsed.tolerance,
+          largeText: !!parsed.large_text,
+          extra: {
+            inkThreshold: parsed.ink_threshold,
+            includeDecorative: !!parsed.include_decorative,
+            decorativeColors: parsed.decorative_colors || [],
+            backgroundMode: parsed.background_mode,
+            tileSize: parsed.tile_size,
+            noiseFactor: parsed.noise_factor,
+          },
+        });
+
+        return { content: [{ type: "text", text: truncateJsonForClient(result) }] };
+      }
+
+      if (name === "analyze_image_structured") {
+        const parsed = parseArgs(z.object({
+          image_source: toolSchemas.imageSource,
+          prompt: toolSchemas.optionalString,
+          model: toolSchemas.optionalString,
+          crop: z.object({ left: z.number(), top: z.number(), width: z.number(), height: z.number() }).optional(),
+          cross_validate: z.boolean().optional(),
+          ocr_language: toolSchemas.optionalString,
+          timeout_ms: z.number().optional(),
+          keep_alive: z.string().optional(),
+          seed: z.number().optional(),
+          temperature: z.number().optional(),
+        }));
+        const rawBuf = await resolveImageToBuffer(parsed.image_source);
+        const pngBuf = await normalizeToPngBuffer(rawBuf);
+        const model = parsed.model || VISION_MODEL_FAST;
+
+        await acquireOllamaSlot();
+        let result;
+        try {
+          result = await analyzeStructured({
+            imageBuffer: pngBuf,
+            prompt: parsed.prompt || "",
+            model,
+            ollamaHost: OLLAMA_HOST,
+            timeoutMs: parsed.timeout_ms || OLLAMA_TIMEOUT_MS,
+            seed: parsed.seed !== undefined ? parsed.seed : VISION_SEED,
+            temperature: parsed.temperature !== undefined ? parsed.temperature : VISION_TEMPERATURE,
+            keepAlive: parsed.keep_alive !== undefined ? parsed.keep_alive : OLLAMA_KEEP_ALIVE,
+            language: parsed.ocr_language || "eng",
+            crop: parsed.crop || null,
+            crossValidate: parsed.cross_validate !== false,
+            numPredict: VISION_NUM_PREDICT,
+          });
+        } finally {
+          releaseOllamaSlot();
+        }
+
+        return { content: [{ type: "text", text: truncateJsonForClient(result) }] };
       }
 
       if (name === "fast_ocr_tesseract") {
@@ -1346,25 +1627,73 @@ function createMcpServer() {
       if (name === "analyze_image") {
         const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, prompt: toolSchemas.optionalString, model: toolSchemas.optionalString }));
         const rawBuf = await resolveImageToBuffer(parsed.image_source);
-        await normalizeToPngBuffer(rawBuf);
+        const pngBuf = await normalizeToPngBuffer(rawBuf);
 
         const prompt = parsed.prompt || "Describe this image in detail.";
         const model = parsed.model || VISION_MODEL_FAST;
 
-        const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
-        return { content: [{ type: "text", text: truncateForClient(textResult) }] };
+        // F4 fix at the tool boundary: a quantitative question is answered by
+        // deterministic measurement, or explicitly abstained — never guessed by
+        // the model. This path does not consult Ollama at all, so it still
+        // succeeds when the model is unavailable.
+        const quant = detectQuantitativeQuestion(prompt);
+        if (quant.quantitative) {
+          const measured = await measureImage({ imageBuffer: pngBuf, mode: "all" });
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                ...measured,
+                answered_by: "deterministic-measurement",
+                model_consulted: false,
+                reason:
+                  "The prompt asks a quantitative question. Numeric answers are computed in code, not generated by the vision model.",
+                matched_signals: quant.matched,
+              }, null, 2),
+            }],
+          };
+        }
+
+        const prepared = await prepareForVision(pngBuf, { floor: DEFAULT_LEGIBILITY_FLOOR });
+        const res = await queryOllamaVision(model, prompt, [prepared.buffer]);
+        return {
+          content: [{
+            type: "text",
+            text: truncateForClient(
+              res.text +
+                provenanceFooter(res, {
+                  model,
+                  sentDimensions: prepared.report.sent_dimensions,
+                  downscaled: prepared.report.downscaled,
+                }),
+            ),
+          }],
+        };
       }
 
       if (name === "find_text_element") {
         const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, query: z.string().min(1), model: toolSchemas.optionalString }));
         const rawBuf = await resolveImageToBuffer(parsed.image_source);
-        await normalizeToPngBuffer(rawBuf);
+        const pngBuf = await normalizeToPngBuffer(rawBuf);
 
         const prompt = `Locate the element or text matching: "${parsed.query}". Provide the bounding box coordinates or visual position within the image.`;
         const model = parsed.model || VISION_MODEL_HEAVY;
 
-        const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
-        return { content: [{ type: "text", text: truncateForClient(textResult) }] };
+        const prepared = await prepareForVision(pngBuf, { floor: DEFAULT_LEGIBILITY_FLOOR });
+        const res = await queryOllamaVision(model, prompt, [prepared.buffer]);
+        return {
+          content: [{
+            type: "text",
+            text: truncateForClient(
+              res.text +
+                provenanceFooter(res, {
+                  model,
+                  sentDimensions: prepared.report.sent_dimensions,
+                  downscaled: prepared.report.downscaled,
+                }),
+            ),
+          }],
+        };
       }
 
       if (name === "compare_images") {
@@ -1388,14 +1717,14 @@ function createMcpServer() {
         const prompt = parsed.prompt || "Compare these images in detail and highlight any differences or similarities.";
         const model = parsed.model || VISION_MODEL_HEAVY;
 
-        const textResult = await queryOllamaVision(model, prompt, buffers);
-        return { content: [{ type: "text", text: truncateForClient(textResult) }] };
+        const res = await queryOllamaVision(model, prompt, buffers);
+        return { content: [{ type: "text", text: truncateForClient(res.text + provenanceFooter(res, { model })) }] };
       }
 
       if (name === "browser_screenshot_analysis") {
         const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, focus: z.enum(["all", "layout", "components", "accessibility", "design", "content"]).optional(), detail_level: z.enum(["brief", "standard", "detailed"]).optional(), model: toolSchemas.optionalString }));
         const rawBuf = await resolveImageToBuffer(parsed.image_source);
-        await normalizeToPngBuffer(rawBuf);
+        const pngBuf = await normalizeToPngBuffer(rawBuf);
 
         const focus = (parsed.focus || "all").toLowerCase();
         const detailLevel = (parsed.detail_level || "standard").toLowerCase();
@@ -1409,10 +1738,20 @@ function createMcpServer() {
         const model = parsed.model || VISION_MODEL_HEAVY;
         const prompt = prompts[detailLevel] || prompts.standard;
 
-        const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
+        const prepared = await prepareForVision(pngBuf, { floor: DEFAULT_LEGIBILITY_FLOOR });
+        const res = await queryOllamaVision(model, prompt, [prepared.buffer]);
         return {
           content: [
-            { type: "text", text: `[Browser Screenshot Analysis - Focus: ${focus} - Detail: ${detailLevel}]\n\n${textResult}` },
+            {
+              type: "text",
+              text:
+                `[Browser Screenshot Analysis - Focus: ${focus} - Detail: ${detailLevel}]\n\n${res.text}` +
+                provenanceFooter(res, {
+                  model,
+                  sentDimensions: prepared.report.sent_dimensions,
+                  downscaled: prepared.report.downscaled,
+                }),
+            },
           ],
         };
       }
@@ -1522,16 +1861,18 @@ function createMcpServer() {
       if (name === "detect_ui_elements") {
         const parsed = parseArgs(z.object({ image_source: toolSchemas.imageSource, element_types: z.array(z.string()).optional(), return_overlay: z.boolean().optional(), model: toolSchemas.optionalString }));
         const rawBuf = await resolveImageToBuffer(parsed.image_source);
-        await normalizeToPngBuffer(rawBuf);
+        const normalizedBuf = await normalizeToPngBuffer(rawBuf);
 
-        const meta = await sharp(rawBuf).metadata();
+        const meta = await sharp(normalizedBuf).metadata();
         const elementTypes = Array.isArray(parsed.element_types)
           ? parsed.element_types.join(", ")
           : "buttons, text inputs, links/images acting as links, cards, navigation bars, modals, dropdowns, checkboxes, radio buttons, tables, lists, icons, headings, and form labels";
 
         const prompt = `Analyze this screenshot and detect the following UI elements: ${elementTypes}. For each element you identify, provide: 1) the element type, 2) a brief label describing what it is or the text it contains, 3) approximate bounding box coordinates in pixels as [x, y, width, height] where (x,y) is the top-left corner. Return the results as a JSON array where each item has keys: "type", "label", "x", "y", "width", "height". If an element type is not visible, omit it from the array. Focus on accuracy for both labels and coordinates.`;
         const model = parsed.model || VISION_MODEL_HEAVY;
-        const textResult = await queryOllamaVision(model, prompt, [rawBuf]);
+        const prepared = await prepareForVision(normalizedBuf, { floor: DEFAULT_LEGIBILITY_FLOOR });
+        const res = await queryOllamaVision(model, prompt, [prepared.buffer]);
+        const textResult = res.text;
 
         let overlay = null;
         let overlayPath = null;
@@ -1561,7 +1902,7 @@ function createMcpServer() {
           if (boxes.length > 0) {
             const overlayBuf = buildAnnotationOverlay(boxes, meta.width, meta.height);
             if (overlayBuf) {
-              const annotated = await sharp(rawBuf)
+              const annotated = await sharp(normalizedBuf)
                 .composite([{ input: overlayBuf, blend: "over" }])
                 .png()
                 .toBuffer();
@@ -1579,6 +1920,17 @@ function createMcpServer() {
           width: meta.width,
           height: meta.height,
           detection: textResult,
+          provenance: {
+            model,
+            options: res.request?.options || null,
+            image: {
+              input_dimensions: prepared.report.input_dimensions,
+              sent_dimensions: prepared.report.sent_dimensions,
+              downscaled: prepared.report.downscaled,
+            },
+            metrics: res.metrics,
+            warnings: [...(res.warnings || []), ...(prepared.report.warnings || [])],
+          },
         };
         if (overlay) {
           response.overlay_data_uri = `data:image/png;base64,${overlay}`;
@@ -1668,9 +2020,17 @@ function createMcpServer() {
         fs.writeFileSync(diffPath, diffBuf);
 
         let aiDescription = "";
+        let aiDescriptionProvenance = null;
         if (parsed.analyze !== false) {
           const prompt = "Compare these two screenshots. The first image is the 'before' state, the second is the 'after' state. Describe all visual differences you can identify, including what changed, where on the screen, and any visual regressions or improvements.";
-          aiDescription = await queryOllamaVision(VISION_MODEL_HEAVY, prompt, buffers);
+          const res = await queryOllamaVision(VISION_MODEL_HEAVY, prompt, buffers);
+          aiDescription = res.text + provenanceFooter(res, { model: VISION_MODEL_HEAVY });
+          aiDescriptionProvenance = {
+            model: VISION_MODEL_HEAVY,
+            options: res.request?.options || null,
+            metrics: res.metrics,
+            warnings: res.warnings || [],
+          };
         }
 
         const response = {
@@ -1691,6 +2051,9 @@ function createMcpServer() {
         };
         if (aiDescription) {
           response.ai_description = aiDescription;
+        }
+        if (aiDescriptionProvenance) {
+          response.ai_description_provenance = aiDescriptionProvenance;
         }
 
         return {
@@ -1987,7 +2350,7 @@ const cleanupFeedback = () => {
 setInterval(cleanupFeedback, 5 * 60 * 1000);
 cleanupFeedback();
 
-app.post("/upload", express.raw({ type: "*/*", limit: `${MAX_UPLOAD_SIZE_BYTES}mb` }), async (req, res) => {
+app.post("/upload", express.raw({ type: "*/*", limit: `${MAX_UPLOAD_SIZE_MB}mb` }), async (req, res) => {
   setCorsHeaders(req, res);
 
   const clientIp = getClientIp(req);

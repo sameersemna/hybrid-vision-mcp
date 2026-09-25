@@ -4,7 +4,24 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:accuracy": "node --test test/accuracy.test.js",
+    "test:contrast": "node --test test/contrast.test.js",
+    "test:background": "node --test test/background.test.js",
+    "test:response": "node --test test/response.test.js",
+    "test:fixture": "node verify/verify-fixture.mjs",
+    "test:nonvacuity": "node verify/nonvacuity.mjs",
+    "test:nonvacuity:contrast": "node verify/nonvacuity-contrast.mjs",
+    "test:nonvacuity:background": "node verify/nonvacuity-background.mjs",
+    "fixture:make": "python3 verify/make-fixture.py",
+    "verify:contrast-live": "node verify/verify-contrast-live.mjs",
+    "verify:background": "node verify/verify-background-live.mjs",
+    "verify:truncation": "node verify/verify-truncation-live.mjs",
+    "verify:fabrication": "node verify/reproduce-fabrication.mjs",
+    "verify:real": "node verify/verify-real-model.mjs",
+    "verify:contrast": "node verify/verify-real-contrast.mjs",
+    "verify:timeout": "node verify/verify-timeout.mjs",
+    "verify:regression": "node verify/final-regression.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
