@@ -998,6 +998,96 @@ a non-flat page plus a card grid — is a shape constructed to defeat the guards
 rather than one observed in practice; it is recorded here rather than papered
 over.
 
+## 5h. Seventh audit: a text colour accepted as a plateau and masked
+
+The third edge of the same triangle. Round 5 stopped a **silent pass**, round 6
+stopped a **spurious fail**; this round stops a **text colour being reclassified
+as background and then going unreported**.
+
+### The defect (F8)
+
+Fixture: two huge **identical** glyphs ("OO" at 300px bold) in one colour that
+fails contrast (`#464646` at **1.88:1**). Reproduced exactly, in both renderings:
+
+| rendering | result |
+|---|---|
+| with anti-aliasing | `plateaus: [#1a1814 84.6%, #464646 15.1%]` — the **text colour is a plateau**; `colours` holds only AA remnants (`#252320` 1.66, `#424141` 1.74) |
+| hard-edged (posterised to 2 colours) | `colours: []`, `measurable: false`, `all_meet_aa: null`, and a note asserting *"No text was found there"* about a region that is **entirely text** |
+
+The second form is a **true false negative**: the failing text is not merely
+missed, the response states there is no text at all.
+
+### The attribution — corrected by measurement
+
+The audit attributed this to the tiling path it recommended. **That is not what
+happened**, and the distinction matters for where the fix belongs. Instrumenting
+the plateau record showed:
+
+```
+#464646  share=0.1505  detection=dominant-blob  dominance=0.5  solid_component_count=0
+```
+
+The colour was accepted by the **pre-existing dominant-blob path** (round 4), not
+by the tiling path. Two *identical* glyphs give `dominance = largest blob / colour
+pixels = 0.5` exactly — the threshold — and the ring's fill is **0.556**, below
+the tiling path's `PLATEAU_SOLID_FILL` (0.85), so the tiling path **never fired**.
+So F8 is a boundary weakness that predates the tiling round; the tiling round
+simply gave the audit a reason to look at large glyphs. (Round 6's own
+counter-finding — the card-border false positive — *was* introduced by the tiling
+path and was fixed there.)
+
+### The fix: a plateau blob must be the outermost colour or a solid panel
+
+Measured blob geometry separated the cases cleanly:
+
+| colour | blob fill | touches region border? | is a panel? |
+|---|---|---|---|
+| **glyph ring `#464646`** (F8) | **0.556** | no (inset) | **no** — a glyph |
+| card fill (F7, dashboard) | 0.96–0.99 | no | yes |
+| two-panel page / panel | 0.96–0.99 | yes | yes |
+| acceptance background | 0.75 | yes (whole region) | yes |
+| dense dashboard background | 0.20 | yes | yes |
+
+The physical distinction: the **outermost colour is the background with
+everything else cut out of it**, so its fill is low by nature and must be allowed
+to be hollow — otherwise every page background would be rejected. An **inset**
+blob, by contrast, is only a panel if it is near-solid; an inset *hollow* blob is a
+glyph ring. The dominant-blob path therefore now requires
+`touchesBorder || fill >= PLATEAU_SOLID_FILL`.
+
+This is a **shape** test, not a threshold tune, so it composes with the existing
+paths: the tiling path keeps its solidity requirement (a tiling is solid by
+definition), and the outer background keeps qualifying through `touchesBorder`.
+
+### Consistency of `plateaus_without_text`
+
+The disclosure added in round 4 can now never assert something false: because the
+text colour is no longer a plateau, it cannot be listed as a plateau "without
+text". This is asserted directly, and the assertion fails if the shape guard is
+removed (see non-vacuity below).
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **78/78** (was 73; +5 round-7 tests) |
+| F8a (AA) | `#464646` reported at **1.88:1 failing**; `plateaus: [#1a1814]` only |
+| F8b (hard-edged) | `measurable: true`, `failing_count: 1`, `all_meet_aa: false`, no "no text" note |
+| F8 controls (`GO`@150, words@64, `HEADING`+`OO`, `OOO`×2, `WWWWWW…`, `MM` tiled) | all reported |
+| §1 acceptance | unchanged: 1 plateau, 5 colours, 1.04 / 13.42, failing 2; decorative border still `excluded`, not a plateau |
+| F5 two-panel | sidebar `#3c3c3c` still 1.64:1 failing; both panel colours still plateaus (fill 0.96–0.99) |
+| F6 gradient | marginal note + `model_disagreement` still present |
+| F7 tiled (dark + light) | still `all_meet_aa: true`, only `#e8dfd0`, `plateaus_without_text` disclosed |
+| dense dashboard | 3 plateaus, `failing_count 0` (borders still excluded) |
+| live MCP (new code, 11498) | F8 fixed: YES in both renderings |
+| non-vacuity | 9 + 11 + 7 + 5 + 5 + 3 + 4 + **3 (round 7)** all non-vacuous |
+
+### The third invariant
+
+A verdict is now constrained on all three edges: **a clean result is never
+silent**, **a failure is never attributed to a background region**, and **a text
+colour is never reclassified as a background region and then unreported**.
+
 ## 9. New module map
 
 | File | Responsibility |

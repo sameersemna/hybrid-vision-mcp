@@ -46,10 +46,12 @@ import {
   buildTiledCardsFixture,
   buildTiledCardsLightFixture,
   buildTexturedPageCardsFixture,
+  buildHugeGlyphFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
   TILED_CARDS,
+  HUGE_GLYPH,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -755,5 +757,96 @@ test("F7: a textured page (no plateau can model it) is caught by the region back
   // The predicate itself: the reported blob is a region, faint TEXT is not.
   assert.equal(isLargeBackgroundRegion({ pixel_count: 316548, component_count: 1, contrast_ratio_raw: 1.21 }, 1200 * 700), true);
   assert.equal(isLargeBackgroundRegion({ pixel_count: 2174, component_count: 20, contrast_ratio_raw: 1.04 }, 900 * 420), false, "real near-background text must never be dropped");
+});
+
+// ==========================================================================
+// Seventh-audit acceptance tests (F8: a text colour accepted as a plateau and
+// masked). Non-vacuous per verify/nonvacuity-round7.mjs.
+// ==========================================================================
+
+test("F8: huge identical glyphs are reported as failing text, not as a plateau", async () => {
+  const png = await buildHugeGlyphFixture();
+  const pixels = await loadPixels(png);
+  const plateaus = detectPlateaus(pixels, HUGE_GLYPH.region);
+
+  // The text colour must not be a plateau: its blobs are inset glyph RINGS
+  // (fill ~0.56), not solid panels.
+  assert.ok(
+    !plateaus.some((p) => p.hex === HUGE_GLYPH.text),
+    `the text colour must not be a plateau (got ${plateaus.map((p) => p.hex).join(", ")})`,
+  );
+  assert.equal(plateaus.length, 1, "only the page background is a plateau");
+  assert.equal(plateaus[0].hex, HUGE_GLYPH.background);
+
+  for (const mode of ["global", "local"]) {
+    const r = contrastInRegion(pixels, HUGE_GLYPH.region, { backgroundMode: mode });
+    const text = r.colours.find((c) => c.foreground === HUGE_GLYPH.text);
+    assert.ok(text, `[${mode}] the text colour must be reported (got ${r.colours.map((c) => c.foreground).join(", ") || "none"})`);
+    assert.equal(text.contrast_ratio, HUGE_GLYPH.ratio, `[${mode}] measured at its true ratio`);
+    assert.equal(text.wcag_aa, false);
+    assert.equal(r.failing_count, 1);
+    assert.equal(r.all_meet_aa, false);
+  }
+});
+
+test("F8: hard-edged glyphs are not reported as 'no text was found'", async () => {
+  const png = await buildHugeGlyphFixture({ hardEdge: true });
+  const pixels = await loadPixels(png);
+
+  for (const mode of ["global", "local"]) {
+    const r = contrastInRegion(pixels, HUGE_GLYPH.region, { backgroundMode: mode });
+    // The true false negative: measurable:false with "no text was found".
+    assert.equal(r.measurable, true, `[${mode}] the region IS text and must be measurable`);
+    assert.notEqual(r.all_meet_aa, null, `[${mode}] a verdict must be reached`);
+    assert.equal(r.failing_count, 1, `[${mode}] the 1.88:1 run must be counted`);
+    assert.equal(r.all_meet_aa, false, `[${mode}] and it fails`);
+    assert.ok(r.colours.some((c) => c.foreground === HUGE_GLYPH.text), `[${mode}] the text colour is reported`);
+    assert.ok(
+      !r.notes.some((n) => /No text was found there/.test(n)),
+      `[${mode}] must not assert that a text region contains no text`,
+    );
+  }
+});
+
+test("F8: an inset hollow blob is never a plateau (glyph ring vs panel)", async () => {
+  const pixels = await loadPixels(await buildHugeGlyphFixture());
+  const plateaus = detectPlateaus(pixels, HUGE_GLYPH.region);
+  const textPlateau = plateaus.find((p) => p.hex === HUGE_GLYPH.text);
+  assert.equal(textPlateau, undefined);
+
+  // The page background IS hollow and inset-free (it touches the border), so it
+  // must still qualify — the fix must not reject legitimate backgrounds.
+  const bg = plateaus.find((p) => p.hex === HUGE_GLYPH.background);
+  assert.ok(bg, "the outermost background must still be a plateau");
+});
+
+test("F8: plateaus_without_text never lists a colour that is itself text", async () => {
+  // The consistency invariant (seventh-audit): a plateau whose colour is also an
+  // un-masked ink cluster is content, not background — claiming "no text was
+  // found" for it is worse than saying nothing.
+  for (const build of [() => buildHugeGlyphFixture(), () => buildHugeGlyphFixture({ hardEdge: true })]) {
+    const r = contrastInRegion(await loadPixels(await build()), HUGE_GLYPH.region);
+    const listed = (r.plateaus_without_text || []).map((p) => p.plateau);
+    assert.ok(
+      !listed.includes(HUGE_GLYPH.text),
+      `the text colour must not be listed as a plateau without text (got ${JSON.stringify(listed)})`,
+    );
+    for (const l of listed) {
+      assert.ok(
+        !r.colours.some((c) => c.foreground === l),
+        `plateau ${l} is listed without text yet also appears as a text colour`,
+      );
+    }
+  }
+});
+
+test("F8 controls: ordinary failing text is unaffected (keep green)", async () => {
+  // None of these ever triggered F8, but they pin that the fix did not over-reach.
+  for (const text of ["GO", "HELLO WORLD", "OOO OOO"]) {
+    const png = await buildHugeGlyphFixture({ text, size: 120 });
+    const r = contrastInRegion(await loadPixels(png), HUGE_GLYPH.region);
+    assert.ok(r.colours.some((c) => c.foreground === HUGE_GLYPH.text), `"${text}" must be reported`);
+    assert.equal(r.failing_count, 1, `"${text}" fails`);
+  }
 });
 

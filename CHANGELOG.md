@@ -1,5 +1,65 @@
 # Changelog
 
+## Seventh-audit follow-up: a text colour accepted as a plateau and masked — 2026-09-26
+
+Round 5 removed the *silent pass*, round 6 the *spurious fail*. This round removes
+the third edge: a text colour being reclassified as background and then going
+unreported. See `ACCURACY.md` §5h.
+
+### Fixed
+
+- **F8 — a large hollow glyph can no longer be accepted as a plateau.** Two huge
+  *identical* glyphs ("OO" at 300px) gave the text colour a dominance of exactly
+  0.5 — the single-blob threshold — while its blobs are inset rings with fill
+  0.556. The text colour became "background": with anti-aliasing the real colour
+  vanished behind AA remnants, and hard-edged the region returned
+  `measurable: false` with a note asserting *"No text was found there"* about a
+  region that is entirely text.
+
+### Changed (semantics)
+
+- The **dominant-blob** plateau path now requires an inset blob to be near-solid:
+  `blob touches the region border OR blob fill >= 0.85`. The **outermost** colour
+  is the background with panels/glyphs cut out of it, so its fill is legitimately
+  low (measured 0.20-0.75) and it still qualifies by touching the border. An
+  inset *hollow* blob is a glyph ring, not a panel (measured: rings 0.56, real
+  inset panels 0.96-0.99). This is a shape test, not a threshold tune. New
+  `plateaus[].detection` value `"dominant-blob"` is unchanged; the reason is
+  reflected in the record's `fill`/`touchesBorder` behaviour rather than a new key.
+- `plateaus_without_text` can no longer assert "no text" for a plateau that the
+  text colour actually occupies — it follows from the above.
+
+### Correction to the audit's attribution
+
+The finding was attributed to the tiling path recommended in round 6. Measurement
+shows the colour was accepted by the **pre-existing dominant-blob path**
+(`detection: "dominant-blob"`, `dominance: 0.5`), not by tiling: the ring's fill
+(0.556) is below the tiling path's solidity floor (0.85), so tiling never fired.
+F8 is a round-4 boundary weakness, not a round-6 regression.
+
+### Added
+
+- `buildHugeGlyphFixture({ hardEdge })` in `test-support/fixtures.mjs` (with a
+  true posterisation path, so the hard-edged rendering is reproducible); 5 tests
+  in `test/background.test.js` (now 41).
+- `verify/nonvacuity-round7.mjs` (3 non-vacuous cases).
+- `verify/verify-background-live.mjs` now also prints the round-7 (F8) checks.
+
+### The third invariant
+
+Alongside "a clean verdict is never silent" and "a failure is never attributed to
+a background region", the server now enforces: **a text colour is never
+reclassified as a background region and then unreported**.
+
+### Deliberately NOT changed
+
+- The WCAG formula, the adequacy floor (0.5), the `>=2-plateau` gate, the tiling
+  path, and `background_regions`.
+- The §1 acceptance path: one flat background with a low fill still qualifies
+  because it spans the region (touches the border).
+
+---
+
 ## Sixth-audit follow-up: tiled layouts reported the page background as failing text — 2026-09-26
 
 Round 5 removed the *silent pass*. This round removes the *spurious fail*: on a

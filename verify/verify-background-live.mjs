@@ -253,4 +253,43 @@ console.log("\n=== 7. round-6 checks (F7 tiled layout does not report the page b
   }
 }
 
+// Round-7 checks (seventh audit F8: a text colour must not be accepted as a
+// plateau and masked).
+async function hugeGlyphs(hardEdge) {
+  const w = 900, h = 420, bg = "#1a1814", fill = "#464646";
+  const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${w}" height="${h}" fill="${bg}"/>
+    <text x="10" y="320" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="300" fill="${fill}">OO</text>
+  </svg>`;
+  let buf = await sharp(Buffer.from(svg)).png().toBuffer();
+  if (hardEdge) {
+    const { data, info } = await sharp(Buffer.from(svg)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const hex = (s) => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+    const [tr, tg, tb] = hex(fill), [br, bgc, bb] = hex(bg);
+    const out = Buffer.alloc(data.length);
+    for (let i = 0; i < data.length; i += info.channels) {
+      const dF = (data[i] - tr) ** 2 + (data[i + 1] - tg) ** 2 + (data[i + 2] - tb) ** 2;
+      const dB = (data[i] - br) ** 2 + (data[i + 1] - bgc) ** 2 + (data[i + 2] - bb) ** 2;
+      const c = dF < dB ? [tr, tg, tb] : [br, bgc, bb];
+      out[i] = c[0]; out[i + 1] = c[1]; out[i + 2] = c[2];
+    }
+    buf = await sharp(out, { raw: { width: info.width, height: info.height, channels: info.channels } }).png().toBuffer();
+  }
+  return buf;
+}
+
+console.log("\n=== 8. round-7 checks (F8 a text colour is not masked as a plateau) ===");
+{
+  const region = { left: 0, top: 0, width: 900, height: 420 };
+  for (const [label, he] of [["AA present", false], ["hard-edged", true]]) {
+    const g = toUri(await hugeGlyphs(he));
+    const r = await call("measure_image", { image_source: g, mode: "contrast", region });
+    const c = r.measurements.contrast;
+    const text = c.colours.find((x) => x.foreground === "#464646");
+    console.log(`  [${label}] plateaus=${c.plateaus.map((p) => p.hex).join("/")} colours=${c.colours.map((x) => x.foreground).join(",")}`);
+    console.log(`  [${label}] #464646 = ${text ? text.contrast_ratio + ":1 failing=" + !text.wcag_aa : "MISSING"} measurable=${c.measurable} failing=${c.failing_count} all_meet_aa=${c.all_meet_aa}`);
+    console.log(`  [${label}] no-text-found note: ${r.notes.some((n) => /No text was found there/.test(n)) ? "YES (bad)" : "no"}  -> F8 fixed: ${text && text.contrast_ratio === 1.88 && c.failing_count === 1 ? "YES" : "NO"}`);
+  }
+}
+
 await client.close();

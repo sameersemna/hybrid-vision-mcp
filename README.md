@@ -719,6 +719,13 @@ so it is listed under `background_regions[]` and excluded from the verdict (with
 note). Real text averages <= 0.10% of the region per blob against 37.7% for a page
 background, so this cannot drop a text run. See `ACCURACY.md` §5g.
 
+**A text colour is never a plateau.** A plateau blob must be either the outermost
+colour (the background, with panels cut out of it, so a low fill is expected) or a
+near-solid inset panel. An *inset hollow* blob is a glyph ring, not a panel, so two
+huge identical glyphs can no longer be mistaken for a background — which had made
+failing text `#464646` disappear (hard-edged) behind a "no text was found" note.
+See `ACCURACY.md` §5h.
+
 ---
 
 **Returns** (excerpt):

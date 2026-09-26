@@ -340,3 +340,54 @@ export const TILED_CARDS = {
   lightCard: "#ffffff",
   lightText: "#1e1e1e",
 };
+
+/**
+ * Two huge, IDENTICAL glyphs on a plain background — the seventh-audit F8 fixture.
+ *
+ * A 300px bold glyph "blob" is a RING: inset from the region border with a low
+ * fill (measured 0.556). Two identical rings give the colour a dominance of
+ * exactly 0.5, which was the single-blob plateau threshold, so the TEXT COLOUR
+ * was accepted as a plateau, became background, and the failing text was either
+ * reduced to AA remnants or (hard-edged) not reported at all.
+ *
+ * @param {{ w?:number, h?:number, text?:string, fill?:string, background?:string,
+ *           size?:number, hardEdge?:boolean }} [opts]
+ */
+export async function buildHugeGlyphFixture({
+  w = 900, h = 420, text = "OO", fill = "#464646", background = "#1a1814",
+  size = 300, hardEdge = false,
+} = {}) {
+  const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>` +
+    `<text x="10" y="${size + 20}" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="${size}" fill="${fill}">${text}</text>` +
+    `</svg>`;
+  let img = sharp(Buffer.from(svg));
+  if (hardEdge) {
+    // Posterise to exactly two colours, removing anti-aliasing entirely: the
+    // rendering condition under which the failure is completely invisible.
+    const { data, info } = await sharp(Buffer.from(svg)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { width, channels } = info;
+    const target = [
+      parseInt(fill.slice(1, 3), 16), parseInt(fill.slice(3, 5), 16), parseInt(fill.slice(5, 7), 16),
+    ];
+    const bg = [
+      parseInt(background.slice(1, 3), 16), parseInt(background.slice(3, 5), 16), parseInt(background.slice(5, 7), 16),
+    ];
+    const out = Buffer.alloc(data.length);
+    for (let i = 0; i < data.length; i += channels) {
+      const dF = (data[i] - target[0]) ** 2 + (data[i + 1] - target[1]) ** 2 + (data[i + 2] - target[2]) ** 2;
+      const dB = (data[i] - bg[0]) ** 2 + (data[i + 1] - bg[1]) ** 2 + (data[i + 2] - bg[2]) ** 2;
+      const c = dF < dB ? target : bg;
+      out[i] = c[0]; out[i + 1] = c[1]; out[i + 2] = c[2];
+    }
+    img = sharp(out, { raw: { width, height: info.height, channels } });
+  }
+  return img.png().toBuffer();
+}
+
+export const HUGE_GLYPH = {
+  region: { left: 0, top: 0, width: 900, height: 420 },
+  text: "#464646",
+  ratio: 1.88,
+  background: "#1a1814",
+};
