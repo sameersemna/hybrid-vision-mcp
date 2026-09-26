@@ -1851,6 +1851,13 @@ one verb set and one object phrase.
 
 ### The fix: clause-scoped, field-anchored, plus a positive assertion
 
+> **PARTIALLY SUPERSEDED (sixteenth audit F18).** The "clause-scoped" claim below
+> **overstates** what this rule achieved. It fixed the **two words** P6/P7 named, and left
+> the rest of the exculpatory list in place — `amended`, `removed`, `not a classifier`,
+> `invert`, `coincidence` all still waived a **real** claim (measured E1–E6, §5r). The
+> same-clause test is the wrong **scope**: a negation must negate the token it applies to.
+> §5r replaces it with a verb/object-adjacent test and removes the free-text waiver tokens.
+
 The new rule splits a line into clauses on `[;,:]` — **never on `.`**, because file
 paths (`lib/measure.js`) and decimals (`0.0986`) contain periods and splitting on them
 tears a retraction marker away from the claim it excuses. A clause is flagged only if it
@@ -1863,13 +1870,15 @@ Measured on the audit's nine paraphrases plus six legitimate lines:
 |---|---|---|---|
 | round-14 (verb list, line-scoped waiver) | 1 / 9 | 0 | 0 |
 | round-15 (clause-scoped + field-anchored) | **9 / 10** | **0 / 6** | **0** |
+| round-16 (verb/object-adjacent, structural exclusion) | **16 / 17** | **0 / 6** | **0** |
 | broad proximity rule (audit's probe) | 7 / 7 | **1 (the correct negation)** | — |
 
-The two changes that fixed the correctness gap: the negation must be in the same clause
-(so P6/P7 are caught), and the widened verb/object lists are constrained by requiring the
-**field name in the same clause** — without that anchor the widened lists produced
-**26 false positives** on the real docs ("a region separated by panels", "classifies a
-dashboard as text", …).
+The two changes that closed the *named* P6/P7 cases: the negation must be in the same
+clause, and the widened verb/object lists are constrained by requiring the **field name in
+the same clause** — without that anchor the widened lists produced **26 false positives**
+on the real docs ("a region separated by panels", "classifies a dashboard as text", …).
+Round 16 then replaced the same-clause test with adjacency (§5r), because "same clause" is
+still too coarse a **scope**.
 
 **Fix #4 — the structural half.** Because no regex achieves recall and precision together,
 the guard is paired with a **positive assertion**: the explicit disclaimer *must* be
@@ -1878,9 +1887,9 @@ turns "we hope nobody paraphrases the claim" into "the docs must state the oppos
 
 ### The honest scope
 
-The test is named *"the prose guard catches the LITERAL regression (not 'any claim,
-ever')"* and its comment states the limit. **No regex found so far achieves both recall
-and the legitimate negations**, so the claim is "the literal regression is caught".
+The test is named *"the prose guard catches live claims (not 'any claim, ever')"* and its
+comment states the limit. **No regex found so far achieves both recall and the legitimate
+negations**, so the claim is "the literal regression is caught".
 
 ### What this audit has NOT proven
 
@@ -1897,12 +1906,131 @@ and the legitimate negations**, so the claim is "the literal regression is caugh
 
 | check | result |
 |---|---|
-| `npm test` | **108/108** (was 107; +1 round-15 test, +rewritten guard) |
-| paraphrase fixtures | 9 flagged, 3 legitimate allowed, P4 recorded as a known miss |
+| `npm test` | **110/110** (was 108; +2 round-16 tests) |
+| paraphrase fixtures | 17 flagged in round 16 (incl. the E and H sets), legitimate negations allowed, P4 recorded as a known miss |
 | real docs | 0 un-retracted claims across `lib/measure.js`, `README.md`, `ACCURACY.md`, `CHANGELOG.md`, `index.js` |
 | disclaimer presence | 3/3 files |
-| non-vacuity | all guards non-vacuous (+3 round 15; inject-into-`index.js` proves the new file is real coverage) |
-| live MCP (scratch 11498) | §16: 0 claims, 3/3 disclaimers |
+| non-vacuity | all guards non-vacuous (round 16: 4 guards, incl. the F18 pair and the F19 key-coverage assertion) |
+| live MCP (scratch 11498) | §16: 0 claims, F18 same-verdict, field anchor 9/9, 3/3 disclaimers |
+
+## 5r. Sixteenth audit: the F18 waiver token and the F19 field-anchor gap
+
+### F18 — the fix for P6/P7 reintroduced P6/P7, exploitably
+
+Round 15 added two **free-text waiver tokens** to `NEG` — `\[paraphrase\]` and `not a claim
+of this document` — so the §5q escape table could quote the paraphrases. A token is matched
+against the **clause**, so any claim sharing a clause with it is waived. That made them
+load-bearing: the guard *depended* on a keyword whose only semantic content is "ignore
+this" — the P6/P7 defect exactly, reintroduced by the patch written to remove it. **Fourth
+round running.**
+
+End-to-end, through the real guard (claim appended to `README.md`, full suite run):
+
+| line appended to `README.md` | suite | verdict |
+|---|---|---|
+| [PARAPHRASE] `plateau_share orders decoration from a glyph run.` (**control**) | 107 pass / **1 fail** | caught |
+| [PARAPHRASE] `plateau_share orders decoration from a glyph run. [PARAPHRASE]` | **108 / 0** | **escaped** |
+| [PARAPHRASE] `… [paraphrase]` (lowercase) | **108 / 0** | **escaped** |
+| [PARAPHRASE] `… (wording amended 2026)` | **108 / 0** | **escaped** |
+
+The load-bearing proof: `sed -i 's/\[PARAPHRASE\] //g' ACCURACY.md` made the guard fail
+(107/1) — the guard depended on the token.
+
+**One precise nuance.** `…orders decoration from a glyph run, not a claim of this document`
+was *caught*, only because the comma split it into a second clause so the waiver no longer
+shared the claim's clause. The two tokens thus behaved differently: `[PARAPHRASE]` worked
+in the same clause; the phrase only worked **inside** the claim's clause.
+
+**And the P6/P7 class was not closed.** The same-clause exculpatory list still waived real
+claims:
+
+| case | line | round-15 verdict |
+|---|---|---|
+| E1 | [PARAPHRASE] `plateau_share orders decoration from text (wording amended 2026)` | escaped |
+| E2 | [PARAPHRASE] `plateau_share orders decoration from text after the old gate was removed` | escaped |
+| E3 | [PARAPHRASE] `plateau_share orders decoration from text and is not a classifier of anything else` | escaped |
+| E5 | [PARAPHRASE] `plateau_share orders decoration from text although some claim it might invert` | escaped |
+| E6 | [PARAPHRASE] `plateau_share orders decoration from text and that is no coincidence` | escaped |
+| E4 | `…from text; earlier versions mislabelled it` | caught (the `;` split the clause) |
+
+So round 15 fixed the **two** words P6/P7 named and left the rest of the list in place.
+The class was not eliminated; two members were renamed.
+
+### F19 — the field anchor made any unlisted field a blind spot
+
+`FIELD` listed **5** names, but the entry emits **9** keys:
+
+```
+listed:   plateau_share, largest_component_share, mean_component_area, detected_plateau, component_count
+unlisted: contrast_ratio, foreground, pixel_count, measured_against
+```
+
+A claim naming an unlisted or future field escaped **by construction** — not hypothetical,
+since the next field added is a field the guard does not know, and the guard's silence
+reads as "checked":
+
+| case | line | round-15 verdict |
+|---|---|---|
+| H2a | `ink_coverage orders decoration from a glyph run.` | escaped |
+| H2b | `the plateau's share separates decoration from a glyph run.` | escaped |
+| H2c | `plateau_dominance distinguishes decoration from text.` | escaped |
+| H2d | `mean area per blob distinguishes decoration from text.` | escaped |
+
+### The fix (every element measured, per the audit's warning)
+
+**1. Exclude by STRUCTURE, not by keyword.** The escape table and the `[REMOVED CLAIM]`
+records need excluding because they are **quoted history**, which is a structural property.
+`STRUCTURAL_MARKER` matches only at the **start of a line** (allowing table cells and
+markdown markers before it) — a trailing token no longer waives.
+
+**2. Scope the negation to the token it negates (fix #2, measured).** A claim is waived only
+when a negation is within ~25 chars **before the verb** it negates (`does not **order**`),
+not "somewhere in the clause"). Measured before adopting:
+
+| rule | paraphrases + E/H caught | FP (sample, 6) | FP (real docs) |
+|---|---|---|---|
+| round-15 clause-anywhere NEG | 9 / 17 | 0 | 0 |
+| **verb/object-adjacent NEG** | **16 / 17** | **0** | **0** |
+
+**3. Derive `FIELD` from the emitted keys (fix #3).** `EMITTED_DISCLOSURE_KEYS` lists all
+9, and a test asserts `CLAIM_FIELD` covers every key on a **live** entry — so adding a
+field without extending the anchor fails the guard.
+
+**4. Keep the positive assertion.** It remains the best part; its limit stands (it asserts
+the disclaimer is present, not that nothing contradicts it) — which is why making (a)
+sound matters.
+
+**5. Single-source the rule.** The guard now lives in `test-support/prose-guard.mjs` and is
+imported by the test **and** the live script, so the rule cannot drift between them.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **110/110** (was 108; +2 round-16 tests) |
+| F18 pair (same claim ± trailing token) | **same verdict** — proven end-to-end (control and tokened both 109/1) |
+| E1–E6 | now all flagged (`amended`/`removed`/`invert`/`coincidence` no longer waive) |
+| H2a–H2d | unlisted/plausible fields now caught by the widened anchor |
+| field anchor coverage | 9/9 emitted keys |
+| real docs | 0 un-retracted claims; 0 false positives |
+| non-vacuity | +4 round-16 guards (line-start exclusion, verb adjacency, key coverage, verb list) |
+| live MCP (scratch 11498) | §16: 0 claims, F18 same-verdict, 9/9 keys, 3/3 disclaimers |
+
+### What this audit has NOT proven
+
+- That fix #2 (verb-adjacent negation) holds across **all** paraphrases: measured 16/17, so
+  **P4 still escapes** (its comma splits field from verb). Unchanged from F17.
+- That any **other** file outside the scanned list carries a claim (`docs/`, older
+  `CHANGELOG` history, MCP schema prose beyond what is grepped) — the scan list is finite.
+- That a real claim **has** been waived by these tokens — only that one **would** be, proven
+  end-to-end (the control fails, the tokened line passes).
+
+### Stale anchors repaired
+
+Renaming the guard test left `verify/nonvacuity-round14.mjs` and `-round15.mjs` with
+`--test-name-pattern` values that no longer matched, so **zero** tests ran and their guards
+passed **vacuously**. Both were repointed. This is the same silent-stale-anchor trap noted
+since round 9 — a *pattern* that matches nothing is indistinguishable from a passing guard.
 
 ## 9. New module map
 

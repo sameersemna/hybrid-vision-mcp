@@ -27,7 +27,7 @@ const cases = [
   },
   {
     id: "F16 the prose guard actually fails on a re-inserted claim",
-    test: "catches the LITERAL regression",
+    test: "prose guard catches live claims",
     file: "ACCURACY.md",
     // This is the point of the prose guard: if a claim RETURNED to the docs, the test
     // must fail. Inject one and confirm. (Test name repointed in round 15, when the
@@ -37,7 +37,7 @@ const cases = [
   },
   {
     id: "F16 the prose guard fails on a re-inserted claim in a code comment",
-    test: "catches the LITERAL regression",
+    test: "prose guard catches live claims",
     file: "lib/measure.js",
     // Same, but in the source file — the layer where F14/F15's claim first lived.
     from: "export function isDisclosableDroppedColour(colour, regionArea) {",

@@ -16,6 +16,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import sharp from "sharp";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -505,31 +506,36 @@ console.log("\n=== 15. round-14 checks (F16 plateau_share is coverage, not a cla
   console.log(`  [F16] real text (${et?.plateau_share}) > bars (${ea?.plateau_share})? ${et && ea && et.plateau_share > ea.plateau_share ? "YES -> the old claim inverts, as expected" : "NO"}`);
 }
 
-// Round-15 checks (fifteenth audit F17: the prose guard's SCOPE claim was broader than
-// its rule). This is a docs/rule probe — no MCP call needed; it verifies the guard's
-// honest scope and the structural disclaimer.
-console.log("\n=== 16. round-15 checks (F17 the prose guard's scope is honest) ===");
+// Round-15/16 checks (F17/F18/F19: the prose guard's scope claim, then the free-text
+// waiver token and the field-anchor gap). Docs/rule probe — no MCP call; it uses the
+// SHARED guard module so the rule has a single source of truth.
+console.log("\n=== 16. round-15/16 checks (F17/F18/F19 the prose guard is structurally sound) ===");
 {
   const fsmod = await import("node:fs/promises");
   const p = await import("node:path");
   const root = p.resolve(import.meta.dirname, "..");
+  const { scanForClassificationClaims, flagsClassificationClaim, DISCLAIMER, normalizeForDisclaimer } =
+    await import(pathToFileURL(p.join(root, "test-support", "prose-guard.mjs")).href);
   const files = ["lib/measure.js", "README.md", "ACCURACY.md", "CHANGELOG.md", "index.js"];
-  const FIELD = /(plateau_share|largest_component_share|mean_component_area|detected_plateau|component_count)/i;
-  const VERB = /(orders|order|distinguishes|distinguish|separates|separate|classifies|classify|tells? (?:apart|what is)|identif(?:y|ies)|filter(?:s)? out|pick(?:s)? out|labels?|sorts?|ranks?|routes?|recommends?)/i;
-  const OBJ = /(decoration|decorations|chart furniture|furniture|ornament|non-?text|not text|glyph|glyphs|copy|panel|text)/i;
-  const NEG = /(\bfalse\b|retract|amend|\bremoved\b|REMOVED CLAIM|\bno\b[^;,:]{0,40}?(?:separat|distinguish|order|classif|identif|filter|tell|label|sort|rank|route|recommend)|does ?n[o']?t|do not|does NOT|is ?n[o']?t|are ?n[o']?t|cannot|can not|none of|neither|no field|\bno exposed\b|not a classifier|invert|coincidence|mislabell?ed|misleading|NOT distinguish|not decoration|rather than decoration|large from small|does NOT classify|\[paraphrase\]|not a claim of this document)/i;
-  const flags = (l) => l.split(/[;,:]/).some((c) => FIELD.test(c) && VERB.test(c) && OBJ.test(c) && !NEG.test(c));
   let total = 0;
   for (const rel of files) {
-    const t = await fsmod.readFile(p.join(root, rel), "utf8");
-    total += t.split("\n").filter(flags).length;
+    total += scanForClassificationClaims(await fsmod.readFile(p.join(root, rel), "utf8")).length;
   }
   console.log(`  [F17] un-retracted field+classification claims in the docs: ${total} -> ${total === 0 ? "clean" : "PROBLEM"}`);
-  const norm = (s) => s.replace(/[*`_]/g, " ").replace(/\s+/g, " ");
-  const D = /not decoration from text|none of (these|them) distinguishes decoration|does not distinguish decoration/i;
+
+  // F18: the same claim, with and without a trailing waiver token, must agree.
+  const claim = "plateau_share orders decoration from a glyph run.";
+  const bare = flagsClassificationClaim(claim);
+  const tokened = flagsClassificationClaim(`${claim} [PARAPHRASE]`);
+  console.log(`  [F18] bare=${bare} trailing-token=${tokened} -> ${bare === tokened ? "SAME verdict (fixed)" : "DIFFERENT (bad)"}`);
+  // F19: the field anchor must cover every emitted key.
+  const { EMITTED_DISCLOSURE_KEYS, CLAIM_FIELD } = await import(pathToFileURL(p.join(root, "test-support", "prose-guard.mjs")).href);
+  const uncovered = EMITTED_DISCLOSURE_KEYS.filter((k) => !CLAIM_FIELD.test(k));
+  console.log(`  [F19] emitted keys covered by the field anchor: ${EMITTED_DISCLOSURE_KEYS.length - uncovered.length}/${EMITTED_DISCLOSURE_KEYS.length}${uncovered.length ? " MISSING " + uncovered.join(",") : ""}`);
+
   const withDisc = [];
   for (const rel of ["lib/measure.js", "README.md", "ACCURACY.md"]) {
-    if (D.test(norm(await fsmod.readFile(p.join(root, rel), "utf8")))) withDisc.push(rel);
+    if (DISCLAIMER.test(normalizeForDisclaimer(await fsmod.readFile(p.join(root, rel), "utf8")))) withDisc.push(rel);
   }
   console.log(`  [F17] files carrying the explicit disclaimer: ${withDisc.join(", ")} (${withDisc.length}/3)`);
 }

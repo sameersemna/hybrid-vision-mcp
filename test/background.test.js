@@ -85,6 +85,13 @@ import {
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
+import {
+  CLAIM_FIELD,
+  flagsClassificationClaim,
+  scanForClassificationClaims,
+  DISCLAIMER,
+  normalizeForDisclaimer,
+} from "../test-support/prose-guard.mjs";
 
 // ------------------------------------------------------------ helpers ------
 
@@ -1129,84 +1136,106 @@ test("F16: `detected_plateau` is evidence, not a classifier — real text is det
   assert.equal(t.detected_plateau, true, "real failing text is detected as a plateau — so it cannot mean 'decoration'");
 });
 
-test("F17: the prose guard catches the LITERAL regression (not 'any claim, ever')", async () => {
-  // HONEST SCOPE (fifteenth audit F17). F14 removed a threshold, F15 a label, and the
-  // claim survived in the PROSE. This guard closes that layer — but a REGEX cannot
-  // prove "the claim can never return": the audit re-ran the previous rule against 9
-  // paraphrases and it caught 1. What it verifies is narrower and checkable:
-  //   (a) NO exposed field name co-occurs with a classification verb+object in the docs
-  //       (clause-scoped, so a negation in the same clause excuses it); and
-  //   (b) the docs MUST carry an explicit disclaimer (the structural half — see below).
-  //
-  // Non-vacuous per verify/nonvacuity-round14.mjs. Measured: 9/10 paraphrase fixtures
-  // caught, 0 false positives on the real docs (the 10th escapes — see §5q).
+test("F17/F18: the prose guard catches live claims but NOT a trailing waiver token", async () => {
+  // HONEST SCOPE (fifteenth–sixteenth audits F17/F18). A REGEX cannot prove "the claim
+  // can never return". What this verifies, and what F18 hardened:
+  //   (a) no exposed field co-occurs with a classification verb+object, where the only
+  //       waivers are a NEGATION ADJACENT to the verb/object it negates (not a clause-
+  //       anywhere keyword) and a STRUCTURAL line-start marker (not a trailing token);
+  //   (b) the docs MUST carry an explicit disclaimer (paraphrase-proof).
   const { readFile } = await import("node:fs/promises");
   const path = await import("node:path");
   const root = path.resolve(import.meta.dirname, "..");
   const files = ["lib/measure.js", "README.md", "ACCURACY.md", "CHANGELOG.md", "index.js"];
-  const FIELD = /(plateau_share|largest_component_share|mean_component_area|detected_plateau|component_count)/i;
-  const VERB = /(orders|order|distinguishes|distinguish|separates|separate|classifies|classify|tells? (?:apart|what is)|identif(?:y|ies)|filter(?:s)? out|pick(?:s)? out|labels?|sorts?|ranks?|routes?|recommends?)/i;
-  const OBJ = /(decoration|decorations|chart furniture|furniture|ornament|non-?text|not text|glyph|glyphs|copy|panel|text)/i;
-  const NEG = /(\bfalse\b|retract|amend|\bremoved\b|REMOVED CLAIM|\bno\b[^;,:]{0,40}?(?:separat|distinguish|order|classif|identif|filter|tell|label|sort|rank|route|recommend)|does ?n[o']?t|do not|does NOT|is ?n[o']?t|are ?n[o']?t|cannot|can not|none of|neither|no field|\bno exposed\b|not a classifier|invert|coincidence|mislabell?ed|misleading|NOT distinguish|not decoration|rather than decoration|large from small|does NOT classify|\[paraphrase\]|not a claim of this document)/i;
-  // Clause-scoped on [;,:] — NEVER on "." (file paths like lib/measure.js and decimals
-  // like 0.0986 contain periods, and splitting on them tears a retraction marker away
-  // from the claim it excuses). A clause is bad only if it carries field+verb+object
-  // with no negation in the SAME clause. This is what fixes P6/P7, where the old
-  // line-scoped waiver excused a genuine claim on any stray exculpatory word.
-  const flags = (line) => line.split(/[;,:]/).some((cl) => FIELD.test(cl) && VERB.test(cl) && OBJ.test(cl) && !NEG.test(cl));
 
   // (a) the docs are clean
   for (const rel of files) {
-    const text = await readFile(path.join(root, rel), "utf8");
-    const bad = text.split("\n").map((line, i) => ({ line, n: i + 1 })).filter(({ line }) => flags(line));
+    const bad = scanForClassificationClaims(await readFile(path.join(root, rel), "utf8"));
     assert.equal(bad.length, 0, `${rel} pairs a field name with a decoration/text classification claim:\n` + bad.map((b) => `  ${b.n}: ${b.line.trim()}`).join("\n"));
   }
 
-  // (b) fix #4 — the STRUCTURAL half: the explicit disclaimer MUST be present. This is
-  // paraphrase-proof and turns "we hope nobody paraphrases the claim" into "the docs
-  // must state the opposite". (Markdown emphasis/backticks are normalised away.)
-  const norm = (s) => s.replace(/[*`_]/g, "").replace(/\s+/g, " ");
-  const DISCLAIMER = /not decoration from text|none of (these|them) distinguishes decoration|does not distinguish decoration/i;
+  // (b) the STRUCTURAL half: the explicit disclaimer MUST be present.
   for (const rel of ["lib/measure.js", "README.md", "ACCURACY.md"]) {
-    const text = norm(await readFile(path.join(root, rel), "utf8"));
+    const text = normalizeForDisclaimer(await readFile(path.join(root, rel), "utf8"));
     assert.ok(DISCLAIMER.test(text), `${rel} must carry the explicit disclaimer that no field distinguishes decoration from text`);
   }
 });
 
-test("F17: the guard's own recall is measured against paraphrases (fixtures)", () => {
-  // A guard tested only against its own target phrase is what produced F17. These
-  // fixtures are the audit's paraphrases plus the literal wording; the guard must flag
-  // them, and must NOT flag the legitimate negations.
-  const FIELD = /(plateau_share|largest_component_share|mean_component_area|detected_plateau|component_count)/i;
-  const VERB = /(orders|order|distinguishes|distinguish|separates|separate|classifies|classify|tells? (?:apart|what is)|identif(?:y|ies)|filter(?:s)? out|pick(?:s)? out|labels?|sorts?|ranks?|routes?|recommends?)/i;
-  const OBJ = /(decoration|decorations|chart furniture|furniture|ornament|non-?text|not text|glyph|glyphs|copy|panel|text)/i;
-  const NEG = /(\bfalse\b|retract|amend|\bremoved\b|REMOVED CLAIM|\bno\b[^;,:]{0,40}?(?:separat|distinguish|order|classif|identif|filter|tell|label|sort|rank|route|recommend)|does ?n[o']?t|do not|does NOT|is ?n[o']?t|are ?n[o']?t|cannot|can not|none of|neither|no field|\bno exposed\b|not a classifier|invert|coincidence|mislabell?ed|misleading|NOT distinguish|not decoration|rather than decoration|large from small|does NOT classify|\[paraphrase\]|not a claim of this document)/i;
-  const flags = (line) => line.split(/[;,:]/).some((cl) => FIELD.test(cl) && VERB.test(cl) && OBJ.test(cl) && !NEG.test(cl));
+test("F18: a waiver token appended to a LIVE claim must not excuse it (the F18 pair)", () => {
+  // The single most valuable test: the SAME claim, with and without a trailing token,
+  // must get the SAME verdict. F18 was a free-text token (`[PARAPHRASE]`) matched against
+  // the clause, so appending it waived any claim — proven end-to-end by the audit.
+  const claim = "plateau_share orders decoration from a glyph run.";
+  assert.equal(flagsClassificationClaim(claim), true, "the bare claim is flagged");
+  assert.equal(flagsClassificationClaim(`${claim} [PARAPHRASE]`), true, "a TRAILING marker must not waiver it");
+  assert.equal(flagsClassificationClaim(`${claim} [paraphrase]`), true, "case-insensitive trailing marker must not waiver it");
+  assert.equal(flagsClassificationClaim(`${claim} (wording amended 2026)`), true, "E1: 'amended' must not waiver it");
+  assert.equal(flagsClassificationClaim("plateau_share orders decoration from text after the old gate was removed"), true, "E2: 'removed' must not waiver it");
+  assert.equal(flagsClassificationClaim("plateau_share orders decoration from text and is not a classifier of anything else"), true, "E3: 'not a classifier' must not waiver a claim whose verb is un-negated");
+  assert.equal(flagsClassificationClaim("plateau_share orders decoration from text although some claim it might invert"), true, "E5: 'invert' must not waiver it");
+  assert.equal(flagsClassificationClaim("plateau_share orders decoration from text and that is no coincidence"), true, "E6: 'coincidence' must not waiver it");
 
+  // A STRUCTURAL line-start marker still excludes quoted history.
+  assert.equal(flagsClassificationClaim('**[REMOVED CLAIM]** `plateau_share` orders decoration from a glyph run.'), false, "line-start [REMOVED CLAIM] record is excluded");
+});
+
+test("F19: the field anchor covers EVERY emitted disclosure key", async () => {
+  // F19: the anchor listed 5 names while the entry emits 9, so a claim naming an
+  // unlisted field was a blind spot by construction. This asserts coverage from the
+  // LIVE entry, so adding a field without extending the anchor fails the guard.
+  const A = contrastInRegion(await loadPixels(await buildBarsReferenceF16Fixture()), BARS_REF_F16.region);
+  const entry = A.mask_reconciliation.unmasked_failing_colours[0];
+  for (const key of Object.keys(entry)) {
+    assert.ok(CLAIM_FIELD.test(key), `FIELD does not cover the emitted key "${key}" — extend EMITTED_DISCLOSURE_KEYS`);
+  }
+  // And a claim naming an unlisted-looking field is now caught.
+  assert.ok(flagsClassificationClaim("contrast_ratio orders decoration from a glyph run."), "a listed key is caught");
+  assert.ok(flagsClassificationClaim("mean_component_area separates decoration from text."), "another listed key is caught");
+});
+
+test("F17/F18: the guard's recall is measured against paraphrases (fixtures)", () => {
+  // A guard tested only against its own target phrase produced F17; one tested against
+  // its own waiver token produced F18. These fixtures are the audit's paraphrases plus
+  // the E/H sets, and they must be measured every run.
   const mustFlag = [
     "plateau_share is the field that orders decoration (a wide tiled region) from a glyph run.", // literal
-    "use plateau_share to identify decoration rather than real text.", // P1 verb
-    "plateau_share lets a caller filter out chart furniture instead of copy.", // P2 verb+synonyms
-    "plateau_share is how you tell what is decoration and what is text.", // P3 no 'from'
-    "a high plateau_share distinguishes decoration from glyphs.", // P5 object synonym
-    "plateau_share orders decoration from text, which is what makes it not decoration-specific but genuinely useful.", // P6 old waiver
-    "plateau_share orders decoration from text by size; think of it as large from small coverage.", // P7 old waiver
-    "plateau_share separates chart furniture from copy.", // P8 synonyms
-    "decoration is distinguished from text by plateau_share.", // P9 passive
+    "use plateau_share to identify decoration rather than real text.", // P1
+    "plateau_share lets a caller filter out chart furniture instead of copy.", // P2
+    "plateau_share is how you tell what is decoration and what is text.", // P3
+    "a high plateau_share distinguishes decoration from glyphs.", // P5
+    "plateau_share orders decoration from text, which is what makes it not decoration-specific but genuinely useful.", // P6
+    "plateau_share orders decoration from text by size; think of it as large from small coverage.", // P7
+    "plateau_share separates chart furniture from copy.", // P8
+    "decoration is distinguished from text by plateau_share.", // P9
+    "plateau_share orders decoration from a glyph run. [PARAPHRASE]", // H1a
+    "plateau_share orders decoration from a glyph run [paraphrase]", // H1c
+    "contrast_ratio orders decoration from a glyph run.", // H2: previously unlisted key
+    "mean_component_area distinguishes decoration from text.", // H2: previously unlisted key
+    "plateau_share orders decoration from text (wording amended 2026)", // E1
+    "plateau_share orders decoration from text after the old gate was removed", // E2
+    "plateau_share orders decoration from text and is not a classifier of anything else", // E3
+    "plateau_share orders decoration from text although some claim it might invert", // E5
+    "plateau_share orders decoration from text and that is no coincidence", // E6
   ];
-  for (const line of mustFlag) assert.ok(flags(line), `must flag: ${line}`);
+  for (const line of mustFlag) assert.ok(flagsClassificationClaim(line), `must flag: ${line}`);
 
   const mustAllow = [
     "plateau_share is the plateau's coverage of the region; it does NOT distinguish decoration from text.",
     "A bar chart and a glyph run are the same kind of object, so no scalar separates decoration from text.",
-    '**[REMOVED CLAIM]** `lib/measure.js` — *"`plateau_share` … orders decoration (a wide tiled region) from a glyph run."*',
+    "NONE of these distinguishes decoration from text (F16): plateau_share is coverage",
+    "but it orders large from small, not decoration from text: a dense glyph run can cover MORE",
+    '**[REMOVED CLAIM]** `plateau_share` orders decoration from a glyph run.',
+    "A component that is long and thin is treated as decorative chrome, not text.",
   ];
-  for (const line of mustAllow) assert.equal(flags(line), false, `must allow: ${line}`);
+  for (const line of mustAllow) assert.equal(flagsClassificationClaim(line), false, `must allow: ${line}`);
 
-  // The residual: P4 escapes because a comma splits the field from the verb. Recorded,
-  // not hidden — this is why the honest claim is "the literal regression is caught".
-  const p4 = "plateau_share orders colours into buckets so that, with practice, a caller can reliably separate the wide tiled decorations seen here from a glyph run.";
-  assert.equal(flags(p4), false, "P4 is a KNOWN miss (comma splits field from verb) — documented in ACCURACY.md §5q");
+  // KNOWN MISS (recorded): P4, where a comma splits the field from the verb. Documented
+  // in ACCURACY.md §5q/§5r; the honest claim is "the literal regression is caught".
+  assert.equal(
+    flagsClassificationClaim("plateau_share orders colours into buckets so that, with practice, a caller can reliably separate the wide tiled decorations seen here from a glyph run."),
+    false,
+    "P4 is a KNOWN miss (comma splits field from verb)",
+  );
 });
 
 test("§3 (DECLINED): a solid accent block collides with real solid text", async () => {

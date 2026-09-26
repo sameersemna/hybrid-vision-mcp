@@ -1,5 +1,42 @@
 # Changelog
 
+## Sixteenth-audit follow-up: the waiver token and the field-anchor gap — 2026-09-26
+
+Round 15 fixed the named P6/P7 cases by adding two **free-text waiver tokens**
+(`[PARAPHRASE]`, "not a claim of this document") so the escape table could quote
+paraphrases. Because a token is matched against the **clause**, any claim sharing a clause
+with it was waived — the **P6/P7 defect, reintroduced by the patch written to remove it**,
+**fourth round running**. The audit proved it end-to-end: appending
+a classification claim + the token to `README.md` **passed**
+the suite. Separately (F19), the field anchor listed **5** names while the entry emits
+**9** keys, so a claim naming an unlisted (or future) field escaped by construction. See
+`ACCURACY.md` §5r.
+
+### Fixed
+
+- **F18 — waiver by STRUCTURE, not by keyword.** `STRUCTURAL_MARKER` matches only at the
+  **start of a line** (allowing table cells and markdown markers before it), so a trailing
+  token no longer waives. The two free-text tokens are **deleted**.
+- **F18 — the negation is scoped to the token it negates (measured).** A claim is waived
+  only when a negation is within ~25 chars **before the verb** (`does not **order**`), not
+  "somewhere in the clause". This closes the E1–E6 class (`amended`/`removed`/`invert`/
+  `coincidence` no longer waive). Measured before adopting: 16/17 paraphrases caught, **0**
+  false positives on the real docs (the old clause-anywhere rule caught 9/17).
+- **F19 — the field anchor covers every emitted key**, and a test asserts it against a
+  **live** entry, so adding a field without extending the anchor fails the guard.
+- **Single source of truth.** The rule moved to `test-support/prose-guard.mjs`, imported by
+  the test **and** the live script, so it cannot drift between them.
+
+### Stale anchors repaired
+
+Renaming the guard test left `verify/nonvacuity-round14.mjs` and `-round15.mjs` with
+`--test-name-pattern` values that matched nothing, so **zero** tests ran and their guards
+passed **vacuously**. Both repointed. (Same silent-stale-anchor trap noted since round 9.)
+
+### Known miss (unchanged)
+
+**P4** still escapes (its comma splits the field from the verb). Recorded, not hidden.
+
 ## Fifteenth-audit follow-up: the prose guard's scope claim exceeded its rule — 2026-09-26
 
 Round 14 called the prose guard "durable" and said the claim "cannot silently return".

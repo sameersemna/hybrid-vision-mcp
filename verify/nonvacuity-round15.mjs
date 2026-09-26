@@ -15,7 +15,7 @@ const TESTFILE = path.join(ROOT, "test", "background.test.js");
 const cases = [
   {
     id: "F17 the prose guard catches the LITERAL regression",
-    test: "catches the LITERAL regression",
+    test: "prose guard catches live claims",
     file: "ACCURACY.md",
     // Inject an un-retracted claim; the guard must fail.
     from: "\n## 9. New module map",
@@ -23,7 +23,7 @@ const cases = [
   },
   {
     id: "F17 the structural disclaimer must be PRESENT (fix #4)",
-    test: "catches the LITERAL regression",
+    test: "prose guard catches live claims",
     file: "README.md",
     // README carries the "not decoration from text" disclaimer in exactly ONE place, so
     // removing it must fail the positive assertion (b). (lib/measure.js carries it twice,
@@ -33,7 +33,7 @@ const cases = [
   },
   {
     id: "F17 scanning index.js is load-bearing (future-proofing case)",
-    test: "catches the LITERAL regression",
+    test: "prose guard catches live claims",
     file: "index.js",
     // index.js reaches callers through the tool schema and is now scanned. Inject a
     // claim there; the guard must fail, proving the newly-added file is real coverage
