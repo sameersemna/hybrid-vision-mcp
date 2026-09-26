@@ -496,6 +496,39 @@ export async function buildDroppedPanelFixture({ fill = "#464646", background = 
 }
 
 /**
+ * Two large solid bold "II" runs in a failing colour — the tenth-audit F12 fixture.
+ *
+ * Region 1000x700. The glyph blobs land between the tiling floor (0.4% of the
+ * region) and the old reconciliation gate (2%), so at ~200-350px the colour was
+ * MASKED as a plateau and then never disclosed: `colours: []`, `measurable: false`,
+ * `mask_reconciliation: null`. Below ~180px it is not masked and is reported
+ * normally; above ~400px the old gate fired. Cropping always fired, so the full
+ * frame was less informative than a crop.
+ *
+ * @param {{ size?:number, text?:string, fill?:string, background?:string, w?:number, h?:number }} [opts]
+ */
+export async function buildBandGlyphFixture({
+  size = 200, text = "II", fill = "#464646", background = "#1a1814", w = 1000, h = 700,
+} = {}) {
+  // Two stacked runs, matching the audit's layout.
+  const run = (y, label) =>
+    `<text x="60" y="${y}" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="${size}" fill="${fill}">${label}</text>`;
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>` +
+    run(80 + size, text) +
+    run(400 + size, text) +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+export const BAND_GLYPH = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  text: "#464646",
+  ratio: 1.88,
+  crop: { left: 40, top: 60, width: 400, height: 260 },
+};
+/**
  * A dashboard with a small SOLID decorative accent block — the ninth-audit §3
  * observation. Deliberately retained as a KNOWN, DECLINED false positive: see
  * ACCURACY.md 5k for the measurement showing a bold "I" at 150px is

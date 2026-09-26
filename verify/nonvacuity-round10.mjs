@@ -1,6 +1,6 @@
-// Non-vacuity verification for the NINTH-audit tests (F11: reconciliation
-// precision — decoration is not text). Reverts the round-9 guard, confirms the
-// matching test FAILS, then restores.
+// Non-vacuity verification for the TENTH-audit tests (F12: a colour masked
+// between the tiling floor and the disclosure gate is masked AND undisclosed).
+// Reverts each round-10 guard, confirms the matching test FAILS, then restores.
 //
 // SAFETY: mutates source under lib/ temporarily. Kept OUT of test/ so
 // `node --test` can never discover and run it.
@@ -13,30 +13,27 @@ const TESTFILE = path.join(ROOT, "test", "background.test.js");
 
 const cases = [
   {
-    id: "F11 reconciliation is gated (decoration excluded)",
-    test: "does not fire on decorative bars",
+    id: "F12 the disclosure gate is a superset of the masking floor",
+    test: "every size in the masked band still SURFACES",
     file: "lib/measure.js",
-    // Anchor updated in round 10, when the gate was unified with the masking floor
-    // (the ninth-audit rule that decoration is excluded still holds, now via the
-    // shared per-blob floor rather than a separate size gate).
-    from: "        (c) => !c.wcag_aa && !present.has(c.foreground) && isDisclosableDroppedColour(c, regionArea),",
-    to: "        (c) => !c.wcag_aa && !present.has(c.foreground), // REVERTED: disclose every dropped failing colour",
+    // Revert to the round-9 size gate, which is stricter than the mask's own floor
+    // and therefore leaves the 0.4%-2% band masked and undisclosed.
+    from: "  return mean / regionArea >= PLATEAU_MIN_BLOB_SHARE;",
+    to: "  return false; // REVERTED: no colour is disclosable (round-9 gap)",
   },
   {
-    id: "F11 second decorative fixture stays quiet",
-    test: "second decorative fixture",
+    id: "F12 the gate is not stricter than the mask (band coverage)",
+    test: "every size in the masked band still SURFACES",
     file: "lib/measure.js",
-    from: "        (c) => !c.wcag_aa && !present.has(c.foreground) && isDisclosableDroppedColour(c, regionArea),",
-    to: "        (c) => !c.wcag_aa && !present.has(c.foreground), // REVERTED: disclose every dropped failing colour",
+    from: "  return mean / regionArea >= PLATEAU_MIN_BLOB_SHARE;",
+    to: "  return mean / regionArea >= LARGE_REGION_AREA_FRACTION; // REVERTED: stricter than the mask (the F12 gap)",
   },
   {
-    id: "F11 shape still distinguishes panel from text in the WORDING",
+    id: "F12 shape chooses the wording, not whether to disclose",
     test: "shape now chooses the WORDING",
     file: "lib/measure.js",
-    // Round 10 moved this from a gate to a label, so it is now pinned by the
-    // wording test rather than by the F11 tests.
-    from: "  return mean / regionArea >= LARGE_REGION_AREA_FRACTION;",
-    to: "  return mean / regionArea > 0; // REVERTED: everything labelled panel-shaped",
+    from: "              shape: panelShaped ? \"panel-shaped\" : \"text-sized\",",
+    to: "              shape: \"panel-shaped\", // REVERTED: no shape distinction",
   },
 ];
 
@@ -76,7 +73,7 @@ for (const c of cases) {
   });
 }
 
-console.log("\n=== ROUND-9 NON-VACUITY REPORT ===");
+console.log("\n=== ROUND-10 NON-VACUITY REPORT ===");
 let allGood = true;
 for (const r of results) {
   if (r.error) { console.log(`ERR            ${r.id}: ${r.error}`); allGood = false; continue; }
@@ -86,5 +83,5 @@ for (const r of results) {
       `(pass-with-fix=${r.passesWithFix}, fail-without-fix=${r.failsWithoutFix})`,
   );
 }
-console.log(allGood ? "\nAll round-9 guards confirmed non-vacuous." : "\nSOME GUARDS ARE VACUOUS — investigate.");
+console.log(allGood ? "\nAll round-10 guards confirmed non-vacuous." : "\nSOME GUARDS ARE VACUOUS — investigate.");
 process.exitCode = allGood ? 0 : 1;

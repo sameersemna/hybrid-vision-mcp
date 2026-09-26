@@ -1273,6 +1273,79 @@ identical blocks — but it is a new classification term, and this round's lesso
 that new terms create boundary defects. It is left as a documented observation
 rather than an unmeasured ninth term.
 
+## 5l. Tenth audit: the disclosure gate was narrower than the masking floor
+
+Round 9 made the disclosure precise by requiring a dropped colour to be
+panel-shaped — mean blob ≥ 2% of the region. But the **masking** floor is 0.4%
+(the tiling path masks any blob ≥ `PLATEAU_MIN_BLOB_SHARE`). Two independently
+chosen constants, 5× apart, so any colour whose blobs fell between them was
+**masked and never disclosed**.
+
+### The defect (F12)
+
+Region 1000×700, two large solid bold "II" runs in a failing colour (1.88:1):
+
+| glyph size | behaviour (pre-fix) |
+|---|---|
+| 150 px | not masked — reported normally |
+| **200 px** | **masked, `colours: []`, `measurable: false`, `mask_reconciliation: null`** |
+| **300 px** | **masked and silent** |
+| 420 px | masked, but the 2% gate fired |
+
+Cropping the *same image* always fired, so the full frame was less informative
+than a crop — a caller cannot predict that.
+
+### The fix: one shared constant, not two
+
+The gate now reuses the mask's own constant:
+
+```js
+isDisclosableDroppedColour(colour, regionArea) → mean blob / regionArea >= PLATEAU_MIN_BLOB_SHARE
+```
+
+Because a masked region's blobs clear that floor **by construction**, the
+disclosure trigger can no longer be stricter than the mask — which is the
+structural guarantee the audit asked for: *anything the mask removes is eligible
+for disclosure; shape decides the wording, not whether to mention it.* The wording
+now labels each entry `panel-shaped` or `text-sized`.
+
+**Why the mean, and not the alternatives.** Five candidate discriminators were
+measured and **rejected** before this one (all recorded so they are not retried):
+
+| candidate | measured failure |
+|---|---|
+| component-count ceiling | a 17-`I` headline exceeded it and went silent |
+| blob aspect (elongation) | decorative icon grids and swatches are square (1.0), overlapping glyphs |
+| size-variance (CV) | real varied text (`"Illi"`) measured 0.44 — inside the decoration range |
+| plateau `detection` type | F12's colour is `tiled`, exactly like the decorative bars |
+| removal mechanism | both F11 and F12 are removed by the same tiling path |
+
+The mean works because a chart's bars **vary in height**, dragging the mean below
+the per-blob floor (0.0036 < 0.004), while a text run of one size clears it (the
+F12 band measures 0.005–0.018).
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **93/93** (was 89; +4 round-10 tests) |
+| F12 at 150/200/300/420 px | colour **surfaced** in every case; never `all_meet_aa: true` |
+| crop control | still fires |
+| F11 decorative bars (both fixtures) | still `all_meet_aa: true`, `mask_reconciliation: null` |
+| panel-shaped dropped colour | still disclosed, now labelled `panel-shaped` |
+| 17-blob headline (the count-ceiling case) | now disclosed |
+| §1 acceptance | unchanged: 1 plateau, 5 colours, 1.04 / 13.42, failing 2 |
+| two-panel / F7 / F8 / F10 / dashboard | unchanged |
+| live MCP (new code, 11498) | F12 fixed at every size; F11 still quiet |
+| non-vacuity | 9+11+7+5+4+3+4+3+3+3+**3 (round 10)** all non-vacuous |
+
+### The invariant now holds structurally
+
+The disclosure trigger and the masking floor are **the same number**, so they
+cannot drift apart. This is the first round whose fix is a *relationship between
+constants* rather than a new threshold — which is what the ninth and tenth audits
+both argued was the missing piece.
+
 ## 9. New module map
 
 | File | Responsibility |

@@ -367,4 +367,27 @@ console.log("\n=== 10. round-9 checks (F11 reconciliation is precise, decoration
   console.log(`  [panel-shaped dropped] mask_reconciliation=${cd.mask_reconciliation ? JSON.stringify(named) : "none"} all_meet_aa=${cd.all_meet_aa}  -> must still disclose: ${cd.mask_reconciliation ? "YES" : "NO"}`);
 }
 
+// Round-10 checks (tenth audit F12: a colour masked between the tiling floor and the
+// disclosure gate must still be disclosed).
+async function bandII(size) {
+  const w = 1000, h = 700;
+  const run = (y) => `<text x="60" y="${y}" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="${size}" fill="#464646">II</text>`;
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${w}" height="${h}" fill="#1a1814"/>${run(80 + size)}${run(400 + size)}
+  </svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 11. round-10 checks (F12 the masked band must still surface the colour) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  for (const size of [200, 300, 420]) {
+    const r = await call("measure_image", { image_source: toUri(await bandII(size)), mode: "contrast", region });
+    const c = r.measurements.contrast;
+    const reported = c.colours.some((x) => x.foreground === "#464646");
+    const disclosed = c.mask_reconciliation?.unmasked_failing_colours?.some((x) => x.foreground === "#464646");
+    console.log(`  [II@${size}] colours=${c.colours.map((x) => x.foreground).join(",") || "none"} recon=${c.mask_reconciliation ? "FIRES" : "none"} measurable=${c.measurable} all_meet_aa=${c.all_meet_aa}`);
+    console.log(`  [II@${size}] #464646 surfaced: ${reported ? "in colours" : disclosed ? "in mask_reconciliation" : "MISSING (bad)"}  -> F12 fixed: ${reported || disclosed ? "YES" : "NO"}`);
+  }
+}
+
 await client.close();

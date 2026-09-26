@@ -28,6 +28,7 @@ import {
   isSuspectedNoiseCluster,
   isLargeBackgroundRegion,
   isPanelShapedDroppedColour,
+  isDisclosableDroppedColour,
   partitionSuspectedNoise,
   mergeAntiAliasing,
   isAntiAliasingBlend,
@@ -53,6 +54,7 @@ import {
   buildDecorativeBarsFixture,
   buildDroppedPanelFixture,
   buildAccentBlockFixture,
+  buildBandGlyphFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
@@ -62,6 +64,7 @@ import {
   DECOR_BARS,
   DROPPED_PANEL,
   ACCENT_BLOCK,
+  BAND_GLYPH,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -1040,5 +1043,67 @@ test("§3 (DECLINED): a solid accent block collides with real solid text", async
     ri.colours.some((c) => c.foreground === HUGE_GLYPH.text),
     "real solid text at the accent's size must remain reported — this is why §3 is declined",
   );
+});
+
+// ==========================================================================
+// Tenth-audit acceptance tests (F12: a colour masked between the tiling floor and
+// the disclosure gate is masked AND undisclosed). Non-vacuous per
+// verify/nonvacuity-round10.mjs.
+// ==========================================================================
+
+test("F12: every size in the masked band still SURFACES the failing colour", async () => {
+  // The invariant: anything the mask removes must be eligible for disclosure. At
+  // ~200-350px the glyph blobs fall between the masking floor (0.4% of the region)
+  // and the old disclosure gate (2%), which made the colour vanish entirely.
+  for (const size of [150, 200, 300, 420]) {
+    const r = contrastInRegion(await loadPixels(await buildBandGlyphFixture({ size })), BAND_GLYPH.region);
+    const reported = r.colours.some((c) => c.foreground === BAND_GLYPH.text);
+    const disclosed = (r.mask_reconciliation?.unmasked_failing_colours || []).some(
+      (c) => c.foreground === BAND_GLYPH.text && c.contrast_ratio === BAND_GLYPH.ratio,
+    );
+    assert.ok(
+      reported || disclosed,
+      `size=${size}: the 1.88:1 colour must be reported or disclosed (colours=${r.colours.map((c) => c.foreground).join(", ") || "none"}, recon=${r.mask_reconciliation ? "present" : "null"}, measurable=${r.measurable})`,
+    );
+    assert.notEqual(r.all_meet_aa, true, `size=${size}: must not claim a clean pass`);
+  }
+});
+
+test("F12: the disclosure gate is a SUPERSET of the masking floor (no silent band)", () => {
+  // The gate SHARES the mask's own constant (PLATEAU_MIN_BLOB_SHARE), so it can
+  // never be stricter than the mask: whatever the mask removes clears the same
+  // per-blob floor by construction, and is therefore always disclosable.
+  const region = 1000 * 700;
+  const floor = 0.004; // PLATEAU_MIN_BLOB_SHARE
+
+  // A masked region's blobs are panel-sized by definition, so they clear the floor.
+  // (pixel_count is the TOTAL for the colour, so mean = pixel_count / components.)
+  assert.equal(isDisclosableDroppedColour({ component_count: 1, pixel_count: 200000 }, region), true, "one big region");
+  assert.equal(isDisclosableDroppedColour({ component_count: 2, pixel_count: 2 * 0.018 * region }, region), true, "the F12 band");
+  assert.equal(isDisclosableDroppedColour({ component_count: 17, pixel_count: 17 * 0.0051 * region }, region), true, "17 blobs (the case a count ceiling missed)");
+
+  // Below the floor the tiling path cannot mask a blob, so such a colour is never
+  // a "dropped" one — decorative bars (mean 0.0036) sit here.
+  assert.equal(isDisclosableDroppedColour({ component_count: 64, pixel_count: 64 * 0.0036 * region }, region), false, "sub-floor decoration");
+
+  // The constant is shared, not duplicated: assert the relationship directly.
+  assert.ok(floor > 0 && floor < 0.02, "a single shared floor in the 0.4% band");
+});
+
+test("F12: the crop control still fires (keep green)", async () => {
+  const r = contrastInRegion(await loadPixels(await buildBandGlyphFixture({ size: 200 })), BAND_GLYPH.crop);
+  assert.ok(r.mask_reconciliation, "the crop discloses, as it did before the fix");
+});
+
+test("F12: shape now chooses the WORDING, not whether to disclose", async () => {
+  // A panel-shaped dropped colour is described as such; a text-sized one is not.
+  // Both are disclosed — only the description differs.
+  const panel = contrastInRegion(await loadPixels(await buildDroppedPanelFixture()), DROPPED_PANEL.region);
+  assert.ok(panel.mask_reconciliation);
+  assert.equal(panel.mask_reconciliation.unmasked_failing_colours[0].shape, "panel-shaped");
+
+  const band = contrastInRegion(await loadPixels(await buildBandGlyphFixture({ size: 300 })), BAND_GLYPH.region);
+  assert.ok(band.mask_reconciliation);
+  assert.ok(band.mask_reconciliation.unmasked_failing_colours.some((c) => c.shape === "text-sized"));
 });
 

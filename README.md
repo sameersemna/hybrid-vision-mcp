@@ -728,22 +728,20 @@ no longer be mistaken for a background — which had made failing text disappear
 See `ACCURACY.md` §5h-§5i.
 
 **Mask reconciliation.** When a plateau mask removed a colour, the region is
-re-enumerated with no mask. If the un-masked pass measures a failing colour that the
-masked result dropped — **and that colour is panel-shaped** — it is disclosed under
-`mask_reconciliation` and in `notes`:
+re-enumerated with no mask. Any failing colour the masked result dropped is
+disclosed under `mask_reconciliation` and in `notes`, labelled by shape:
 
 ```json
 "mask_reconciliation": {
-  "unmasked_failing_colours": [ { "foreground": "#464646", "contrast_ratio": 1.88, "mean_component_area": 179200 } ],
+  "unmasked_failing_colours": [ { "foreground": "#464646", "contrast_ratio": 1.88, "shape": "text-sized" } ],
   "note": "masking a background region also removed colour(s) that an un-masked pass measures as failing ..."
 }
 ```
 
-The disclosure is restricted to **panel-shaped** dropped colours (blobs >= 2% of the
-region) because that is the only genuinely ambiguous case — one large region is
-either a panel or very large text. Decorative repeats (chart bars, icon grids) and
-ordinary text are many blobs and are excluded, so the note stays trustworthy rather
-than firing on chrome. It remains disclosure, not refusal, so it cannot turn a
+**The gate shares the mask's own constant** (`PLATEAU_MIN_BLOB_SHARE`), so anything
+the mask can remove is eligible for disclosure: the trigger can never be stricter
+than the mask. Shape decides the *wording* (`panel-shaped` vs `text-sized`), never
+whether to mention it. It remains disclosure, not refusal, so it cannot turn a
 correct verdict into a wrong one.
 
 ---

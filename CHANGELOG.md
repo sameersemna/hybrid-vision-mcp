@@ -1,5 +1,59 @@
 # Changelog
 
+## Tenth-audit follow-up: the disclosure gate was narrower than the masking floor — 2026-09-26
+
+Round 9's disclosure gate required a dropped colour's blob to be >= 2% of the region,
+but the tiling mask accepts blobs >= 0.4%. Colours between the two were masked AND
+never disclosed — a silent false negative whose presence depended only on crop size.
+See `ACCURACY.md` §5l.
+
+### Fixed
+
+- **F12 — the disclosure gate now shares the mask's own constant**
+  (`PLATEAU_MIN_BLOB_SHARE`), instead of a second, stricter threshold. Because a
+  masked region's blobs clear that floor by construction, the trigger can no longer
+  be stricter than the mask, so nothing can be masked without also being eligible for
+  disclosure. The invariant is now structural rather than a coincidence of two
+  numbers.
+- **Wording labelled by shape.** Each `mask_reconciliation` entry now carries
+  `shape: "panel-shaped" | "text-sized"`, so shape decides *how* to describe what
+  was removed, not whether to mention it.
+
+### Measured and REJECTED alternatives (recorded so they are not retried)
+
+Five candidate discriminators were measured against the full fixture population and
+failed before the shared-constant gate was chosen:
+
+- a **component-count ceiling** — a 17-`I` headline exceeded it and went silent;
+- **blob aspect** — decorative icon grids and swatch rows are square (aspect 1.0),
+  overlapping glyphs;
+- **size variance (CV)** — real varied text (`"Illi"`) measured 0.44, inside the
+  decoration range;
+- **plateau `detection` type** — F12's colour is `tiled`, exactly like the decorative
+  bars;
+- **removal mechanism** — F11 and F12 are removed by the same path.
+
+The mean works because a chart's bars vary in height (mean 0.0036, below the 0.004
+floor) while a text run of one size clears it (the band measures 0.005-0.018).
+
+### Added
+
+- `buildBandGlyphFixture()` in `test-support/fixtures.mjs`; 4 tests in
+  `test/background.test.js` (now 56).
+- `verify/nonvacuity-round10.mjs` (3 non-vacuous cases).
+- `verify/verify-background-live.mjs` now also prints the round-10 (F12) checks.
+
+### Deliberately NOT changed
+
+- The WCAG formula, the adequacy floor, the `>=2-plateau` gate, both plateau paths,
+  the ring-shape test, the dominance floor, and the reconciliation mechanism.
+- **Known decorative false positive (§3, measured and declined):** a small solid
+  decorative accent block is still reported as failing text, because it is
+  indistinguishable from real solid text at the same size (3000px vs 3052px, both
+  fill 1.000). See `ACCURACY.md` §5k.
+
+---
+
 ## Ninth-audit follow-up: the reconciliation fired on decoration — 2026-09-26
 
 Round 8's `mask_reconciliation` worked, but fired on decorative chart bars and told
