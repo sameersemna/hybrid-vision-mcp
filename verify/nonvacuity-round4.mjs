@@ -30,8 +30,10 @@ const cases = [
     id: "F5 dominance test rejects text-as-plateau in a tight crop",
     test: "single-plateau tight region",
     file: "lib/measure.js",
-    from: "    const pathA = regionShare >= minShare && dominance >= PLATEAU_DOMINANCE;",
-    to: "    const pathA = regionShare >= minShare; // REVERTED: no component-dominance test",
+    // ANCHOR REPOINTED (eleventh audit — the anchor had gone stale when `panelShape`
+    // was appended in round 8; it broke silently, leaving this guard unreported).
+    from: "    const pathA = regionShare >= minShare && dominance >= PLATEAU_DOMINANCE && panelShape;",
+    to: "    const pathA = regionShare >= minShare && panelShape; // REVERTED: no component-dominance test",
   },
   {
     id: "F5 flatness test rejects a gradient band as a plateau",

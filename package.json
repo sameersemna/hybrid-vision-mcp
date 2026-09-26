@@ -21,6 +21,7 @@
     "test:nonvacuity:round8": "node verify/nonvacuity-round8.mjs",
     "test:nonvacuity:round9": "node verify/nonvacuity-round9.mjs",
     "test:nonvacuity:round10": "node verify/nonvacuity-round10.mjs",
+    "test:nonvacuity:round11": "node verify/nonvacuity-round11.mjs",
     "fixture:make": "python3 verify/make-fixture.py",
     "verify:contrast-live": "node verify/verify-contrast-live.mjs",
     "verify:background": "node verify/verify-background-live.mjs",

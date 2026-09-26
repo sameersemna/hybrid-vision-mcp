@@ -16,18 +16,19 @@ const cases = [
     id: "F11 reconciliation is gated (decoration excluded)",
     test: "does not fire on decorative bars",
     file: "lib/measure.js",
-    // Anchor updated in round 10, when the gate was unified with the masking floor
-    // (the ninth-audit rule that decoration is excluded still holds, now via the
-    // shared per-blob floor rather than a separate size gate).
-    from: "        (c) => !c.wcag_aa && !present.has(c.foreground) && isDisclosableDroppedColour(c, regionArea),",
-    to: "        (c) => !c.wcag_aa && !present.has(c.foreground), // REVERTED: disclose every dropped failing colour",
+    // Anchor updated in round 11, when the gate became a UNION and moved inside a
+    // filter closure. The ninth-audit rule that decoration is excluded still holds
+    // (F11's bars fall below BOTH clauses), so reverting the gate to "disclose
+    // every removed failing colour" must still make the F11 test fail.
+    from: "        return isDisclosableDroppedColour(c, regionArea, largestShareOf(c.foreground));",
+    to: "        return true; // REVERTED: disclose every dropped failing colour",
   },
   {
     id: "F11 second decorative fixture stays quiet",
     test: "second decorative fixture",
     file: "lib/measure.js",
-    from: "        (c) => !c.wcag_aa && !present.has(c.foreground) && isDisclosableDroppedColour(c, regionArea),",
-    to: "        (c) => !c.wcag_aa && !present.has(c.foreground), // REVERTED: disclose every dropped failing colour",
+    from: "        return isDisclosableDroppedColour(c, regionArea, largestShareOf(c.foreground));",
+    to: "        return true; // REVERTED: disclose every dropped failing colour",
   },
   {
     id: "F11 shape still distinguishes panel from text in the WORDING",

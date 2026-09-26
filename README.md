@@ -738,11 +738,36 @@ disclosed under `mask_reconciliation` and in `notes`, labelled by shape:
 }
 ```
 
-**The gate shares the mask's own constant** (`PLATEAU_MIN_BLOB_SHARE`), so anything
-the mask can remove is eligible for disclosure: the trigger can never be stricter
-than the mask. Shape decides the *wording* (`panel-shaped` vs `text-sized`), never
-whether to mention it. It remains disclosure, not refusal, so it cannot turn a
-correct verdict into a wrong one.
+**The gate is the union of the mask's two acceptance tests**, so a colour the mask
+removed is disclosed if *either* test would have accepted it:
+
+- its **largest** blob holds ≥ 2% of the region (`PLATEAU_MIN_SHARE`) — the mask's
+  path-A test, applied per colour, so it is **true by construction** for a colour a
+  dominant-blob mask removed; or
+- its **mean** blob clears 0.4% (`PLATEAU_MIN_BLOB_SHARE`) — the mask's path-B
+  per-blob floor.
+
+Shape decides the *wording* (`panel-shaped` vs `text-sized`), never whether to
+mention it. It remains disclosure, not refusal, so it cannot turn a correct verdict
+into a wrong one.
+
+> **Correction (eleventh audit).** An earlier version of this note claimed a
+> *structural guarantee* on the grounds that the gate "shares the mask's own
+> constant". That was wrong: `PLATEAU_MIN_SHARE` (0.02) is a **single blob's**
+> share, while the old gate compared a **mean** across blobs. A mean can fall below
+> 0.4% while a 2% blob exists, so a drop-cap beside many small glyphs (F13) was
+> masked and silent. See `ACCURACY.md` §5l (retracted) and §5m. Clause 1 above
+> *is* true by construction for path-A masks; the union is the fix. A residual gap
+> remains for a path-B mask that mixes ≥ 2 solid blobs with smaller sub-floor ones
+> (that signature is a chart/icon grid, but it is irreducible — see §5m).
+
+**A residual, documented gap.** A colour the mask reached via path B that mixes
+`≥ 2` solid blobs with smaller sub-floor blobs can have both `mean < 0.4%` and
+`largestShare < 2%`, and is then masked and undisclosed. That signature is a
+bar-chart / icon grid (the F11 decoration, kept quiet), but it is irreducibly
+ambiguous — a headline of two huge glyphs plus many small failing ones has the same
+shape. This is named rather than hidden: the reconciliation is a **measured
+heuristic with a documented seam**, not a proof.
 
 ---
 

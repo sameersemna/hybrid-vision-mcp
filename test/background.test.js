@@ -55,6 +55,8 @@ import {
   buildDroppedPanelFixture,
   buildAccentBlockFixture,
   buildBandGlyphFixture,
+  buildDropcapTextFixture,
+  buildPanelPlusFragmentsFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
@@ -65,6 +67,8 @@ import {
   DROPPED_PANEL,
   ACCENT_BLOCK,
   BAND_GLYPH,
+  DROPCAP_TEXT,
+  PANEL_FRAGMENTS,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -1105,5 +1109,106 @@ test("F12: shape now chooses the WORDING, not whether to disclose", async () => 
   const band = contrastInRegion(await loadPixels(await buildBandGlyphFixture({ size: 300 })), BAND_GLYPH.region);
   assert.ok(band.mask_reconciliation);
   assert.ok(band.mask_reconciliation.unmasked_failing_colours.some((c) => c.shape === "text-sized"));
+});
+
+// ==========================================================================
+// Eleventh-audit acceptance tests (F13: the round-10 "structural guarantee" was
+// FALSE — the disclosure gate used a MEAN against the mask's SINGLE-BLOB floor,
+// so a colour masked by one >=2% blob but dragged below 0.4% mean by many small
+// companions was masked AND undisclosed). Non-vacuous per
+// verify/nonvacuity-round11.mjs.
+// ==========================================================================
+
+test("F13: the round-10 guarantee is RETRACTED, not asserted (no substitution of names)", () => {
+  // The old predicate claimed `isDisclosableDroppedColour` was a superset of the
+  // mask BECAUSE it reused `PLATEAU_MIN_BLOB_SHARE`. It is not: `PLATEAU_MIN_SHARE`
+  // (0.02) is ONE blob's share, the old gate compared a MEAN. The two quantities
+  // are different, so a mean below 0.4% is trivially reachable while a 2% blob
+  // exists. This test PINS that gap so a future "fix" cannot silently re-assert a
+  // guarantee that does not hold.
+  const region = 1000 * 700;
+  // A colour with one 2%-of-region blob and many tiny companions: masked (path A),
+  // but mean below the per-blob floor. With the OLD predicate this returned false.
+  const colour = { component_count: 11, pixel_count: 0.026 * region }; // mean ~0.24%
+  assert.equal(0.026 * region / 11 / region < 0.004, true, "mean sits below the per-blob floor");
+  // The NEW predicate discloses it because the largest blob clears the path-A floor.
+  assert.equal(isDisclosableDroppedColour(colour, region, 0.0229), true, "path-A blob => disclose");
+  // The old predicate (mean only) is exactly the F13 failure — reproduce it here so
+  // the retraction is testable rather than a claim.
+  const oldPredicate = (c, a) =>
+    (c.component_count ? c.pixel_count / c.component_count : c.pixel_count) / a >= 0.004;
+  assert.equal(oldPredicate(colour, region), false, "the retracted predicate hid this colour");
+});
+
+test("F13(a): a drop-cap plus small glyphs of ONE failing colour is disclosed", async () => {
+  const r = contrastInRegion(await loadPixels(await buildDropcapTextFixture()), DROPCAP_TEXT.region);
+  // The colour is masked (it is a detected plateau), so it is not in `colours`...
+  assert.equal(r.colours.some((c) => c.foreground === DROPCAP_TEXT.text), false, "the mask removes the drop-cap colour");
+  // ...but it must never be silent: it is disclosed with its real ratio.
+  assert.ok(r.mask_reconciliation, "a masked drop-cap colour must trigger disclosure");
+  const named = r.mask_reconciliation.unmasked_failing_colours.find((c) => c.foreground === DROPCAP_TEXT.text);
+  assert.ok(named, "the 1.88:1 drop-cap colour must be named");
+  assert.equal(named.contrast_ratio, DROPCAP_TEXT.ratio);
+  assert.equal(named.detected_plateau, true, "we say why the mask reached it: it was read as a plateau");
+  assert.ok(named.largest_component_share >= 0.02, "and that its largest blob cleared the path-A floor");
+  assert.notEqual(r.all_meet_aa, true, "must not report a clean pass");
+  assert.ok(r.notes.some((n) => /Mask reconciliation/.test(n)), "and the note names it");
+});
+
+test("F13(b): a solid panel plus fragments where the masked result is EMPTY is still disclosed", async () => {
+  const r = contrastInRegion(await loadPixels(await buildPanelPlusFragmentsFixture()), PANEL_FRAGMENTS.region);
+  // The omission here is TOTAL — no colour at all in the masked result.
+  assert.equal(r.colours.length, 0, "the mask removes every colour in this frame");
+  assert.equal(r.measurable, false, "so nothing is measured");
+  assert.ok(r.mask_reconciliation, "and yet the removed failing colour must be disclosed");
+  const named = r.mask_reconciliation.unmasked_failing_colours.find((c) => c.foreground === PANEL_FRAGMENTS.text);
+  assert.ok(named, "the 1.88:1 colour must be named");
+  assert.equal(named.contrast_ratio, PANEL_FRAGMENTS.ratio);
+  assert.equal(named.detected_plateau, true);
+});
+
+test("F13: the gate is a UNION of the mask's two acceptance tests (one clause per path)", () => {
+  const region = 1000 * 700;
+  // Clause 1: the mask's path-A floor (largest blob >= 2%) — true by construction
+  // for a dominant-blob mask, whatever the mean.
+  assert.equal(isDisclosableDroppedColour({ component_count: 11, pixel_count: 0.026 * region }, region, 0.0229), true);
+  assert.equal(isDisclosableDroppedColour({ component_count: 100, pixel_count: 0.02 * region }, region, 0.021), true);
+  // Clause 2: the mask's path-B per-blob floor (mean >= 0.4%) — keeps the tiled
+  // F12 band disclosed even when no single blob reaches 2%.
+  assert.equal(isDisclosableDroppedColour({ component_count: 4, pixel_count: 2 * 0.018 * region }, region, 0.0174), true);
+  // Below BOTH floors: the F11 decorative bars (largest 0.59%, mean 0.36%) stay quiet.
+  assert.equal(isDisclosableDroppedColour({ component_count: 64, pixel_count: 64 * 0.0036 * region }, region, 0.0059), false, "decorative bars");
+  // A missing `largestShare` argument must not crash and must fall back to clause 2.
+  assert.equal(isDisclosableDroppedColour({ component_count: 1, pixel_count: 0.2 * region }, region), true);
+});
+
+test("F13: the F12 band and the F11 quiet both keep green (no regression from the union)", async () => {
+  // F12 (mean clause) — every masked-band size is still surfaced.
+  for (const size of [200, 300, 420]) {
+    const r = contrastInRegion(await loadPixels(await buildBandGlyphFixture({ size })), BAND_GLYPH.region);
+    assert.ok(
+      r.colours.some((c) => c.foreground === BAND_GLYPH.text) ||
+        r.mask_reconciliation?.unmasked_failing_colours.some((c) => c.foreground === BAND_GLYPH.text),
+      `size=${size}: F12 band must stay surfaced`,
+    );
+  }
+  // F11 (below both floors) — decoration stays trusted.
+  const bars = contrastInRegion(await loadPixels(await buildDecorativeBarsFixture()), DECOR_BARS.region);
+  assert.equal(bars.mask_reconciliation, null, "F11 decorative bars must remain quiet");
+  assert.equal(bars.all_meet_aa, true);
+  // solid_blocks (panel-shaped) — still disclosed, with the panel wording.
+  const solid = contrastInRegion(await loadPixels(await buildDroppedPanelFixture()), DROPPED_PANEL.region);
+  assert.ok(solid.mask_reconciliation);
+  assert.equal(solid.mask_reconciliation.unmasked_failing_colours[0].shape, "panel-shaped");
+});
+
+test("F13: the disclosed entry carries the numbers a caller needs to act", async () => {
+  const r = contrastInRegion(await loadPixels(await buildDropcapTextFixture()), DROPCAP_TEXT.region);
+  const named = r.mask_reconciliation.unmasked_failing_colours.find((c) => c.foreground === DROPCAP_TEXT.text);
+  assert.equal(typeof named.pixel_count, "number");
+  assert.equal(typeof named.component_count, "number");
+  assert.equal(typeof named.largest_component_share, "number");
+  assert.equal(typeof named.detected_plateau, "boolean");
+  assert.ok(named.measured_against, "the reference colour is present");
 });
 

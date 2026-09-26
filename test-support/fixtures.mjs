@@ -528,6 +528,63 @@ export const BAND_GLYPH = {
   ratio: 1.88,
   crop: { left: 40, top: 60, width: 400, height: 260 },
 };
+
+/**
+ * A large drop-cap "I" plus a run of small glyphs, ALL in one failing colour —
+ * the eleventh-audit F13(a) fixture.
+ *
+ * The drop-cap blob alone holds >= 2% of the region, so the plateau detector
+ * accepts the colour as a plateau (path A) and the mask removes it. But the
+ * colour's MEAN blob is dragged below 0.4% by the many small companion glyphs, so
+ * the old disclosure gate (`mean >= 0.4%`, the tenth-audit fix) returned false and
+ * the colour vanished: `colours` held only AA remnants, `mask_reconciliation` was
+ * null. This is the exact seam the tenth audit claimed could not exist, because it
+ * compared a mean against a single-blob floor. Same colour as BAND_GLYPH (1.88:1),
+ * so the two share a ratio and a ground truth.
+ */
+export async function buildDropcapTextFixture({
+  fill = "#464646", background = "#1a1814", w = 1000, h = 700,
+} = {}) {
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>` +
+    `<text x="20" y="300" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="330" fill="${fill}">I</text>` +
+    `<text x="150" y="660" font-family="DejaVu Sans, sans-serif" font-size="55" fill="${fill}">settings</text>` +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+export const DROPCAP_TEXT = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  text: "#464646",
+  ratio: 1.88,
+};
+
+/**
+ * One solid inset PANEL (200x80 = 2.29% of the region) beside ten small
+ * fragments, all of one failing colour — the eleventh-audit F13(b) fixture.
+ *
+ * The panel clears the mask's path-A floor (a single blob >= 2%) so the colour is
+ * masked; the ten fragments pull the mean well below 0.4%, so the old gate hid it.
+ * Unlike F13(a) the masked result is EMPTY (`colours: []`, `measurable: false`), so
+ * an omission here is total: the caller sees no colour and no disclosure at all.
+ */
+export async function buildPanelPlusFragmentsFixture({
+  fill = "#464646", background = "#1a1814", w = 1000, h = 700, fragments = 10,
+} = {}) {
+  const parts = [`<rect width="${w}" height="${h}" fill="${background}"/>`,
+    `<rect x="100" y="100" width="200" height="80" fill="${fill}"/>`];
+  for (let i = 0; i < fragments; i++) {
+    parts.push(`<rect x="${80 + i * 90}" y="420" width="24" height="14" fill="${fill}"/>`);
+  }
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+export const PANEL_FRAGMENTS = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  text: "#464646",
+  ratio: 1.88,
+};
 /**
  * A dashboard with a small SOLID decorative accent block — the ninth-audit §3
  * observation. Deliberately retained as a KNOWN, DECLINED false positive: see

@@ -1,11 +1,53 @@
 # Changelog
 
+## Eleventh-audit follow-up: the round-10 "structural guarantee" was FALSE — 2026-09-26
+
+Round 10 claimed the disclosure gate could never be stricter than the mask
+"because it reuses the mask's own constant `PLATEAU_MIN_BLOB_SHARE`". **That claim
+is retracted.** Sharing a *name* is not the same as being a superset, and the two
+constants measure different quantities: `PLATEAU_MIN_SHARE` (0.02) is a **single
+blob's** share, while the round-10 gate compared a **mean** across blobs. Since
+`mean = total / N`, the mean falls below the floor as `N` grows, so a colour masked
+by one ≥ 2% blob that also has many small companions was **masked and never
+disclosed** — a large drop-cap `I` beside small glyphs of the same failing colour
+(F13(a)), or an inset panel beside ten small fragments (F13(b)). A false guarantee
+is worse than a known gap, because it tells the next reviewer to stop looking.
+See `ACCURACY.md` §5l (retracted) and §5m.
+
+### Fixed
+
+- **F13 — the gate is now the UNION of the mask's two acceptance tests.** A dropped
+  failing colour is disclosed if **either** its largest blob holds ≥ 2% of the
+  region (`PLATEAU_MIN_SHARE`, the mask's path-A test — **true by construction**
+  for a dominant-blob mask, which is what makes F13 structural) **or** its mean blob
+  clears the per-blob floor (`PLATEAU_MIN_BLOB_SHARE`, path B). Shape still only
+  chooses the wording.
+- **Each disclosure now says why the mask reached it.** Entries carry
+  `largest_component_share` and `detected_plateau`, so a caller can see that the
+  colour was itself read as a plateau (the drop-cap/panel case) rather than merely
+  dropped as an anti-aliasing remnant.
+
+### Residual gap — named, not hidden
+
+A colour reached by a **path-B** mask that mixes ≥ 2 solid blobs with smaller
+sub-floor blobs can still be masked and undisclosed. That signature is a chart /
+icon grid (the F11 decoration, which must stay quiet), but it is irreducibly
+ambiguous: a headline of two huge glyphs plus many small failing ones has the same
+shape. The reconciliation is therefore a **heuristic with a documented seam**, not
+a proof, and is described as such in `README.md`. Clause 1 (path A) *is* true by
+construction; the union closes the F13 seam and this is the only gap that remains.
+
 ## Tenth-audit follow-up: the disclosure gate was narrower than the masking floor — 2026-09-26
 
 Round 9's disclosure gate required a dropped colour's blob to be >= 2% of the region,
 but the tiling mask accepts blobs >= 0.4%. Colours between the two were masked AND
 never disclosed — a silent false negative whose presence depended only on crop size.
 See `ACCURACY.md` §5l.
+
+> **SUPERSEDED / RETRACTED (eleventh audit).** The fix below reused the *name*
+> `PLATEAU_MIN_BLOB_SHARE` but compared a **mean**, so it did **not** yield the
+> superset claimed. The guarantee asserted here was false; see the eleventh-audit
+> entry above.
 
 ### Fixed
 
@@ -14,7 +56,7 @@ See `ACCURACY.md` §5l.
   masked region's blobs clear that floor by construction, the trigger can no longer
   be stricter than the mask, so nothing can be masked without also being eligible for
   disclosure. The invariant is now structural rather than a coincidence of two
-  numbers.
+  numbers. **[RETRACTED — see above.]**
 - **Wording labelled by shape.** Each `mask_reconciliation` entry now carries
   `shape: "panel-shaped" | "text-sized"`, so shape decides *how* to describe what
   was removed, not whether to mention it.

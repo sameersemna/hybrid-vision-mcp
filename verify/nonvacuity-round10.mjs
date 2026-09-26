@@ -16,17 +16,22 @@ const cases = [
     id: "F12 the disclosure gate is a superset of the masking floor",
     test: "every size in the masked band still SURFACES",
     file: "lib/measure.js",
-    // Revert to the round-9 size gate, which is stricter than the mask's own floor
-    // and therefore leaves the 0.4%-2% band masked and undisclosed.
-    from: "  return mean / regionArea >= PLATEAU_MIN_BLOB_SHARE;",
+    // Revert to "never disclose", which leaves the 0.4%-2% band masked and
+    // undisclosed. ANCHOR REPOINTED (eleventh audit): the gate is now a union, so
+    // the old single-line anchor no longer exists; reverting the whole union to
+    // `false` reproduces the original round-9 gap this guard protects.
+    from: "  return largestShare >= PLATEAU_MIN_SHARE || mean / regionArea >= PLATEAU_MIN_BLOB_SHARE;",
     to: "  return false; // REVERTED: no colour is disclosable (round-9 gap)",
   },
   {
     id: "F12 the gate is not stricter than the mask (band coverage)",
     test: "every size in the masked band still SURFACES",
     file: "lib/measure.js",
-    from: "  return mean / regionArea >= PLATEAU_MIN_BLOB_SHARE;",
-    to: "  return mean / regionArea >= LARGE_REGION_AREA_FRACTION; // REVERTED: stricter than the mask (the F12 gap)",
+    // Make the MEAN clause stricter than the mask (2%), which is the F12 defect.
+    // Clause 1 is left in place, so this isolates the mean-clause regression.
+    // ANCHOR REPOINTED (eleventh audit).
+    from: "  return largestShare >= PLATEAU_MIN_SHARE || mean / regionArea >= PLATEAU_MIN_BLOB_SHARE;",
+    to: "  return largestShare >= PLATEAU_MIN_SHARE || mean / regionArea >= LARGE_REGION_AREA_FRACTION; // REVERTED: mean clause stricter than the mask (the F12 gap)",
   },
   {
     id: "F12 shape chooses the wording, not whether to disclose",

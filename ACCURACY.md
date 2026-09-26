@@ -1275,6 +1275,14 @@ rather than an unmeasured ninth term.
 
 ## 5l. Tenth audit: the disclosure gate was narrower than the masking floor
 
+> **RETRACTED (eleventh audit).** The fix below **did not** deliver the guarantee
+> it claimed. It reused the *name* `PLATEAU_MIN_BLOB_SHARE` but compared a **mean**
+> across blobs, whereas the mask's path-A floor is a **single blob's** share
+> (`PLATEAU_MIN_SHARE`). A mean falls below the floor as the blob count grows, so a
+> colour masked by one ≥ 2% blob with many small companions was still masked and
+> undisclosed (F13). Section §5m records the correction. The text is left in place,
+> marked, so the mistake is auditable rather than erased.
+
 Round 9 made the disclosure precise by requiring a dropped colour to be
 panel-shaped — mean blob ≥ 2% of the region. But the **masking** floor is 0.4%
 (the tiling path masks any blob ≥ `PLATEAU_MIN_BLOB_SHARE`). Two independently
@@ -1341,10 +1349,140 @@ F12 band measures 0.005–0.018).
 
 ### The invariant now holds structurally
 
+> **THIS SECTION IS FALSE — RETRACTED (eleventh audit).** The trigger and the
+> masking floor were **not** the same number: clause `PLATEAU_MIN_SHARE = 0.02` is a
+> single blob's share, `PLATEAU_MIN_BLOB_SHARE = 0.004` is a mean. The relationship
+> asserted below holds only for the tiling (path-B) case where every blob clears the
+> per-blob floor; it does **not** hold for a path-A mask of a dominant 2% blob
+> accompanied by smaller blobs. See §5m for the corrected formulation.
+
 The disclosure trigger and the masking floor are **the same number**, so they
 cannot drift apart. This is the first round whose fix is a *relationship between
 constants* rather than a new threshold — which is what the ninth and tenth audits
 both argued was the missing piece.
+
+## 5m. Eleventh audit: the round-10 guarantee was false — a correct UNION
+
+### What was wrong
+
+Round 10 asserted a *structural guarantee*: because the gate reused
+`PLATEAU_MIN_BLOB_SHARE`, "anything the mask removes is eligible for disclosure".
+The audit showed this was a **substitution of names, not of semantics**. The two
+constants measure different quantities and the gate was still narrower than one of
+the mask's two acceptance tests.
+
+### The arithmetic (the audit's §2, reproduced independently)
+
+Region = 1000 × 700 = 700,000 px.
+
+- **Path A masks** when a **single blob** holds ≥ `PLATEAU_MIN_SHARE` = **2%** of the
+  region (≥ 14,000 px).
+- The **round-10 gate disclosed** when the **mean** blob held ≥
+  `PLATEAU_MIN_BLOB_SHARE` = **0.4%** (≥ 2,800 px).
+- Since `mean = total / N`, a colour can have `largest ≥ 14,000` **and**
+  `mean < 2,800` whenever `N > largest / 2,800`. Both are trivially reachable: a
+  14,000 px blob plus 10 tiny companions gives `mean = 1,356 = 0.19% < 0.4%`.
+
+So the round-10 predicate returned `false` — a **silent** omission — for exactly the
+shape the reconciliation exists to catch. This was **not** disputable; the gate was
+measured to hide a 2.1%-blob colour.
+
+### Measured reproducer
+
+| fixture | want | N | largest/region | mean/region | round-10 gate | union |
+|---|---|---|---|---|---|---|
+| F13(a) drop-cap `I` + `settings` | disclose | 10 | **2.10%** | 0.29% | **false → silent** | **true** |
+| F13(b) panel 200×80 + 10 fragments | disclose | 11 | **2.29%** | 0.26% | **false → silent** | **true** |
+| F11 decorative bars | quiet | 64 | 0.59% | 0.36% | false → quiet ✓ | **false → quiet** |
+| F12 `II`@200/300/420 | disclose | 4 | 0.77–3.41% | 0.80–2.82% | true | **true** |
+| solid_blocks (two big rects) | disclose | 1 | 25.6% | 25.6% | true | **true** |
+
+F13(a) reported `colours: [#40403f, #201e1a]` (AA remnants only) and
+`mask_reconciliation: null`; F13(b) reported `colours: []`, `measurable: false`,
+`mask_reconciliation: null`. In both, the failing `#464646` was present in every
+channel's **absence** — removed by the mask, named nowhere.
+
+### The fix: a UNION of the mask's two acceptance tests
+
+```js
+isDisclosableDroppedColour(colour, regionArea, largestShare) →
+  largestShare >= PLATEAU_MIN_SHARE            // clause 1: path-A test, per colour
+  || mean / regionArea >= PLATEAU_MIN_BLOB_SHARE   // clause 2: path-B per-blob floor
+```
+
+- **Clause 1 is TRUE BY CONSTRUCTION for a path-A mask.** Path A accepts a colour
+  only when its largest blob holds ≥ 2% of the region, so any path-A-masked colour
+  clears clause 1 and is always disclosed. The mask's *own* acceptance test is
+  applied per colour rather than a lookalike statistic — this is what closes F13
+  structurally.
+- **Clause 2 keeps the tiled (path-B) case disclosed.** A tiling accepts only blobs
+  that clear the per-blob floor, so a colour whose blobs are all solid has
+  `mean ≥ 0.4%` and is disclosed (F12). It is **not** a guarantee for a path-B mask
+  with mixed blob sizes — see the residual gap below.
+
+Each disclosure entry now also carries `largest_component_share` and
+`detected_plateau`, so the caller can see that the colour was itself read as a
+plateau rather than dropped as an anti-aliasing remnant.
+
+### Which formulation, and is it a guarantee?
+
+- **Guarantee (true by construction):** a colour removed by a **path-A**
+  (dominant-blob) mask is always disclosed. This is the F13 seam and it is closed
+  structurally, not by a margin.
+- **Heuristic with a documented seam:** the union as a whole. A colour removed by a
+  **path-B** mask that mixes `≥ 2` solid blobs with smaller **sub-floor** blobs can
+  have both `mean < 0.4%` and `largestShare < 2%`, and is then masked and
+  undisclosed. That signature is a varying-size tiled block — a bar chart / icon
+  grid (the F11 decoration, which must stay quiet) — but it is **irreducibly
+  ambiguous**, because a headline of two huge glyphs plus many small failing ones
+  has the same shape. No per-statistic rule can separate them (measured below).
+
+This is stated plainly rather than dressed as a proof: **the previous claim was
+made on a substitution of names rather than of semantics, and that is the thing not
+to repeat.**
+
+### Measured and REJECTED discriminators (round 11 — do not retry)
+
+Building the union, these were measured against the full population and failed:
+
+| candidate | measured failure |
+|---|---|
+| mean only (round 10) | F13(a) 0.29%, F13(b) 0.26% both **below** F11's 0.36% → cannot separate |
+| largest-blob only (2%) | F12@200 largest 0.77%, F12@300 1.74% → silences the F12 band |
+| dominance (largest/total) | F11 0.026 vs F12 0.25 **but** long uniform text runs measure 0.06 → a count ceiling in disguise |
+| component count | already rejected in round 9 (a 17-`I` headline) |
+| blob aspect / thinness | F11's 11-px bars measure thin, but a 1-px stroke glyph is equally thin |
+| "was it a detected plateau" | true for F11, F12, F13 alike — no separation |
+
+The **union of clauses 1 and 2** is the only formulation that (a) is true by
+construction for the F13 shape and (b) keeps the F12 band and F11 quiet.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **99/99** (was 93; +6 round-11 tests) |
+| F13(a) drop-cap | `#464646` disclosed, `largest_component_share` 2.10%, `detected_plateau: true` |
+| F13(b) panel + fragments | `colours: []` but **disclosed** — the empty-result case is no longer silent |
+| F12 150/200/300/420 px | still surfaced; never `all_meet_aa: true` |
+| F11 decorative bars (both) | still `all_meet_aa: true`, `mask_reconciliation: null` |
+| solid_blocks | still disclosed, labelled `panel-shaped` |
+| §1 acceptance | unchanged: 1 plateau, 5 colours, 1.04 / 13.42, failing 2 |
+| two-panel / F7 / F8 / F10 / dashboard | unchanged |
+| live MCP (new code, 11498) | §12: F13(a)/(b) disclosed, F11 keep-green — **0 regressions** |
+| non-vacuity | 61 guards, all non-vacuous (+6 round 11) |
+
+### Stale anchors repaired
+
+This refactor moved the gate into a filter closure, breaking the literal anchors in
+**two** earlier harnesses. Both were **silent** — a missing anchor is only reported,
+never failing the run — so round 4's guard had been unreported and round 9's
+repointed:
+
+- `verify/nonvacuity-round4.mjs` — "dominance test rejects text-as-plateau": its
+  anchor had gone stale when `panelShape` was appended to `pathA` in round 8.
+- `verify/nonvacuity-round9.mjs` — "reconciliation is gated (decoration excluded)".
+- `verify/nonvacuity-round10.mjs` — both F12 anchors.
 
 ## 9. New module map
 

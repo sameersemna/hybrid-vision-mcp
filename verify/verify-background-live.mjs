@@ -390,4 +390,47 @@ console.log("\n=== 11. round-10 checks (F12 the masked band must still surface t
   }
 }
 
+// Round-11 checks (eleventh audit F13: the round-10 "structural guarantee" was
+// false — the disclosure gate compared a MEAN against the mask's SINGLE-BLOB
+// floor, so a colour masked by one >=2% blob but dragged below 0.4% mean by many
+// small companions was masked AND undisclosed).
+async function dropcapText() {
+  const w = 1000, h = 700;
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${w}" height="${h}" fill="#1a1814"/>
+    <text x="20" y="300" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="330" fill="#464646">I</text>
+    <text x="150" y="660" font-family="DejaVu Sans, sans-serif" font-size="55" fill="#464646">settings</text>
+  </svg>`)).png().toBuffer();
+}
+async function panelPlusFragments() {
+  const w = 1000, h = 700;
+  const parts = [`<rect width="${w}" height="${h}" fill="#1a1814"/>`,
+    `<rect x="100" y="100" width="200" height="80" fill="#464646"/>`];
+  for (let i = 0; i < 10; i++) parts.push(`<rect x="${80 + i * 90}" y="420" width="24" height="14" fill="#464646"/>`);
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 12. round-11 checks (F13 the retracted guarantee: a mask-caused omission must be disclosed) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+
+  const drop = await call("measure_image", { image_source: toUri(await dropcapText()), mode: "contrast", region });
+  const cDrop = drop.measurements.contrast;
+  const dropNamed = cDrop.mask_reconciliation?.unmasked_failing_colours?.find((x) => x.foreground === "#464646");
+  console.log(`  [dropcap] colours=${cDrop.colours.map((x) => x.foreground).join(",") || "none"} recon=${cDrop.mask_reconciliation ? "FIRES" : "none"} all_meet_aa=${cDrop.all_meet_aa}`);
+  console.log(`  [dropcap] #464646 disclosed: ${dropNamed ? `${dropNamed.contrast_ratio}:1 largest=${dropNamed.largest_component_share} plateau=${dropNamed.detected_plateau}` : "MISSING (bad)"}  -> F13 fixed: ${dropNamed ? "YES" : "NO"}`);
+
+  const frag = await call("measure_image", { image_source: toUri(await panelPlusFragments()), mode: "contrast", region });
+  const cFrag = frag.measurements.contrast;
+  const fragNamed = cFrag.mask_reconciliation?.unmasked_failing_colours?.find((x) => x.foreground === "#464646");
+  console.log(`  [panel+fragments] colours=${cFrag.colours.length} measurable=${cFrag.measurable} recon=${cFrag.mask_reconciliation ? "FIRES" : "none"}`);
+  console.log(`  [panel+fragments] empty masked result still disclosed: ${fragNamed ? `${fragNamed.contrast_ratio}:1` : "MISSING (bad)"}  -> F13 fixed: ${fragNamed ? "YES" : "NO"}`);
+
+  // Keep-green: F11 decoration must stay quiet even though it is removed by the
+  // SAME plateau mechanism (it falls below BOTH gate clauses).
+  const bars = await call("measure_image", { image_source: toUri(await decorativeBars()), mode: "contrast", region });
+  const cBars = bars.measurements.contrast;
+  console.log(`  [F11 keep-green] decorative bars recon=${cBars.mask_reconciliation ? "FIRES (bad)" : "none"} all_meet_aa=${cBars.all_meet_aa}`);
+}
+
 await client.close();
