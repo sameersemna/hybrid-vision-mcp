@@ -1,5 +1,39 @@
 # Changelog
 
+## Fifteenth-audit follow-up: the prose guard's scope claim exceeded its rule — 2026-09-26
+
+Round 14 called the prose guard "durable" and said the claim "cannot silently return".
+**That overstates a regex.** Re-running the round-14 rule against nine paraphrases of the
+same false claim caught **1 of 9** (verb/object list gaps, a 60-char distance limit, and —
+the sharper half — a **line-scoped exculpatory waiver** that excused a genuine claim on
+any stray word such as `not decoration` or `large from small`). This is the **third round
+running** where an anti-defect mechanism reproduced the defect it was built to stop. See
+`ACCURACY.md` §5q.
+
+### Fixed
+
+- **F17 — the guard is now clause-scoped and field-anchored.** A line is flagged only if a
+  clause (split on `[;,:]`, **never `.`** — file paths and decimals contain periods)
+  contains a field name **and** a classification verb **and** a decoration/text object,
+  with no negation in the *same* clause. Measured: **9/10** paraphrases caught, **0** false
+  positives on the real docs (the widened verb/object lists otherwise produced **26** false
+  positives without the field anchor).
+- **F17 — a positive assertion (fix #4).** Because no regex achieves recall and precision
+  together, the guard is paired with a structural check: the explicit disclaimer must be
+  present in `lib/measure.js`, `README.md`, and `ACCURACY.md`. Paraphrase-proof.
+- **F17 — the claim is narrowed.** The test is now named *"catches the LITERAL regression
+  (not 'any claim, ever')"*; the "cannot silently return" sentences are corrected in
+  `ACCURACY.md` §5p and here.
+- `index.js` (tool-schema prose that reaches callers) is now scanned — future-proofing; it
+  currently contains no classification prose.
+
+### Known miss (recorded, not hidden)
+
+Paraphrase **P4** escapes because its comma splits the field from the verb. Catching it
+would need cross-clause proximity, which reintroduces the false positives the field-anchor
+prevents. So the honest claim is **"the literal regression is caught"**, not "the claim
+cannot return".
+
 ## Thirteenth-audit follow-up: `shape` was not a discriminator — 2026-09-26
 
 The twelfth audit removed the disclosure *gate* but kept a `shape` label

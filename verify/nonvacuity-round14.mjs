@@ -27,16 +27,17 @@ const cases = [
   },
   {
     id: "F16 the prose guard actually fails on a re-inserted claim",
-    test: "NO documentation claims",
+    test: "catches the LITERAL regression",
     file: "ACCURACY.md",
     // This is the point of the prose guard: if a claim RETURNED to the docs, the test
-    // must fail. Inject one and confirm.
+    // must fail. Inject one and confirm. (Test name repointed in round 15, when the
+    // guard was renamed to state its honest scope.)
     from: "\n## 9. New module map",
     to: INJECT_CLAIM + "\n## 9. New module map",
   },
   {
     id: "F16 the prose guard fails on a re-inserted claim in a code comment",
-    test: "NO documentation claims",
+    test: "catches the LITERAL regression",
     file: "lib/measure.js",
     // Same, but in the source file — the layer where F14/F15's claim first lived.
     from: "export function isDisclosableDroppedColour(colour, regionArea) {",

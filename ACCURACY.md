@@ -1804,8 +1804,105 @@ scalars we each proposed: it shows the components themselves are the same shape.
 The defect is not any single scalar — it is **claiming a scalar separates two classes
 that are geometrically the same**. F14 removed a threshold, F15 removed a label, F16
 removed the claim from the prose. Each fix was correct and each left the claim alive one
-layer out. The guard that finally closes it is a **prose assertion in the test suite**, so
-the claim cannot silently return to a comment.
+layer out. The guard that finally closes the **literal** regression is a **prose
+assertion in the test suite**.
+
+> **AMENDED (fifteenth audit F17).** An earlier version of this sentence said the claim
+> "cannot silently return". That overstates a regex guard — see §5q: it catches the
+> literal wording, not arbitrary paraphrases. The honest claim is narrower.
+
+## 5q. Fifteenth audit: the guard's scope claim exceeded its rule
+
+### What was wrong
+
+Round 14 called the prose guard *"durable"* and said *"the claim cannot silently
+return"*. F14 removed a threshold, F15 a label, and round 14 closed the prose layer —
+but the **guard's own description** then claimed more than the rule delivered. Measured
+by re-running the exact round-14 regexes against paraphrases that assert the same false
+thing:
+
+| # | paraphrase (quoted example — NOT a claim of this document) | caught by the round-14 rule? |
+|---|---|---|
+| — | literal old wording | **YES** |
+| P1 | [PARAPHRASE] "use `plateau_share` to **identify** decoration rather than real text." | no — verb not listed |
+| P2 | [PARAPHRASE] "…**filter out chart furniture** instead of copy." | no — verb + synonyms |
+| P3 | [PARAPHRASE] "…**tell what is** decoration and what is text." | no — no `from` construction |
+| P4 | [PARAPHRASE] "…can reliably **separate** the wide tiled **decorations** … **from a glyph run**." | no — 81 chars between verb and object (limit 60) |
+| P5 | [PARAPHRASE] "…distinguishes decoration from **glyphs**." | no — object must be `glyph run` |
+| P6 | [PARAPHRASE] "…orders decoration from text, which is what makes it **not decoration**-specific…" | no — **genuine claim excused** |
+| P7 | [PARAPHRASE] "…orders decoration from text by size; think of it as **large from small**…" | no — **genuine claim excused** |
+| P8 | [PARAPHRASE] "…**separates chart furniture from copy**." | no — synonyms |
+| P9 | [PARAPHRASE] "decoration **is distinguished** from text by `plateau_share`." | no — passive |
+
+**One of nine caught.** So "the claim cannot return" was false: the guard was bound to
+one verb set and one object phrase.
+
+### Two distinct gaps
+
+- **Coverage gap (fixable by list growth):** P1, P2, P3, P5, P8, P9 escape because the
+  verb/object lists are finite.
+- **Correctness gap (the sharper half):** P6 and P7 escape because the round-14 rule
+  tested `EXCULPATORY` against the **whole line**, so one exculpatory word anywhere
+  waived the claim — and `not decoration` / `large from small` are both words a
+  **genuine claim can contain** (they were, in fact, in the round-14 exculpatory list).
+  This is the same shape as F14's `mean = total/N`: a single scalar applied to something
+  it does not describe. **Third round running** where an anti-defect mechanism
+  reproduces the defect it was built to stop.
+
+### The fix: clause-scoped, field-anchored, plus a positive assertion
+
+The new rule splits a line into clauses on `[;,:]` — **never on `.`**, because file
+paths (`lib/measure.js`) and decimals (`0.0986`) contain periods and splitting on them
+tears a retraction marker away from the claim it excuses. A clause is flagged only if it
+contains **all three** of a field name, a classification verb, and a decoration/text
+object, **and** no negation in the *same clause*.
+
+Measured on the audit's nine paraphrases plus six legitimate lines:
+
+| rule | paraphrases caught | false positives (sample) | false positives (real docs, ~2000 lines) |
+|---|---|---|---|
+| round-14 (verb list, line-scoped waiver) | 1 / 9 | 0 | 0 |
+| round-15 (clause-scoped + field-anchored) | **9 / 10** | **0 / 6** | **0** |
+| broad proximity rule (audit's probe) | 7 / 7 | **1 (the correct negation)** | — |
+
+The two changes that fixed the correctness gap: the negation must be in the same clause
+(so P6/P7 are caught), and the widened verb/object lists are constrained by requiring the
+**field name in the same clause** — without that anchor the widened lists produced
+**26 false positives** on the real docs ("a region separated by panels", "classifies a
+dashboard as text", …).
+
+**Fix #4 — the structural half.** Because no regex achieves recall and precision together,
+the guard is paired with a **positive assertion**: the explicit disclaimer *must* be
+present in `lib/measure.js`, `README.md`, and `ACCURACY.md`. That is paraphrase-proof and
+turns "we hope nobody paraphrases the claim" into "the docs must state the opposite".
+
+### The honest scope
+
+The test is named *"the prose guard catches the LITERAL regression (not 'any claim,
+ever')"* and its comment states the limit. **No regex found so far achieves both recall
+and the legitimate negations**, so the claim is "the literal regression is caught".
+
+### What this audit has NOT proven
+
+- That a paraphrase has **reached** the docs. The finding is that the guard *would not
+  catch* one, not that one exists.
+- That P4 is uncatchable. It escapes because its comma splits the field from the verb;
+  the 10th paraphrase is a **known miss**, recorded rather than hidden. A rule that
+  caught it would need cross-clause proximity, which reintroduces the false positives
+  the field-anchor exists to prevent.
+- That the disclaimer presence is enough. It proves the docs state the opposite; it does
+  not prove a caller reads it.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **108/108** (was 107; +1 round-15 test, +rewritten guard) |
+| paraphrase fixtures | 9 flagged, 3 legitimate allowed, P4 recorded as a known miss |
+| real docs | 0 un-retracted claims across `lib/measure.js`, `README.md`, `ACCURACY.md`, `CHANGELOG.md`, `index.js` |
+| disclaimer presence | 3/3 files |
+| non-vacuity | all guards non-vacuous (+3 round 15; inject-into-`index.js` proves the new file is real coverage) |
+| live MCP (scratch 11498) | §16: 0 claims, 3/3 disclaimers |
 
 ## 9. New module map
 

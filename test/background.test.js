@@ -1094,9 +1094,7 @@ test("F15: the fragmentation sweep shows `shape` used to flip with nothing chang
 // ==========================================================================
 // Fourteenth-audit acceptance tests (F16: the `plateau_share` classification
 // claim was FALSE — it is a coverage measure, and a dense glyph run covers MORE
-// than a bar chart). The durable guard is that no exposed field is documented as
-// distinguishing decoration from text. Non-vacuous per
-// verify/nonvacuity-round14.mjs.
+// than a bar chart). Non-vacuous per verify/nonvacuity-round14.mjs.
 // ==========================================================================
 
 test("F16: `plateau_share` does NOT order decoration from text (it inverts)", async () => {
@@ -1131,31 +1129,84 @@ test("F16: `detected_plateau` is evidence, not a classifier — real text is det
   assert.equal(t.detected_plateau, true, "real failing text is detected as a plateau — so it cannot mean 'decoration'");
 });
 
-test("F16: NO documentation claims an exposed field distinguishes decoration from text", async () => {
-  // The durable guard. F14 removed a threshold, F15 a label, and the claim survived in
-  // the PROSE — where no test could fail it. This asserts the prose, so the claim
-  // cannot silently return to a comment or a doc.
+test("F17: the prose guard catches the LITERAL regression (not 'any claim, ever')", async () => {
+  // HONEST SCOPE (fifteenth audit F17). F14 removed a threshold, F15 a label, and the
+  // claim survived in the PROSE. This guard closes that layer — but a REGEX cannot
+  // prove "the claim can never return": the audit re-ran the previous rule against 9
+  // paraphrases and it caught 1. What it verifies is narrower and checkable:
+  //   (a) NO exposed field name co-occurs with a classification verb+object in the docs
+  //       (clause-scoped, so a negation in the same clause excuses it); and
+  //   (b) the docs MUST carry an explicit disclaimer (the structural half — see below).
+  //
+  // Non-vacuous per verify/nonvacuity-round14.mjs. Measured: 9/10 paraphrase fixtures
+  // caught, 0 false positives on the real docs (the 10th escapes — see §5q).
   const { readFile } = await import("node:fs/promises");
   const path = await import("node:path");
   const root = path.resolve(import.meta.dirname, "..");
-  const files = ["lib/measure.js", "README.md", "ACCURACY.md", "CHANGELOG.md"];
-  // Phrases that would assert a field CLASSIFIES/ORDERS decoration vs text. The
-  // retraction records quote the old wording, so a line is allowed if it is inside a
-  // retraction/amendment context (mentions false/removed/retract/amendment/does NOT).
-  const CLAIM = /(orders|distinguishes|separates|classifies|tells? apart)[^.\n]{0,60}(decoration[^.\n]{0,30}from[^.\n]{0,20}text|panel[^.\n]{0,20}from[^.\n]{0,20}text|glyph run from|a glyph run)/i;
-  const EXCULPATORY = /(false|retract|amend|removed|does NOT|does not|cannot|none of|neither|no field|not a classifier|invert|coincidence|mislabell?ed|misleading|NOT distinguish|not decoration|rather than decoration|large from small)/i;
+  const files = ["lib/measure.js", "README.md", "ACCURACY.md", "CHANGELOG.md", "index.js"];
+  const FIELD = /(plateau_share|largest_component_share|mean_component_area|detected_plateau|component_count)/i;
+  const VERB = /(orders|order|distinguishes|distinguish|separates|separate|classifies|classify|tells? (?:apart|what is)|identif(?:y|ies)|filter(?:s)? out|pick(?:s)? out|labels?|sorts?|ranks?|routes?|recommends?)/i;
+  const OBJ = /(decoration|decorations|chart furniture|furniture|ornament|non-?text|not text|glyph|glyphs|copy|panel|text)/i;
+  const NEG = /(\bfalse\b|retract|amend|\bremoved\b|REMOVED CLAIM|\bno\b[^;,:]{0,40}?(?:separat|distinguish|order|classif|identif|filter|tell|label|sort|rank|route|recommend)|does ?n[o']?t|do not|does NOT|is ?n[o']?t|are ?n[o']?t|cannot|can not|none of|neither|no field|\bno exposed\b|not a classifier|invert|coincidence|mislabell?ed|misleading|NOT distinguish|not decoration|rather than decoration|large from small|does NOT classify|\[paraphrase\]|not a claim of this document)/i;
+  // Clause-scoped on [;,:] — NEVER on "." (file paths like lib/measure.js and decimals
+  // like 0.0986 contain periods, and splitting on them tears a retraction marker away
+  // from the claim it excuses). A clause is bad only if it carries field+verb+object
+  // with no negation in the SAME clause. This is what fixes P6/P7, where the old
+  // line-scoped waiver excused a genuine claim on any stray exculpatory word.
+  const flags = (line) => line.split(/[;,:]/).some((cl) => FIELD.test(cl) && VERB.test(cl) && OBJ.test(cl) && !NEG.test(cl));
+
+  // (a) the docs are clean
   for (const rel of files) {
     const text = await readFile(path.join(root, rel), "utf8");
-    const bad = text
-      .split("\n")
-      .map((line, i) => ({ line, n: i + 1 }))
-      .filter(({ line }) => CLAIM.test(line) && !EXCULPATORY.test(line));
-    assert.equal(
-      bad.length,
-      0,
-      `${rel} asserts a field classifies decoration vs text:\n` + bad.map((b) => `  ${b.n}: ${b.line.trim()}`).join("\n"),
-    );
+    const bad = text.split("\n").map((line, i) => ({ line, n: i + 1 })).filter(({ line }) => flags(line));
+    assert.equal(bad.length, 0, `${rel} pairs a field name with a decoration/text classification claim:\n` + bad.map((b) => `  ${b.n}: ${b.line.trim()}`).join("\n"));
   }
+
+  // (b) fix #4 — the STRUCTURAL half: the explicit disclaimer MUST be present. This is
+  // paraphrase-proof and turns "we hope nobody paraphrases the claim" into "the docs
+  // must state the opposite". (Markdown emphasis/backticks are normalised away.)
+  const norm = (s) => s.replace(/[*`_]/g, "").replace(/\s+/g, " ");
+  const DISCLAIMER = /not decoration from text|none of (these|them) distinguishes decoration|does not distinguish decoration/i;
+  for (const rel of ["lib/measure.js", "README.md", "ACCURACY.md"]) {
+    const text = norm(await readFile(path.join(root, rel), "utf8"));
+    assert.ok(DISCLAIMER.test(text), `${rel} must carry the explicit disclaimer that no field distinguishes decoration from text`);
+  }
+});
+
+test("F17: the guard's own recall is measured against paraphrases (fixtures)", () => {
+  // A guard tested only against its own target phrase is what produced F17. These
+  // fixtures are the audit's paraphrases plus the literal wording; the guard must flag
+  // them, and must NOT flag the legitimate negations.
+  const FIELD = /(plateau_share|largest_component_share|mean_component_area|detected_plateau|component_count)/i;
+  const VERB = /(orders|order|distinguishes|distinguish|separates|separate|classifies|classify|tells? (?:apart|what is)|identif(?:y|ies)|filter(?:s)? out|pick(?:s)? out|labels?|sorts?|ranks?|routes?|recommends?)/i;
+  const OBJ = /(decoration|decorations|chart furniture|furniture|ornament|non-?text|not text|glyph|glyphs|copy|panel|text)/i;
+  const NEG = /(\bfalse\b|retract|amend|\bremoved\b|REMOVED CLAIM|\bno\b[^;,:]{0,40}?(?:separat|distinguish|order|classif|identif|filter|tell|label|sort|rank|route|recommend)|does ?n[o']?t|do not|does NOT|is ?n[o']?t|are ?n[o']?t|cannot|can not|none of|neither|no field|\bno exposed\b|not a classifier|invert|coincidence|mislabell?ed|misleading|NOT distinguish|not decoration|rather than decoration|large from small|does NOT classify|\[paraphrase\]|not a claim of this document)/i;
+  const flags = (line) => line.split(/[;,:]/).some((cl) => FIELD.test(cl) && VERB.test(cl) && OBJ.test(cl) && !NEG.test(cl));
+
+  const mustFlag = [
+    "plateau_share is the field that orders decoration (a wide tiled region) from a glyph run.", // literal
+    "use plateau_share to identify decoration rather than real text.", // P1 verb
+    "plateau_share lets a caller filter out chart furniture instead of copy.", // P2 verb+synonyms
+    "plateau_share is how you tell what is decoration and what is text.", // P3 no 'from'
+    "a high plateau_share distinguishes decoration from glyphs.", // P5 object synonym
+    "plateau_share orders decoration from text, which is what makes it not decoration-specific but genuinely useful.", // P6 old waiver
+    "plateau_share orders decoration from text by size; think of it as large from small coverage.", // P7 old waiver
+    "plateau_share separates chart furniture from copy.", // P8 synonyms
+    "decoration is distinguished from text by plateau_share.", // P9 passive
+  ];
+  for (const line of mustFlag) assert.ok(flags(line), `must flag: ${line}`);
+
+  const mustAllow = [
+    "plateau_share is the plateau's coverage of the region; it does NOT distinguish decoration from text.",
+    "A bar chart and a glyph run are the same kind of object, so no scalar separates decoration from text.",
+    '**[REMOVED CLAIM]** `lib/measure.js` — *"`plateau_share` … orders decoration (a wide tiled region) from a glyph run."*',
+  ];
+  for (const line of mustAllow) assert.equal(flags(line), false, `must allow: ${line}`);
+
+  // The residual: P4 escapes because a comma splits the field from the verb. Recorded,
+  // not hidden — this is why the honest claim is "the literal regression is caught".
+  const p4 = "plateau_share orders colours into buckets so that, with practice, a caller can reliably separate the wide tiled decorations seen here from a glyph run.";
+  assert.equal(flags(p4), false, "P4 is a KNOWN miss (comma splits field from verb) — documented in ACCURACY.md §5q");
 });
 
 test("§3 (DECLINED): a solid accent block collides with real solid text", async () => {
