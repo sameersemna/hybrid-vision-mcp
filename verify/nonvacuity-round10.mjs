@@ -28,13 +28,10 @@ const cases = [
   // any more, so it cannot be reverted. The F12 band coverage it protected is now
   // guarded by the unconditional-predicate case above and by
   // verify/nonvacuity-round12.mjs (the F14 E fixture).
-  {
-    id: "F12 shape chooses the wording, not whether to disclose",
-    test: "shape now chooses the WORDING",
-    file: "lib/measure.js",
-    from: "              shape: panelShaped ? \"panel-shaped\" : \"text-sized\",",
-    to: "              shape: \"panel-shaped\", // REVERTED: no shape distinction",
-  },
+  //
+  // NOTE (round 13): the former "shape chooses the wording" case was REMOVED as
+  // obsolete. `shape` was deleted (thirteenth audit F15) because it was
+  // `mean = total / N` again; see verify/nonvacuity-round13.mjs.
 ];
 
 function runTest(pattern) {

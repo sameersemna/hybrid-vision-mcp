@@ -31,15 +31,12 @@ const cases = [
     from: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return true;\n}",
     to: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return false; // REVERTED: nothing is disclosable\n}",
   },
-  {
-    id: "F11 shape still distinguishes panel from text in the WORDING",
-    test: "shape now chooses the WORDING",
-    file: "lib/measure.js",
-    // Round 10 moved this from a gate to a label, so it is now pinned by the
-    // wording test rather than by the F11 tests.
-    from: "  return mean / regionArea >= LARGE_REGION_AREA_FRACTION;",
-    to: "  return mean / regionArea > 0; // REVERTED: everything labelled panel-shaped",
-  },
+  // NOTE (round 13): the former "shape still distinguishes panel from text in the
+  // WORDING" case was REMOVED as obsolete rather than left vacuous. `shape` and
+  // `isPanelShapedDroppedColour` were deleted (thirteenth audit F15) because the
+  // label was `mean = total / N` again and inverted on the realistic pair. Its
+  // replacement coverage lives in verify/nonvacuity-round13.mjs (the raw-evidence
+  // fields are what a caller now uses).
 ];
 
 function runTest(pattern) {

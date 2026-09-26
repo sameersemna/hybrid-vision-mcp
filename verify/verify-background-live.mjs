@@ -474,6 +474,10 @@ console.log("\n=== 13. round-12 checks (F14 more failing text must not silence t
   const bars = await call("measure_image", { image_source: toUri(await decorativeBars()), mode: "contrast", region });
   const cBars = bars.measurements.contrast;
   console.log(`  [F11 reversed]    decorative bars recon=${cBars.mask_reconciliation ? "FIRES (intended)" : "none"} all_meet_aa=${cBars.all_meet_aa}`);
+
+  // F15: `shape` must be GONE, and the raw evidence present (round 13).
+  const eEntry = cE.mask_reconciliation?.unmasked_failing_colours?.find((x) => x.foreground === "#464646");
+  console.log(`  [F15] shape field present: ${eEntry && "shape" in eEntry ? "YES (bad)" : "no"}  raw fields: comps=${eEntry?.component_count} plateau_share=${eEntry?.plateau_share} detected_plateau=${eEntry?.detected_plateau}`);
 }
 
 await client.close();

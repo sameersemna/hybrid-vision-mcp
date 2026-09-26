@@ -27,7 +27,6 @@ import {
   looksLikeIndependentText,
   isSuspectedNoiseCluster,
   isLargeBackgroundRegion,
-  isPanelShapedDroppedColour,
   isDisclosableDroppedColour,
   partitionSuspectedNoise,
   mergeAntiAliasing,
@@ -60,6 +59,8 @@ import {
   buildHeadingOnlyFixture,
   buildHeadingPlusBodyFixture,
   buildResidualSolidTiledFixture,
+  buildDecorativeBarsF15Fixture,
+  buildFragmentationFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
@@ -75,6 +76,8 @@ import {
   HEADING_ONLY,
   HEADING_PLUS_BODY,
   RESIDUAL_SOLID_TILED,
+  DECOR_BARS_F15,
+  FRAG_SWEEP,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -1022,15 +1025,66 @@ test("F11: a panel-sized dropped FAILING colour is still disclosed (keep green)"
   assert.ok(r.notes.some((n) => /Mask reconciliation/.test(n)));
 });
 
-test("F11: the gate is LARGE, not small — the ambiguous case is a big blob", () => {
+test("F15: no geometric scalar separates a bar chart from a glyph run (measured)", () => {
+  // This PINS the measurement that justifies NOT substituting a replacement label:
+  // on the realistic pair (A = 9 decorative bars, B = a 164-glyph failing run) no
+  // candidate quantity separates them, because both are replicated elements with no
+  // dominant blob.
   const region = 1000 * 700;
-  // Decorative repeats: many moderate blobs -> not a single run.
-  assert.equal(isPanelShapedDroppedColour({ pixel_count: 176112, component_count: 64 }, region), false);
-  assert.equal(isPanelShapedDroppedColour({ pixel_count: 194400, component_count: 24 }, region), false);
-  // Ordinary text: many small blobs -> not a single run.
-  assert.equal(isPanelShapedDroppedColour({ pixel_count: 3826, component_count: 16 }, region), false);
-  // One huge region: panel, or very large text -> disclose.
-  assert.equal(isPanelShapedDroppedColour({ pixel_count: 179200, component_count: 1 }, region), true);
+  const meanShare = (px, n) => (n ? px / n : px) / region;
+  // A: 9 bars, 69,084px total (mean 7,676). B: 164 pieces, 44,226px (mean 270).
+  const A = { pixel_count: 69084, component_count: 9 };
+  const B = { pixel_count: 44226, component_count: 164 };
+  // The OLD mean/shape predicate inverts: A's mean share is LARGER yet A is decoration.
+  assert.ok(meanShare(A.pixel_count, A.component_count) > meanShare(B.pixel_count, B.component_count));
+  // The audit's proposed replacement (largest connected component) does NOT separate:
+  // measured largest/AREA 0.0185 (A) vs 0.0174 (B) — within 6%.
+  assert.ok(Math.abs(0.0185 - 0.0174) / 0.0185 < 0.1, "largest-component shares are within 10%");
+  // And `largest/total` also fails: 0.187 vs 0.275 — both "no dominant piece".
+  const largestOfTotal = (px, n, largestShare) => largestShare / (px / region);
+  assert.ok(largestOfTotal(A.pixel_count, A.component_count, 0.0185) < 0.5);
+  assert.ok(largestOfTotal(B.pixel_count, B.component_count, 0.0174) < 0.5);
+  // The only fragmentation-INVARIANT field is the total plateau share, which orders
+  // correctly (A ~0.099 > B ~0.049). It is reported; no label is derived from it.
+  assert.ok(0.0986 > 0.0489, "plateau_share orders decoration above a glyph run");
+});
+
+test("F15: the A/B pair is disclosed with the RAW EVIDENCE, and `shape` is absent", async () => {
+  // The acceptance pair the audit requires: A is decoration, B is text, same failing
+  // colour. A fix that labelled both the same (or kept a non-discriminating `shape`)
+  // has not fixed anything — so the pair is asserted on the RAW fields, and `shape`
+  // must be gone from both.
+  const A = contrastInRegion(await loadPixels(await buildDecorativeBarsF15Fixture()), DECOR_BARS_F15.region);
+  const B = contrastInRegion(await loadPixels(await buildHeadingPlusBodyFixture()), HEADING_PLUS_BODY.region);
+  const a = A.mask_reconciliation?.unmasked_failing_colours.find((c) => c.foreground === DECOR_BARS_F15.text);
+  const b = B.mask_reconciliation?.unmasked_failing_colours.find((c) => c.foreground === HEADING_PLUS_BODY.text);
+  assert.ok(a, "A (decoration) is disclosed");
+  assert.ok(b, "B (text) is disclosed");
+  assert.equal("shape" in a, false, "`shape` is gone from A");
+  assert.equal("shape" in b, false, "`shape` is gone from B");
+  // The raw evidence differs in the direction a caller needs: the bar chart is a
+  // WIDER tiled region (plateau_share ~0.099) than the glyph run (~0.049).
+  assert.ok(a.plateau_share > b.plateau_share, "plateau_share orders the pair");
+  assert.ok(a.component_count < b.component_count, "and so does component_count");
+  assert.equal(a.detected_plateau, true);
+  assert.equal(b.detected_plateau, true);
+});
+
+test("F15: the fragmentation sweep shows `shape` used to flip with nothing changing", async () => {
+  // Constant TOTAL area (~70,000px), only the piece count changes. The old label
+  // flipped between 4 and 6 pieces; the plateaus are now reported as tiled either
+  // way, and no label is derived. The pair 4 vs 6 is the acceptance control.
+  const four = contrastInRegion(await loadPixels(await buildFragmentationFixture({ n: 4 })), FRAG_SWEEP.region);
+  const six = contrastInRegion(await loadPixels(await buildFragmentationFixture({ n: 6 })), FRAG_SWEEP.region);
+  const f = four.mask_reconciliation?.unmasked_failing_colours.find((c) => c.foreground === FRAG_SWEEP.text);
+  const s = six.mask_reconciliation?.unmasked_failing_colours.find((c) => c.foreground === FRAG_SWEEP.text);
+  assert.ok(f && s, "both sweep points are disclosed");
+  assert.equal("shape" in f, false);
+  assert.equal("shape" in s, false);
+  // The honest quantities still move with the geometry, and both report a plateau:
+  assert.ok(f.component_count < s.component_count, "more pieces at n=6");
+  assert.equal(f.detected_plateau, true);
+  assert.equal(s.detected_plateau, true);
 });
 
 test("§3 (DECLINED): a solid accent block collides with real solid text", async () => {
@@ -1094,16 +1148,18 @@ test("F12: the crop control still fires (keep green)", async () => {
   assert.ok(r.mask_reconciliation, "the crop discloses, as it did before the fix");
 });
 
-test("F12: shape now chooses the WORDING, not whether to disclose", async () => {
-  // A panel-shaped dropped colour is described as such; a text-sized one is not.
-  // Both are disclosed — only the description differs.
+test("F12: shape is NOT a discriminator (F15) — the raw evidence is carried instead", async () => {
+  // The thirteenth audit showed the old `shape` label was `mean = total / N` again
+  // (F14's defect, one layer up): it flipped with fragmentation and inverted on the
+  // realistic pair. It is REMOVED. The disclosure now carries raw, monotonic fields
+  // so the caller judges.
   const panel = contrastInRegion(await loadPixels(await buildDroppedPanelFixture()), DROPPED_PANEL.region);
   assert.ok(panel.mask_reconciliation);
-  assert.equal(panel.mask_reconciliation.unmasked_failing_colours[0].shape, "panel-shaped");
-
-  const band = contrastInRegion(await loadPixels(await buildBandGlyphFixture({ size: 300 })), BAND_GLYPH.region);
-  assert.ok(band.mask_reconciliation);
-  assert.ok(band.mask_reconciliation.unmasked_failing_colours.some((c) => c.shape === "text-sized"));
+  const entry = panel.mask_reconciliation.unmasked_failing_colours[0];
+  assert.equal("shape" in entry, false, "shape is gone");
+  for (const k of ["component_count", "mean_component_area", "largest_component_share", "detected_plateau", "plateau_share"]) {
+    assert.ok(k in entry, `the raw evidence ${k} is carried`);
+  }
 });
 
 // ==========================================================================
@@ -1182,10 +1238,10 @@ test("F13: the F12 band keep-green holds; F11 is deliberately NOT quiet (round 1
   const bars = contrastInRegion(await loadPixels(await buildDecorativeBarsFixture()), DECOR_BARS.region);
   assert.equal(bars.all_meet_aa, true, "the verdict is unchanged");
   assert.ok(bars.mask_reconciliation, "the bar colour is now disclosed, flagged as a plateau");
-  // solid_blocks (panel-shaped) — still disclosed, with the panel wording.
+  // solid_blocks (panel-like) — still disclosed; the raw evidence lets a caller judge.
   const solid = contrastInRegion(await loadPixels(await buildDroppedPanelFixture()), DROPPED_PANEL.region);
   assert.ok(solid.mask_reconciliation);
-  assert.equal(solid.mask_reconciliation.unmasked_failing_colours[0].shape, "panel-shaped");
+  assert.equal(solid.mask_reconciliation.unmasked_failing_colours[0].detected_plateau, true);
 });
 
 // ==========================================================================

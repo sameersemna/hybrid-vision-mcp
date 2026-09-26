@@ -729,23 +729,27 @@ See `ACCURACY.md` §5h-§5i.
 
 **Mask reconciliation.** When a plateau mask removed a colour, the region is
 re-enumerated with no mask. Any failing colour the masked result dropped is
-disclosed under `mask_reconciliation` and in `notes`, labelled by shape:
+disclosed under `mask_reconciliation` and in `notes`, with the raw evidence:
 
 ```json
 "mask_reconciliation": {
-  "unmasked_failing_colours": [ { "foreground": "#464646", "contrast_ratio": 1.88, "shape": "text-sized" } ],
-  "note": "masking a background region also removed colour(s) that an un-masked pass measures as failing ..."
+  "unmasked_failing_colours": [ {
+    "foreground": "#464646", "contrast_ratio": 1.88,
+    "component_count": 164, "mean_component_area": 270,
+    "detected_plateau": true, "plateau_share": 0.0489, "largest_component_share": 0.0174
+  } ],
+  "note": "masking a background region also removed colour(s) that an un-masked pass measures as failing. These are usually backgrounds or decoration, but they could be text. The tool does NOT classify which: judge from the reported evidence ..."
 }
 ```
 
 **The gate is UNCONDITIONAL.** Every failing colour the mask removed is disclosed —
-there is no size threshold. Shape and evidence decide the *wording* only:
+there is no size threshold. The tool does **not** classify whether a flagged colour is
+decoration or text; it reports raw, monotonic evidence so you can judge:
 
-- `shape: "panel-shaped" | "text-sized"` — from the mean blob area;
-- `detected_plateau` and `plateau_share` — whether the flagged colour was itself
-  read as a background plateau, and how much of the region that plateau covers. This
-  is how a caller tells decoration from text, because suppression is no longer used
-  to do it.
+- `detected_plateau` / `plateau_share` — whether the colour was itself read as a
+  background plateau, and how much of the region that plateau covers (this is the
+  field that orders a wide tiled region above a glyph run);
+- `component_count`, `mean_component_area`, `largest_component_share`, `pixel_count`.
 
 It remains disclosure, not refusal, so it cannot turn a correct verdict into a wrong
 one.
@@ -766,7 +770,16 @@ one.
 > ninth-audit F11 case), because the un-masked pass re-reads a tiled bar colour as
 > failing text. That is the deliberate trade — the disclosure is advisory and names
 > its own evidence, whereas the F14 omission was silent. If you want to ignore
-> decoration, filter on `detected_plateau` rather than expecting it to be suppressed.
+> decoration, filter on `detected_plateau` / `plateau_share` rather than expecting it
+> to be suppressed.
+>
+> **No classification is provided (thirteenth audit F15).** An earlier version also
+> emitted `shape: "panel-shaped" | "text-sized"`. It was **removed**: its threshold was
+> `mean = total / N` again, so it flipped with fragmentation and inverted on a real
+> pair (9 decorative bars and a 164-glyph failing run were *both* `text-sized`). The
+> replacement the audit proposed — the largest connected component — was measured and
+> **does not separate** them either (0.0185 vs 0.0174). A bar chart and a glyph run are
+> the same kind of object, so no scalar is offered in its place. See `ACCURACY.md` §5o.
 
 ---
 

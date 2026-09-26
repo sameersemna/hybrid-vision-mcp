@@ -1559,6 +1559,12 @@ and `plateau_share` (read from the already-computed `plateaus` array), so a call
 filter decoration. The **verdict** (`all_meet_aa`) is unchanged — F11 still reports
 `all_meet_aa: true`.
 
+> **AMENDED (thirteenth audit F15).** The original sentence here read "precision is
+> *recovered* by wording", implying the wording **classifies** the disclosure. It does
+> not, and the field that purported to (`shape`) was removed in round 13. The claim is
+> downgraded from a capability to an offer: the tool reports raw evidence and does
+> **not** resolve "decoration or text" for the caller. See §5o.
+
 ### What this audit has NOT proven
 
 - No **natural** page was found where a *large solid* failing element and *small*
@@ -1597,6 +1603,111 @@ Removing the predicate body broke literal anchors in **three** harnesses — all
   case + round 12.
 - `verify/nonvacuity-round11.mjs` — repointed to the predicate body and the restored
   evidence fields.
+
+## 5o. Thirteenth audit: `shape` was not a discriminator (the F14 defect, one layer up)
+
+### What was wrong
+
+The twelfth audit removed the *disclosure* gate but kept a `shape` label on each
+entry — `"panel-shaped"` or `"text-sized"` — produced by
+`isPanelShapedDroppedColour` = `mean / regionArea >= LARGE_REGION_AREA_FRACTION`, i.e.
+`pixel_count / component_count / area`. That is **the same `mean = total / N`
+construction** the twelfth audit (F14) identified as anti-correlated with the
+evidence. F14 was fixed at the disclosure layer; the identical construction survived
+at the wording layer.
+
+### The inversion (measured, live 11402)
+
+| fixture | comps | mean_component_area | `shape` (old) | what it is |
+|---|---|---|---|---|
+| A: 9 decorative bars (F11) | 9 | 7,676 | **`text-sized`** | chart bars, 11% of the region |
+| B: failing heading + body | 164 | 270 | `text-sized` | real failing text |
+
+Identical label. The bars occupy an order of magnitude more area per component yet
+are called `text-sized` — the label is anti-correlated with "is this a panel".
+
+### The fragmentation sweep (constant total area, only piece count varies)
+
+~70,000px of failing colour in every row; only the number of pieces changes:
+
+| bars | mean_area | mean/AREA | `shape` (old) |
+|---|---|---|---|
+| 2 | 34,980 | 0.0500 | panel-shaped |
+| 3 | 23,340 | 0.0333 | panel-shaped |
+| 4 | 17,520 | 0.0250 | panel-shaped |
+| **6** | 11,640 | 0.0166 | **text-sized** — flips here |
+| 9 | 7,800 | 0.0111 | text-sized |
+| 12 | 5,820 | 0.0083 | text-sized |
+
+Directly: `isPanelShapedDroppedColour({ pixel_count: 70000, component_count: 1 }, 700000)`
+is `true` while `{ pixel_count: 70000, component_count: 12 }` is `false`. So `shape` was
+a function of **fragmentation**, not of panel-ness.
+
+### The fix: remove `shape`, do NOT substitute a threshold
+
+`isPanelShapedDroppedColour` and the `shape` field are **deleted** (audit fix #2). The
+audit's fix #1 — base `shape` on the largest connected component — was **measured and
+does not work**, so it was not adopted:
+
+| candidate | A (decoration) | B (text) | separates? |
+|---|---|---|---|
+| `mean_component_area / area` (old) | 0.0110 | 0.0004 | inverted |
+| `largest_component_share` (fix #1) | **0.0185** | **0.0174** | **no (within 6%)** |
+| `largest / total_failing` | 0.187 | 0.275 | no (both "no dominant piece") |
+| `plateau_share` (total region share) | 0.0986 | 0.0489 | yes, and fragmentation-invariant |
+
+`largest_component_share` is itself `total / N` shaped, so it flips identically in the
+sweep. Structurally, a 9-bar chart and a 164-glyph run are **the same kind of object**
+— replicated elements with no dominant blob — so **no geometric scalar can name the
+difference** without a threshold that will invert in turn. Substituting a new constant
+would hand the next audit a fresh inversion, so none was added.
+
+What a caller gets instead is the raw, monotonic evidence already carried on each
+entry: `component_count`, `mean_component_area`, `plateau_share`,
+`largest_component_share`, `detected_plateau`, `pixel_count`, `contrast_ratio`,
+`measured_against`. `plateau_share` is the field that actually orders the pair.
+
+### No false-positive flooding (audit controls, all `recon: null`)
+
+| control | result |
+|---|---|
+| `fp_dashboard_muted` (cards, dividers, muted captions) | `recon: null` |
+| `fp_decor_band` (separator band + 12 icon dots) | `recon: null` |
+| `fp_shadow_card` (rounded card + soft drop shadow) | `recon: null` |
+| `fp_icon_grid_fail` (16 icon tiles + failing headline/body, same colour) | FIRES, exactly 1 entry — correct |
+| acceptance fixture / `sidebar` / `dense_small_cards` | all `recon: null` |
+
+The removal of the gate looks safe on this population; the defect was the wording
+field, not the disclosure rate.
+
+### What this audit has NOT proven
+
+- No *natural* screenshot was shown to produce the inversion. The fixtures are
+  constructed; the claim is **reachability and direction** (more fragmentation ⇒ less
+  "panel"), not frequency.
+- Whether removing `shape` entirely and relying on `plateau_share` alone is
+  **sufficient** for a caller to route was **not tested**. `plateau_share` orders
+  correctly, but that is a measurement of ordering, **not** a validated routing rule.
+- How many real dashboards flag more than one colour was **not measured**, so the
+  "several extra round trips" consequence is reasoning from the mechanism, not a count.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **104/104** (was 102; +2 round-13 tests) |
+| A/B pair | both disclosed, `shape` ABSENT from both, raw evidence present |
+| fragmentation 4 vs 6 | both disclosed, no label, `component_count` differs |
+| F14 D/E, F13(a)/(b), F12 band | unchanged (still disclosed) |
+| must-quiet set | acceptance, sidebar, dense_small_cards, hero, F7/textured/cards-flat — all `mask_reconciliation: null` |
+| live MCP (scratch 11498) | §14: `shape` absent, raw fields present |
+| non-vacuity | all guards non-vacuous (+3 round 13); the "no scalar separates" test is deliberately NOT guarded (pure arithmetic, no source dependency — a revert anchor would be vacuous) |
+
+### Stale anchors repaired
+
+Deleting `shape` broke literal anchors in `verify/nonvacuity-round9.mjs` and
+`-round10.mjs`; both obsolete cases were **removed** with documentation (their
+coverage moved to round 13).
 
 ## 9. New module map
 

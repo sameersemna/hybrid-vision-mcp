@@ -1,5 +1,45 @@
 # Changelog
 
+## Thirteenth-audit follow-up: `shape` was not a discriminator — 2026-09-26
+
+The twelfth audit removed the disclosure *gate* but kept a `shape` label
+(`"panel-shaped"` / `"text-sized"`) and claimed precision was "recovered by wording".
+**That claim does not hold.** `shape` came from `isPanelShapedDroppedColour` =
+`mean / regionArea >= 0.02`, i.e. `pixel_count / component_count / area` — the **same
+`mean = total / N` construction** the twelfth audit (F14) showed is anti-correlated
+with the evidence, one layer up. See `ACCURACY.md` §5o.
+
+Measured (live 11402): 9 decorative chart bars (11% of the region) and a 164-glyph
+failing text run are **both** labelled `text-sized`. Holding the total failing area
+constant and only changing the piece count flips the label between 4 and 6 pieces with
+nothing else on screen changing.
+
+### Fixed
+
+- **F15 — `shape` and `isPanelShapedDroppedColour` are REMOVED.** The audit's first
+  fix (base `shape` on the largest connected component) was measured and **does not
+  separate** the pair (largest/AREA 0.0185 decoration vs 0.0174 text), so it was **not**
+  adopted. No replacement threshold was substituted: a bar chart and a glyph run are
+  the same kind of object (replicated elements, no dominant blob), so any new scalar
+  would invert in turn.
+- **The tool no longer implies it classifies.** Each disclosure carries the raw,
+  monotonic evidence only — `component_count`, `mean_component_area`, `plateau_share`,
+  `largest_component_share`, `detected_plateau`, `pixel_count`, `contrast_ratio`,
+  `measured_against` — so a caller judges. The note text now says explicitly that the
+  tool does not classify decoration vs text. `plateau_share` is the fragmentation-
+  invariant field that orders the pair (0.099 decoration vs 0.049 text).
+
+### Amended
+
+- `ACCURACY.md` §5n's sentence "precision is recovered by wording" is **downgraded** —
+  it asserted a classifying capability `shape` did not have. The F14 content and the
+  "irreducibly ambiguous" retraction stand unchanged.
+
+### Behaviour change (documented, not silent)
+
+`mask_reconciliation[].unmasked_failing_colours[].shape` is **removed** from the JSON.
+A consumer reading `shape` must switch to the raw fields listed above.
+
 ## Twelfth-audit follow-up: the disclosure gate was ANTI-CORRELATED with the evidence — 2026-09-26
 
 The eleventh audit's residual was described as "irreducibly ambiguous". **That framing

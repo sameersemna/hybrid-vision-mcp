@@ -658,6 +658,57 @@ export const HEADING_ONLY = {
 };
 export const HEADING_PLUS_BODY = { ...HEADING_ONLY };
 export const RESIDUAL_SOLID_TILED = { ...HEADING_ONLY };
+
+/**
+ * Nine decorative chart bars in one failing colour — the thirteenth-audit F15
+ * fixture A (the F11 case, disclosed by design since round 12).
+ *
+ * Nine pieces of ~7,676px mean area. It is plainly decoration, yet the removed
+ * `shape` label called it `text-sized` — the label was `mean = total / N`, so it
+ * INVERTED against the property it named. Kept as the "decoration" half of the
+ * F15 pair, alongside `buildHeadingPlusBodyFixture` (the "text" half).
+ */
+export async function buildDecorativeBarsF15Fixture({
+  fill = "#464646", page = "#12100e", card = "#1c1a17", bars = 9, w = 1000, h = 700,
+} = {}) {
+  const rects = Array.from({ length: bars }, (_, i) =>
+    `<rect x="${80 + i * 95}" y="${560 - (i * 22 + 40)}" width="60" height="${i * 22 + 40}" rx="4" fill="${fill}"/>`).join("");
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${page}"/>` +
+    `<rect x="40" y="80" width="920" height="540" fill="${card}"/>${rects}` +
+    `<text x="60" y="130" font-family="DejaVu Sans, sans-serif" font-size="30" font-weight="bold" fill="#e8dfd0">Revenue</text>` +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+/**
+ * A constant-total-area fragmentation sweep: the SAME ~70,000px of failing colour
+ * split into `n` pieces — the thirteenth-audit F15 control for `shape`.
+ *
+ * The old label flipped from `panel-shaped` to `text-sized` between n=4 and n=6
+ * with nothing else on screen changing, because `mean = total / n`.
+ */
+export async function buildFragmentationFixture({
+  n = 6, fill = "#464646", page = "#12100e", card = "#1c1a17", total = 70000, w = 1000, h = 700,
+} = {}) {
+  const each = Math.round(total / n), bw = 60, bh = Math.max(8, Math.round(each / bw));
+  const rects = Array.from({ length: n }, (_, i) =>
+    `<rect x="${60 + i * (900 / n)}" y="${60 + Math.floor(i / n * 560)}" width="${bw}" height="${bh}" fill="${fill}"/>`).join("");
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${page}"/>` +
+    `<rect x="40" y="40" width="920" height="620" fill="${card}"/>${rects}</svg>`,
+  )).png().toBuffer();
+}
+
+export const DECOR_BARS_F15 = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  text: "#464646",
+  ratio: 1.88,
+};
+export const FRAG_SWEEP = { ...DECOR_BARS_F15 };
+
 /**
  * A dashboard with a small SOLID decorative accent block — the ninth-audit §3
  * observation. Deliberately retained as a KNOWN, DECLINED false positive: see
