@@ -896,6 +896,108 @@ than only the changelog**: a noise-free synthetic gradient still bands, and the
 global model can still miss a tone on it. What has changed is that the caller is
 told, and given the mode that resolves it.
 
+## 5g. Sixth audit: tiled layouts reported the page background as failing text
+
+The fifth round guarded against a **silent pass**. This round guards the other
+direction: a **spurious fail**. Both are needed for a verdict to be trustworthy.
+
+### The defect (F7)
+
+Fixture: a 4×3 grid of identical cards on a page background, with ALL text one
+high-contrast colour (`#e8dfd0` at 11.05:1 on the card, 13.42:1 on the page).
+Reproduced in both themes and both modes:
+
+```json
+"colours": [
+  { "foreground": "#1a1814", "contrast_ratio": 1.21, "pixel_count": 316548, "component_count": 1, "wcag_aa": false },
+  { "foreground": "#e8dfd0", "contrast_ratio": 11.05, "wcag_aa": true }
+],
+"failing_count": 1, "all_meet_aa": false,
+"plateaus": [ { "hex": "#1a1814", "share": 0.377 } ]
+```
+
+`#1a1814` is the **page background** — one connected region around the cards. The
+tool asserted a contrast failure on something that is not text, which is the same
+"asserting something no user could see on screen" defect `suspected_noise` was
+built to remove, resurfacing through a different door.
+
+### The structural cause
+
+Two guards discriminate text from panel by **blob count**, and a tiled layout has
+the same signature as a glyph run — many small identical blobs:
+
+- `detectPlateaus` required `dominance ≥ 0.5` (one blob holding most of the
+  colour). Twelve separate cards give dominance ≈ 0.08, so the **card fill was
+  rejected as a plateau**;
+- with only the page background in `plateaus`, `multiPlateau` never engaged, so
+  the round-4 protection that fixed F5 did not apply;
+- `partitionSuspectedNoise` would have caught it, but it is gated to `local` mode.
+
+So the page background became one 316k-pixel ink component and was reported as a
+colour.
+
+### The fix: a tiling path, plus two backstops
+
+**1. A second plateau path (structural).** `detectPlateaus` now recognises a
+colour as a panel under **either**:
+
+| path | shape | evidence |
+|---|---|---|
+| **dominant-blob** (existing) | one big connected region holding most of the colour | page background, full-width panel |
+| **tiled** (new) | ≥ 2 blobs that are **panel-sized** (≥ 0.4% of the region) and **near-solid** (fill ≥ 0.85), of **similar size** (CV ≤ 0.5) | repeated cards, mosaics |
+
+Both keep the flatness requirement, so a gradient band is still rejected. Text
+fails the tiled path because its blobs are tiny (a glyph stroke is ~0.01% of the
+region) or hollow/thin (fill ≤ 0.60 measured). With the card fill recognised,
+`plateaus` contains both fills, multi-plateau engages, and the page background is
+never ink — the F7 case is fixed in **both** modes by construction.
+
+**2. Straight-segment rejection (a regression this round found and fixed).** The
+tiling path exposed a latent false positive: the dense dashboard's card
+**borders** (`321×3`, fill 0.66) were reported as failing text, because the
+existing hollow-rectangle test requires a 2-D box (`boxH ≥ 60`) and misses a
+1-D stroke. A component that is long and thin in one axis (≥ 60px long, ≤ 4px
+across) is now treated as decorative chrome — a rule, divider or border — not a
+glyph. Measured: borders are 1–3px thick, glyph strokes are 19px.
+
+**3. A large-background-region backstop.** For shapes the plateau model cannot
+reach (a page background that is *textured* rather than flat, so it fails
+flatness), a near-background cluster whose blobs are individually large is moved
+to `background_regions` and disclosed. Measured margin: real text averages at
+most **0.10%** of the region per blob; a page background is **37.7%** — a 360×
+separation, so this cannot drop a text run.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **73/73** (was 67; +6 round-6 tests) |
+| F7 dark 4×3, global + local | page bg not a text colour; `all_meet_aa: true`; 1 colour |
+| F7 light 4×3 | same (not polarity-specific) |
+| controls (3-in-a-row, 1 big card) | clean |
+| dense dashboard | `failing_count 0` — borders no longer misreported; the real `#7ee787` text still reported |
+| textured page | caught by `background_regions` + note; `all_meet_aa: true` |
+| §1 acceptance | unchanged: 1 plateau, 5 colours, 1.04 / 13.42, failing 2 |
+| F5 two-panel | sidebar `#3c3c3c` still 1.64:1 failing |
+| F6 gradient | marginal note + `model_disagreement` still present |
+| live MCP (new code, 11498) | F7 fixed: YES in both modes |
+| non-vacuity | 9 + 11 + 7 + 5 + 6 + 3 + **4 (round 6)** all non-vacuous |
+
+### The second invariant
+
+Alongside "a clean verdict must never be silent", the server now enforces: **no
+response may report `all_meet_aa: false` naming a colour that is a background
+region rather than text.** A verdict is only trustworthy if it can fail in
+neither direction.
+
+### Residual (disclosed)
+
+A page background that is textured (fails flatness) *and* fragmented by panels
+into many blobs (defeating the region backstop) is not caught. That combination —
+a non-flat page plus a card grid — is a shape constructed to defeat the guards
+rather than one observed in practice; it is recorded here rather than papered
+over.
+
 ## 9. New module map
 
 | File | Responsibility |

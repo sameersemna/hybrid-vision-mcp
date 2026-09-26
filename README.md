@@ -696,6 +696,29 @@ many), flatness (a panel is one exact colour; a gradient band is not) and
 connectivity. With fewer than two plateaus the result is unchanged. See
 `ACCURACY.md` §5e.
 
+**Tiled layouts are panels too.** A dashboard repeats its cards, so a card fill is
+"many small identical blobs" — the same signature as a glyph run. A second,
+structural plateau path recognises a repeated fill by **solidity and size per blob**
+rather than blob count (>= 2 blobs, each >= 0.4% of the region, fill >= 0.85,
+similar sizes). Without it the page background around the cards became one huge
+component and was reported as failing text on an image where every colour passes.
+`plateaus[].detection` says which path matched (`"dominant-blob"` or `"tiled"`).
+
+```json
+"plateaus": [
+  { "hex": "#1a1814", "share": 0.3768, "detection": "dominant-blob" },
+  { "hex": "#2d2822", "share": 0.6021, "detection": "tiled", "solid_component_count": 12 }
+],
+"background_model": "multi-plateau",
+"colours": [ { "foreground": "#e8dfd0", "contrast_ratio": 11.05, "wcag_aa": true } ]
+```
+
+**A background region is never a failing text colour.** A near-background cluster
+whose blobs are individually large is a region separated by panels, not a text run,
+so it is listed under `background_regions[]` and excluded from the verdict (with a
+note). Real text averages <= 0.10% of the region per blob against 37.7% for a page
+background, so this cannot drop a text run. See `ACCURACY.md` §5g.
+
 ---
 
 **Returns** (excerpt):
@@ -745,6 +768,10 @@ never has to infer which background produced a ratio.
 **Panel fills are not text colours.** In a multi-plateau region the large
 near-solid panel colours are returned under `panel_fills[]` and excluded from the
 text enumeration, so a panel's own fill is never reported as a "failing colour".
+
+**Straight strokes are chrome, not glyphs.** A component that is long and thin in
+one axis (≥ 60px long, ≤ 4px across) — a rule, divider or card border — is treated
+as decorative, so a bordered card grid is not reported as failing text.
 
 **A clean verdict is never silent about a weak premise.** When the global model
 reports no failing colour, the region is re-measured with the per-tile (local)

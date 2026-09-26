@@ -269,3 +269,74 @@ export const SHALLOW_GRADIENT = {
   darkText: "#8c8c8c",
   crop: { left: 30, top: 180, width: 400, height: 70 },
 };
+
+/**
+ * A tiled card dashboard: repeated identical cards on a page background with
+ * ALL text one high-contrast colour.
+ *
+ * This is the sixth-audit F7 fixture. The card fill is "many small identical
+ * blobs" — the same signature as a glyph run — so the single-blob plateau test
+ * rejected it, the page background became one huge "ink" component, and the page
+ * was reported as failing text even though every text colour passes.
+ *
+ * @param {{ w?:number, h?:number, cols?:number, rows?:number, page?:string,
+ *           card?:string, text?:string }} [opts]
+ */
+export async function buildTiledCardsFixture({
+  w = 1200, h = 700, cols = 4, rows = 3,
+  page = "#1a1814", card = "#2d2822", text = "#e8dfd0",
+} = {}) {
+  const parts = [`<rect width="${w}" height="${h}" fill="${page}"/>`];
+  for (let i = 0; i < cols * rows; i++) {
+    const x = 40 + (i % cols) * 280;
+    const y = 40 + Math.floor(i / cols) * 220;
+    parts.push(`<rect x="${x}" y="${y}" width="240" height="180" fill="${card}"/>`);
+    parts.push(`<text x="${x + 16}" y="${y + 46}" font-family="DejaVu Sans, sans-serif" font-size="26" fill="${text}">KPI ${i + 1}</text>`);
+    parts.push(`<text x="${x + 16}" y="${y + 96}" font-family="DejaVu Sans, sans-serif" font-size="22" fill="${text}">value 42</text>`);
+    parts.push(`<text x="${x + 16}" y="${y + 141}" font-family="DejaVu Sans, sans-serif" font-size="22" fill="${text}">trend</text>`);
+  }
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+/** The same tiled structure in a light theme (opposite polarity). */
+export async function buildTiledCardsLightFixture() {
+  return buildTiledCardsFixture({ page: "#f0efec", card: "#ffffff", text: "#1e1e1e" });
+}
+
+/** A page background that is TEXTURED (not flat) with regular cards on it.
+ *  The page fails the plateau flatness test, so only the large-background-region
+ *  backstop can stop it being reported as failing text. */
+export async function buildTexturedPageCardsFixture({ w = 1200, h = 700 } = {}) {
+  let s = 12345;
+  const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  const buf = Buffer.alloc(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 3;
+      const v = 26 + Math.round((rnd() - 0.5) * 10);
+      buf[i] = v; buf[i + 1] = v - 2; buf[i + 2] = v - 6;
+    }
+  }
+  const parts = [];
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 4; c++) {
+      const x = 40 + c * 280;
+      const y = 40 + r * 220;
+      parts.push(`<rect x="${x}" y="${y}" width="240" height="180" fill="#2d2822"/>`);
+      parts.push(`<text x="${x + 16}" y="${y + 46}" font-family="DejaVu Sans, sans-serif" font-size="24" fill="#e8dfd0">KPI</text>`);
+    }
+  }
+  return sharp(buf, { raw: { width: w, height: h, channels: 3 } })
+    .composite([{ input: Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`), blend: "over" }])
+    .png().toBuffer();
+}
+
+export const TILED_CARDS = {
+  region: { left: 0, top: 0, width: 1200, height: 700 },
+  page: "#1a1814",
+  card: "#2d2822",
+  text: "#e8dfd0",
+  lightPage: "#f0efec",
+  lightCard: "#ffffff",
+  lightText: "#1e1e1e",
+};

@@ -227,4 +227,30 @@ console.log("\n=== 6. round-5 checks (structured analysis carries the same cavea
   console.log(`  prose mentions the dark tone: ${/8c8c8c/i.test(prose) ? "YES" : "NO"}  -> caveat reaches prose: ${/disagree|marginal/i.test(prose) ? "YES" : "NO"}`);
 }
 
+// Round-6 checks (sixth audit F7: a tiled layout must not report the page
+// background as failing text).
+async function tiledCards() {
+  const w = 1200, h = 700, parts = [`<rect width="${w}" height="${h}" fill="#1a1814"/>`];
+  for (let i = 0; i < 12; i++) {
+    const x = 40 + (i % 4) * 280;
+    const y = 40 + Math.floor(i / 4) * 220;
+    parts.push(`<rect x="${x}" y="${y}" width="240" height="180" fill="#2d2822"/>`);
+    parts.push(`<text x="${x + 16}" y="${y + 46}" font-family="DejaVu Sans, sans-serif" font-size="26" fill="#e8dfd0">KPI ${i + 1}</text>`);
+    parts.push(`<text x="${x + 16}" y="${y + 96}" font-family="DejaVu Sans, sans-serif" font-size="22" fill="#e8dfd0">value 42</text>`);
+  }
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 7. round-6 checks (F7 tiled layout does not report the page background) ===");
+{
+  const tiled = toUri(await tiledCards());
+  const region = { left: 0, top: 0, width: 1200, height: 700 };
+  for (const mode of ["global", "local"]) {
+    const r = await call("measure_image", { image_source: tiled, mode: "contrast", region, background_mode: mode });
+    const c = r.measurements.contrast;
+    console.log(`  [${mode}] model=${c.background_model} plateaus=${c.plateaus.map((p) => p.hex).join("/")} colours=${c.colours.map((x) => x.foreground).join(",")}`);
+    console.log(`  [${mode}] all_meet_aa=${c.all_meet_aa} failing=${c.failing_count} page_bg_in_colours=${c.colours.some((x) => x.foreground === "#1a1814") ? "YES (bad)" : "no"}  -> F7 fixed: ${c.all_meet_aa === true && !c.colours.some((x) => x.foreground === "#1a1814") ? "YES" : "NO"}`);
+  }
+}
+
 await client.close();

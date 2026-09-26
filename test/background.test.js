@@ -26,6 +26,7 @@ import {
   assessBackgroundFit,
   looksLikeIndependentText,
   isSuspectedNoiseCluster,
+  isLargeBackgroundRegion,
   partitionSuspectedNoise,
   mergeAntiAliasing,
   isAntiAliasingBlend,
@@ -42,9 +43,13 @@ import {
   buildSteepGradientFixture,
   buildCardsFlatFixture,
   buildTextHeavyFlatFixture,
+  buildTiledCardsFixture,
+  buildTiledCardsLightFixture,
+  buildTexturedPageCardsFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
+  TILED_CARDS,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -661,5 +666,94 @@ test("§3: background_fit is explicitly not-applicable in multi-plateau mode", a
   const acc = contrastInRegion(await loadPixels(await buildContrastFixture()), { left: 0, top: 0, width: 900, height: 420 });
   assert.equal(acc.background_fit.applicable, true);
   assert.equal(acc.background_fit.adequate, true);
+});
+
+// ==========================================================================
+// Sixth-audit acceptance tests (F7 tiled layouts report the page background as
+// failing text). Non-vacuous per verify/nonvacuity-round6.mjs.
+// ==========================================================================
+
+test("F7: a tiled card grid does not report the page background as failing text", async () => {
+  const png = await buildTiledCardsFixture();
+  const pixels = await loadPixels(png);
+
+  for (const mode of ["global", "local"]) {
+    const r = contrastInRegion(pixels, TILED_CARDS.region, { backgroundMode: mode });
+
+    // The false positive: the page background was reported as a failing colour.
+    assert.ok(
+      !r.colours.some((c) => c.foreground === TILED_CARDS.page),
+      `[${mode}] the page background must not be a text colour (got ${r.colours.map((c) => c.foreground).join(", ")})`,
+    );
+    // Every text colour genuinely passes, so the verdict must be a clean pass.
+    assert.equal(r.all_meet_aa, true, `[${mode}] all text passes on this image`);
+    assert.equal(r.failing_count, 0, `[${mode}] no failing text colour`);
+    assert.ok(r.colours.length >= 1 && r.colours.every((c) => c.wcag_aa), `[${mode}] only passing text remains`);
+  }
+});
+
+test("F7: the card fill is recognised as a plateau by the TILING path", async () => {
+  const png = await buildTiledCardsFixture();
+  const pixels = await loadPixels(png);
+  const plateaus = detectPlateaus(pixels, TILED_CARDS.region);
+
+  const page = plateaus.find((p) => p.hex === TILED_CARDS.page);
+  const card = plateaus.find((p) => p.hex === TILED_CARDS.card);
+  assert.ok(page, "the page background is a plateau");
+  assert.ok(card, "the repeated card fill must also be a plateau");
+  assert.equal(card.detection, "tiled", "via the tiled path, not the single-blob path");
+  assert.ok(card.solid_component_count >= 2, "several solid blobs");
+
+  // Text must never be a plateau, on any path.
+  assert.ok(!plateaus.some((p) => p.hex === TILED_CARDS.text), "text is not a plateau");
+});
+
+test("F7: light theme is fixed identically (not polarity-specific)", async () => {
+  const png = await buildTiledCardsLightFixture();
+  const pixels = await loadPixels(png);
+  for (const mode of ["global", "local"]) {
+    const r = contrastInRegion(pixels, TILED_CARDS.region, { backgroundMode: mode });
+    assert.ok(!r.colours.some((c) => c.foreground === TILED_CARDS.lightPage), `[${mode}] light page bg not text`);
+    assert.equal(r.all_meet_aa, true, `[${mode}] light theme passes`);
+  }
+});
+
+test("F7: controls stay clean (3 cards in a row, 1 big card)", async () => {
+  for (const [cols, rows] of [[3, 1], [1, 1]]) {
+    const png = await buildTiledCardsFixture({ cols, rows });
+    const r = contrastInRegion(await loadPixels(png), TILED_CARDS.region);
+    assert.ok(!r.colours.some((c) => c.foreground === TILED_CARDS.page), `${cols}x${rows}: page bg not text`);
+    assert.equal(r.all_meet_aa, true, `${cols}x${rows}: clean`);
+  }
+});
+
+test("F7: card borders are not reported as failing text (straight-segment test)", async () => {
+  // The dense dashboard has bordered cards. Its borders are long thin strokes
+  // (321x3), which the hollow-rectangle test misses because the box is not 2-D.
+  const png = await buildDenseFlatFixture();
+  const r = contrastInRegion(await loadPixels(png), { left: 0, top: 0, width: 1400, height: 900 });
+  assert.equal(r.failing_count, 0, `borders must not be reported as failing text (got ${r.colours.filter((c) => !c.wcag_aa).map((c) => c.foreground).join(", ")})`);
+  assert.equal(r.all_meet_aa, true);
+  assert.ok(r.colours.some((c) => c.foreground === "#7ee787"), "the real text is still reported");
+});
+
+test("F7: a textured page (no plateau can model it) is caught by the region backstop", async () => {
+  const png = await buildTexturedPageCardsFixture();
+  const r = contrastInRegion(await loadPixels(png), TILED_CARDS.region);
+
+  assert.ok(
+    !r.colours.some((c) => c.contrast_ratio < 2 && c.component_count === 1),
+    "a huge single-blob near-background region must not be a text colour",
+  );
+  assert.ok(r.background_regions.length >= 1, "it must be classified as a background region");
+  assert.ok(
+    r.notes.some((n) => /BACKGROUND REGIONS/.test(n)),
+    "and disclosed in notes, not dropped silently",
+  );
+  assert.equal(r.all_meet_aa, true);
+
+  // The predicate itself: the reported blob is a region, faint TEXT is not.
+  assert.equal(isLargeBackgroundRegion({ pixel_count: 316548, component_count: 1, contrast_ratio_raw: 1.21 }, 1200 * 700), true);
+  assert.equal(isLargeBackgroundRegion({ pixel_count: 2174, component_count: 20, contrast_ratio_raw: 1.04 }, 900 * 420), false, "real near-background text must never be dropped");
 });
 

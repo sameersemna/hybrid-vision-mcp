@@ -30,8 +30,8 @@ const cases = [
     id: "F5 dominance test rejects text-as-plateau in a tight crop",
     test: "single-plateau tight region",
     file: "lib/measure.js",
-    from: "    if (dominance < PLATEAU_DOMINANCE) continue;",
-    to: "    // REVERTED: no component-dominance test",
+    from: "    const pathA = regionShare >= minShare && dominance >= PLATEAU_DOMINANCE;",
+    to: "    const pathA = regionShare >= minShare; // REVERTED: no component-dominance test",
   },
   {
     id: "F5 flatness test rejects a gradient band as a plateau",
@@ -40,13 +40,15 @@ const cases = [
     from: "    if (flatness < flatShare) continue;",
     to: "    // REVERTED: no flatness test (so smooth gradient bands become plateaus)",
   },
-  {
-    id: "F5 minimum-region test rejects small/AA regions as plateaus",
-    test: "plateau detection finds both panels",
-    file: "lib/measure.js",
-    from: "    if (regionShare < minShare) continue;",
-    to: "    // REVERTED: no minimum-region test (AA shades become plateaus)",
-  },
+  // NOTE (round 6): the former "minimum-region test rejects small/AA regions"
+  // case was REMOVED as obsolete rather than left vacuous. `detectPlateaus` now
+  // has two acceptance paths, and each carries its own size floor
+  // (`regionShare >= minShare` for dominant-blob; `PLATEAU_MIN_BLOB_SHARE` per
+  // blob with `solid.length >= 2` for tiled — i.e. >= 0.8% minimum). The earlier
+  // shared `bucketShare` gate is therefore subsumed, verified by removing it and
+  // observing no test change (ACCURACY.md 5g). No successor anchor is possible
+  // for the tiled floor without a contrived fixture, because any tiling that
+  // satisfies the per-blob floor necessarily exceeds the 2% region floor.
   {
     id: "3.1 local_background is delivered on colours[]",
     test: "every returned colour carries local_background",

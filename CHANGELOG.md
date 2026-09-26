@@ -1,5 +1,60 @@
 # Changelog
 
+## Sixth-audit follow-up: tiled layouts reported the page background as failing text — 2026-09-26
+
+Round 5 removed the *silent pass*. This round removes the *spurious fail*: on a
+4x3 grid of identical cards the page background was asserted to be a failing text
+colour, on an image where every text colour passes. See `ACCURACY.md` §5g.
+
+### Fixed
+
+- **F7 — a repeated card fill is now recognised as a panel.** `detectPlateaus`
+  gained a second, structural path: a colour is a plateau if it forms several
+  large, near-solid, similarly-sized blobs (a tiled layout), not only if one
+  blob holds most of the colour. A card grid previously gave dominance ~0.08,
+  so the card fill was rejected, multi-plateau never engaged, and the page
+  background became one enormous "ink" component reported as failing text.
+- **F7 — card borders are no longer reported as failing text.** A component that
+  is long and thin in one axis (>=60px long, <=4px across) is a rule, divider or
+  border, not a glyph. The previous hollow-rectangle test required a 2-D box and
+  missed these. (Found by the new tiling path exposing the dense dashboard's
+  borders.)
+- **F7 — a large background region cannot become a "failing colour".** A
+  near-background cluster whose blobs are individually huge is classified as
+  `background_regions` and disclosed, for layouts the plateau model cannot reach
+  (e.g. a textured page background). Measured margin: real text <=0.10% of the
+  region per blob, a page background 37.7%.
+
+### Added
+
+- `plateaus[].detection` (`"dominant-blob"` | `"tiled"`),
+  `plateaus[].solid_component_count`, `plateaus[].size_cv`.
+- `background_regions[]` result key with `foreground`, `pixel_count`,
+  `component_count`, `mean_component_area`, `area_fraction`, `reason`.
+- Exported `isLargeBackgroundRegion()`.
+- `buildTiledCardsFixture()`, `buildTiledCardsLightFixture()`,
+  `buildTexturedPageCardsFixture()` in `test-support/fixtures.mjs`; 6 tests in
+  `test/background.test.js` (now 36).
+- `verify/nonvacuity-round6.mjs` (4 non-vacuous cases).
+- `verify/verify-background-live.mjs` now also prints the round-6 (F7) checks.
+
+### The second invariant
+
+Alongside "a clean verdict must never be silent", the server now enforces: no
+response may report `all_meet_aa: false` naming a colour that is a background
+region rather than text.
+
+### Deliberately NOT changed
+
+- The WCAG formula, the adequacy floor (0.5), and the `>=2-plateau` gate.
+- The §1 acceptance path: with one plateau and no tiled panel the result is
+  bit-for-bit unchanged.
+- **Known residual (disclosed, not hidden):** a page background that is *textured*
+  (so it fails the plateau flatness test) *and* fragmented by panels into many
+  blobs (so the region backstop cannot see one large blob) is not caught.
+
+---
+
 ## Fifth-audit follow-up: the gradient residual is disclosed in the response — 2026-09-25
 
 The fourth round disclosed a residual in `CHANGELOG.md` (a noise-free gradient can
