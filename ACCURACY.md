@@ -1185,6 +1185,94 @@ Both now carry `mask_reconciliation` naming the failing colour, and neither can
 report `all_meet_aa: true` while dropping it. The first is pathological; the second
 is the input the audit classed as narrow.
 
+## 5j. Ninth audit: the reconciliation fired on decoration
+
+Round 8 added `mask_reconciliation` to cover the shapes the geometry cannot decide.
+It worked — but it fired on **decorative chart bars** and told the caller that a
+*correct* verdict was unverified. A disclosure that cries wolf on ordinary
+dashboards is worth less than one that is quiet and correct. This round makes it
+precise; that is the marginal value now that the classification terms are settled.
+
+### The defect (F11)
+
+A light page, a dark inset card, 64 decorative red bars, and text at **7.15:1**.
+Every text colour passes, so the verdict is a clean pass — yet:
+
+```json
+"all_meet_aa": true,
+"colours": [ { "foreground": "#b9b5ae", "contrast_ratio": 7.15, "wcag_aa": true } ],
+"mask_reconciliation": {
+  "unmasked_failing_colours": [ { "foreground": "#783c3c", "contrast_ratio": 1.75, "component_count": 64 } ]
+}
+```
+
+`#783c3c` is the **bar colour**. The mechanism: the bars are themselves a *tiled
+panel colour*, so the un-masked pass re-reads them as text and the (correct) verdict
+was labelled unverified.
+
+### The gate — and why the intuitive version is wrong
+
+Measured, per dropped colour:
+
+| case | expectation | blobs | mean blob / region |
+|---|---|---|---|
+| decorative bars | **must not fire** | 64 | 0.004 |
+| decorative icon grid | **must not fire** | 24 | 0.012 |
+| decorative stripe row | **must not fire** | 12 | 0.010 |
+| **panel-shaped dropped colour** | **must fire** | 1 | **0.256** |
+| ordinary text | not a single run | many | ≪ 0.004 |
+
+The gate is therefore `mean blob area ≥ 2% of the region` — the shape that is
+genuinely ambiguous: *one large region: a panel, or very large text?* Decorative
+repeats and ordinary text are many blobs and cannot be a single text run.
+
+**This is the opposite of the intuitive reading.** The audit suggested gating on
+"text-shaped: few components **and small** mean area". That would have excluded the
+very case the disclosure exists for — the ambiguous region is a *large* blob, not a
+small one — and so reintroduced a silent false negative. The measurement was what
+distinguished the two; the reasoning alone would have got it wrong.
+
+**Wording** was softened too: the note now says the removed region could be *a panel
+or very large text* and asks for a `region` re-measure, rather than declaring the
+verdict "unverified".
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **89/89** (was 84; +5 round-9 tests) |
+| F11 decorative bars (both fixtures) | `all_meet_aa: true`, `mask_reconciliation: null` |
+| panel-shaped dropped colour | **still disclosed** (`#1a1814` 1.88), `all_meet_aa: null` |
+| solid-block glyphs | still never `all_meet_aa: true` |
+| §1 acceptance | unchanged: 1 plateau, 5 colours, 1.04 / 13.42, failing 2 |
+| two-panel / F7 / F8 / F10 / dashboard | all unchanged |
+| live MCP (new code, 11498) | F11 fixed: YES; panel-shaped case still discloses: YES |
+| non-vacuity | 9+11+7+5+4+3+4+3+3+**3 (round 9)** all non-vacuous |
+
+## 5k. The §3 accent block: measured, and DECLINED
+
+The ninth audit also observed that a small **solid decorative accent block**
+(`#3c5a3c`, 1.89:1) is reported as a failing *text* colour. It is pre-existing,
+conservative in direction, and **not fixed** — for a measured reason rather than a
+judgement call:
+
+| shape | largest blob | fill |
+|---|---|---|
+| **accent block** (chrome, reported) | 3000 px (0.357% of region) | **1.000** |
+| **bold "I" at 150px** (real text, must stay reported) | 3052 px (0.363%) | **1.000** |
+
+The two are indistinguishable by blob size *and* by fill. Any rule that suppressed
+the accent would also suppress real solid text — a false negative, which is the
+class of failure this whole effort exists to eliminate. Trading a conservative false
+positive for a false negative is the wrong direction, so the accent stays reported
+and is documented here.
+
+A safer route exists (require *multiple* similar solid blocks **and** a
+non-extremal position, i.e. not `touchesBorder`), and the accent does form four
+identical blocks — but it is a new classification term, and this round's lesson is
+that new terms create boundary defects. It is left as a documented observation
+rather than an unmeasured ninth term.
+
 ## 9. New module map
 
 | File | Responsibility |

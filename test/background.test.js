@@ -27,6 +27,7 @@ import {
   looksLikeIndependentText,
   isSuspectedNoiseCluster,
   isLargeBackgroundRegion,
+  isPanelShapedDroppedColour,
   partitionSuspectedNoise,
   mergeAntiAliasing,
   isAntiAliasingBlend,
@@ -49,12 +50,18 @@ import {
   buildHugeGlyphFixture,
   buildDensePanelFixture,
   buildSolidGlyphFixture,
+  buildDecorativeBarsFixture,
+  buildDroppedPanelFixture,
+  buildAccentBlockFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
   TILED_CARDS,
   HUGE_GLYPH,
   DENSE_PANEL,
+  DECOR_BARS,
+  DROPPED_PANEL,
+  ACCENT_BLOCK,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -949,5 +956,89 @@ test("F10: a shape test cannot resolve solid glyphs — they must disclose, neve
       assert.ok(r.notes.some((n) => /Mask reconciliation/.test(n)), `"${text}" must be in notes`);
     }
   }
+});
+
+// ==========================================================================
+// Ninth-audit tests (F11: reconciliation must be PRECISE — decoration is not
+// text — plus the declined §3 observation). Non-vacuous per
+// verify/nonvacuity-round9.mjs.
+// ==========================================================================
+
+test("F11: reconciliation does not fire on decorative bars (a correct verdict stays trusted)", async () => {
+  const png = await buildDecorativeBarsFixture();
+  const pixels = await loadPixels(png);
+  const r = contrastInRegion(pixels, DECOR_BARS.region);
+
+  // Every text colour passes, so the verdict is a clean pass...
+  assert.equal(r.all_meet_aa, true);
+  assert.equal(r.failing_count, 0);
+  assert.ok(r.colours.some((c) => c.foreground === DECOR_BARS.text && c.contrast_ratio === DECOR_BARS.textRatio));
+
+  // ...and it must NOT be called unverified because of decoration.
+  assert.equal(r.mask_reconciliation, null, "decorative bars must not trigger reconciliation");
+  assert.ok(
+    !r.notes.some((n) => /Mask reconciliation/.test(n)),
+    "no reconciliation note on a clean decorative image",
+  );
+
+  // The bar colour is a panel-shaped tiled colour, not a single text run.
+  assert.equal(
+    isPanelShapedDroppedColour({ pixel_count: 176112, component_count: 64 }, 1000 * 700),
+    false,
+    "64 bars of mean 2752px are not a single panel-sized region",
+  );
+});
+
+test("F11: the second decorative fixture (J_clean) is also quiet", async () => {
+  const png = await buildDecorativeBarsFixture({ bar: "#c83c3c" });
+  const r = contrastInRegion(await loadPixels(png), DECOR_BARS.region);
+  assert.equal(r.all_meet_aa, true);
+  assert.equal(r.mask_reconciliation, null);
+});
+
+test("F11: a panel-sized dropped FAILING colour is still disclosed (keep green)", async () => {
+  // The case the reconciliation exists for: one huge region that could be a panel
+  // or very large text. Two solid failing rectangles, mean ~18% of the region.
+  const png = await buildDroppedPanelFixture();
+  const r = contrastInRegion(await loadPixels(png), DROPPED_PANEL.region);
+
+  assert.notEqual(r.all_meet_aa, true, "must not report a clean pass");
+  assert.ok(r.mask_reconciliation, "a panel-sized dropped failing colour must be disclosed");
+  const named = r.mask_reconciliation.unmasked_failing_colours;
+  assert.ok(named.length >= 1);
+  assert.equal(named[0].contrast_ratio, DROPPED_PANEL.ratio);
+  assert.ok(named[0].mean_component_area >= 0.02 * 1000 * 700, "the disclosed region is panel-sized");
+  assert.ok(r.notes.some((n) => /Mask reconciliation/.test(n)));
+});
+
+test("F11: the gate is LARGE, not small — the ambiguous case is a big blob", () => {
+  const region = 1000 * 700;
+  // Decorative repeats: many moderate blobs -> not a single run.
+  assert.equal(isPanelShapedDroppedColour({ pixel_count: 176112, component_count: 64 }, region), false);
+  assert.equal(isPanelShapedDroppedColour({ pixel_count: 194400, component_count: 24 }, region), false);
+  // Ordinary text: many small blobs -> not a single run.
+  assert.equal(isPanelShapedDroppedColour({ pixel_count: 3826, component_count: 16 }, region), false);
+  // One huge region: panel, or very large text -> disclose.
+  assert.equal(isPanelShapedDroppedColour({ pixel_count: 179200, component_count: 1 }, region), true);
+});
+
+test("§3 (DECLINED): a solid accent block collides with real solid text", async () => {
+  // Documented, not fixed. The accent block and a bold "I" at 150px are
+  // indistinguishable by geometry (measured ~3000px vs ~3052px, both fill 1.000),
+  // so any rule that suppressed the accent would also suppress real solid text.
+  const png = await buildAccentBlockFixture();
+  const r = contrastInRegion(await loadPixels(png), ACCENT_BLOCK.region);
+  const accent = r.colours.find((c) => c.foreground === ACCENT_BLOCK.accent);
+  assert.ok(accent, "the accent is reported (known, conservative false positive)");
+  assert.equal(accent.contrast_ratio, ACCENT_BLOCK.accentRatio);
+  assert.ok(r.colours.some((c) => c.foreground === ACCENT_BLOCK.text && c.wcag_aa), "the real text still passes");
+
+  // And the same measurement on real solid text: a bold "I" is the same size.
+  const boldI = await buildHugeGlyphFixture({ text: "I", size: 150, hardEdge: true });
+  const ri = contrastInRegion(await loadPixels(boldI), HUGE_GLYPH.region);
+  assert.ok(
+    ri.colours.some((c) => c.foreground === HUGE_GLYPH.text),
+    "real solid text at the accent's size must remain reported — this is why §3 is declined",
+  );
 });
 

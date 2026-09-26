@@ -1,5 +1,59 @@
 # Changelog
 
+## Ninth-audit follow-up: the reconciliation fired on decoration — 2026-09-26
+
+Round 8's `mask_reconciliation` worked, but fired on decorative chart bars and told
+the caller a CORRECT verdict was unverified. A disclosure that cries wolf is worth
+less than one that is quiet and correct. See `ACCURACY.md` §5j (and §5k for a
+deliberate non-fix).
+
+### Fixed
+
+- **F11 — `mask_reconciliation` is now gated on the dropped colour being
+  PANEL-SHAPED.** It fires only when a dropped failing colour's blobs are
+  individually >= 2% of the region — the shape that is genuinely ambiguous ("one
+  large region: a panel, or very large text?"). Measured: decorative bars 0.004,
+  decorative icons 0.012, decorative stripes 0.010, ordinary text far less; the
+  ambiguous case 0.256.
+- **Wording softened.** The note now says the removed region could be a panel or
+  very large text and asks for a `region` re-measure, rather than declaring the
+  verdict "unverified".
+
+### Note on the gate direction
+
+The intuitive gate ("text-shaped: few components AND SMALL mean area") was measured
+and is **wrong** — it excludes the very case the disclosure exists for, because the
+ambiguous region is a *large* blob. The gate is therefore large-not-small. Recorded
+so it is not "corrected" back later.
+
+### Added
+
+- `isPanelShapedDroppedColour()` in `lib/measure.js` (shares
+  `LARGE_REGION_AREA_FRACTION` with the background-region backstop);
+  `mean_component_area` on `mask_reconciliation` entries.
+- `buildDecorativeBarsFixture()`, `buildDroppedPanelFixture()`,
+  `buildAccentBlockFixture()` in `test-support/fixtures.mjs`; 5 tests in
+  `test/background.test.js` (now 52).
+- `verify/nonvacuity-round9.mjs` (3 non-vacuous cases).
+- `verify/verify-background-live.mjs` now also prints the round-9 (F11) checks.
+
+### Explicitly NOT fixed (§3, measured)
+
+A small **solid decorative accent block** is still reported as a failing text
+colour. It is **indistinguishable from real solid text**: the accent blob is
+3000px / fill 1.000, while a bold "I" at 150px is 3052px / fill 1.000. Any rule
+that suppressed the accent would also suppress real solid text — a false negative,
+which is the class this effort exists to eliminate. Documented in `ACCURACY.md`
+§5k rather than "fixed" by trading a conservative false positive for a silent one.
+
+### Deliberately NOT changed
+
+- The WCAG formula, the adequacy floor, the `>=2-plateau` gate, both plateau paths,
+  the ring-shape test, the dominance floor, and the reconciliation mechanism itself
+  (silencing it would reintroduce a silent false negative for the solid-block class).
+
+---
+
 ## Eighth-audit follow-up: an inset content-dense panel hid a failing text colour — 2026-09-26
 
 The third invariant (round 7) leaked through the `panelShape` gate round 7 added:

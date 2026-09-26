@@ -452,3 +452,83 @@ export async function buildSolidGlyphFixture({ text = "\u2588\u2588", size = 300
     `</svg>`,
   )).png().toBuffer();
 }
+
+/**
+ * An inset card whose interior is filled by many DECORATIVE bars, with all text
+ * passing — the ninth-audit F11 fixture.
+ *
+ * The bars are themselves a tiled "panel" colour, so the un-masked reconciliation
+ * pass re-reads them as text and (pre-fix) told the caller a CORRECT verdict was
+ * unverified. Decoration is not text, so the disclosure must not fire here.
+ *
+ * @param {{ bar?:string, text?:string, bars?:number, inset?:boolean }} [opts]
+ */
+export async function buildDecorativeBarsFixture({
+  bar = "#783c3c", text = "#b9b5ae", bars = 64, inset = true, w = 1000, h = 700,
+} = {}) {
+  const box = inset ? { x: 60, y: 40, w: 880, h: 620 } : { x: 0, y: 0, w, h };
+  const parts = [`<rect width="${w}" height="${h}" fill="#f0efec"/>`,
+    `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="#2d2822"/>`];
+  for (let i = 0; i < bars; i++) {
+    const x = box.x + 18 + i * 13;
+    const hh = 80 + (i * 37) % 300;
+    parts.push(`<rect x="${x}" y="${box.y + box.h - 40 - hh}" width="11" height="${hh}" fill="${bar}"/>`);
+  }
+  parts.push(`<text x="${box.x + 20}" y="${box.y + 50}" font-family="DejaVu Sans, sans-serif" font-size="34" fill="${text}">DASHBOARD</text>`);
+  parts.push(`<text x="${box.x + 20}" y="${box.y + 100}" font-family="DejaVu Sans, sans-serif" font-size="34" fill="${text}">summary</text>`);
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+/**
+ * A panel-shaped colour that the mask dropped and that an un-masked pass measures
+ * as FAILING, where the region is large enough to be either a panel or very large
+ * text — the shape the reconciliation exists to disclose. Two solid failing
+ * rectangles on a dark page (each ~18% of the region).
+ */
+export async function buildDroppedPanelFixture({ fill = "#464646", background = "#1a1814", w = 1000, h = 700 } = {}) {
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>` +
+    `<rect x="60" y="40" width="420" height="620" fill="${fill}"/>` +
+    `<rect x="520" y="40" width="420" height="620" fill="${fill}"/>` +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+/**
+ * A dashboard with a small SOLID decorative accent block — the ninth-audit §3
+ * observation. Deliberately retained as a KNOWN, DECLINED false positive: see
+ * ACCURACY.md 5k for the measurement showing a bold "I" at 150px is
+ * indistinguishable from it (3000px vs 3052px, both fill 1.000), so any rule that
+ * suppresses the accent would also suppress real solid text.
+ */
+export async function buildAccentBlockFixture({ accent = "#3c5a3c", cards = 4, w = 1200, h = 700 } = {}) {
+  const parts = [`<rect width="${w}" height="${h}" fill="#1a1814"/>`];
+  for (let i = 0; i < cards; i++) {
+    const x = 40 + i * 290;
+    parts.push(`<rect x="${x}" y="40" width="250" height="620" fill="#2d2822"/>`);
+    parts.push(`<rect x="${x + 20}" y="140" width="50" height="60" fill="${accent}"/>`);
+    parts.push(`<text x="${x + 20}" y="100" font-family="DejaVu Sans, sans-serif" font-size="26" fill="#e8dfd0">KPI</text>`);
+  }
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+export const DECOR_BARS = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  bar: "#783c3c",
+  text: "#b9b5ae",
+  textRatio: 7.15,
+};
+
+export const DROPPED_PANEL = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  fill: "#464646",
+  ratio: 1.88,
+};
+
+export const ACCENT_BLOCK = {
+  region: { left: 0, top: 0, width: 1200, height: 700 },
+  accent: "#3c5a3c",
+  accentRatio: 1.89,
+  text: "#e8dfd0",
+};

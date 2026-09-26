@@ -729,18 +729,22 @@ See `ACCURACY.md` §5h-§5i.
 
 **Mask reconciliation.** When a plateau mask removed a colour, the region is
 re-enumerated with no mask. If the un-masked pass measures a failing colour that the
-masked result dropped, it is disclosed under `mask_reconciliation` and in `notes`:
+masked result dropped — **and that colour is panel-shaped** — it is disclosed under
+`mask_reconciliation` and in `notes`:
 
 ```json
 "mask_reconciliation": {
-  "unmasked_failing_colours": [ { "foreground": "#464646", "contrast_ratio": 1.88 } ],
-  "note": "the plateau mask removed colour(s) that an un-masked enumeration measures as failing text ..."
+  "unmasked_failing_colours": [ { "foreground": "#464646", "contrast_ratio": 1.88, "mean_component_area": 179200 } ],
+  "note": "masking a background region also removed colour(s) that an un-masked pass measures as failing ..."
 }
 ```
 
-This is disclosure, not refusal, so it cannot turn a correct verdict into a wrong
-one. It closes the third invariant for shapes the geometry genuinely cannot resolve
-(a solid glyph block, a single ring large enough to touch the region border).
+The disclosure is restricted to **panel-shaped** dropped colours (blobs >= 2% of the
+region) because that is the only genuinely ambiguous case — one large region is
+either a panel or very large text. Decorative repeats (chart bars, icon grids) and
+ordinary text are many blobs and are excluded, so the note stays trustworthy rather
+than firing on chrome. It remains disclosure, not refusal, so it cannot turn a
+correct verdict into a wrong one.
 
 ---
 

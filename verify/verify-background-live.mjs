@@ -329,4 +329,42 @@ console.log("\n=== 9. round-8 checks (F10 inset content-dense panel reports its 
   console.log(`  [clean inset dense] all_meet_aa=${rc.measurements.contrast.all_meet_aa} (must be true)`);
 }
 
+// Round-9 checks (ninth audit F11: reconciliation must be precise — decoration is
+// not text).
+async function decorativeBars() {
+  const w = 1000, h = 700, parts = [`<rect width="${w}" height="${h}" fill="#f0efec"/>`,
+    `<rect x="60" y="40" width="880" height="620" fill="#2d2822"/>`];
+  for (let i = 0; i < 64; i++) {
+    const x = 78 + i * 13;
+    const hh = 80 + (i * 37) % 300;
+    parts.push(`<rect x="${x}" y="${620 - hh}" width="11" height="${hh}" fill="#783c3c"/>`);
+  }
+  parts.push(`<text x="80" y="90" font-family="DejaVu Sans, sans-serif" font-size="34" fill="#b9b5ae">DASHBOARD</text>`);
+  parts.push(`<text x="80" y="140" font-family="DejaVu Sans, sans-serif" font-size="34" fill="#b9b5ae">summary</text>`);
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+async function droppedPanel() {
+  const w = 1000, h = 700;
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${w}" height="${h}" fill="#1a1814"/>
+    <rect x="60" y="40" width="420" height="620" fill="#464646"/>
+    <rect x="520" y="40" width="420" height="620" fill="#464646"/>
+  </svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 10. round-9 checks (F11 reconciliation is precise, decoration is not text) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  const bars = await call("measure_image", { image_source: toUri(await decorativeBars()), mode: "contrast", region });
+  const cb = bars.measurements.contrast;
+  console.log(`  [decor decorative-bars] colours=${cb.colours.map((x) => x.foreground + "@" + x.contrast_ratio).join(",")} all_meet_aa=${cb.all_meet_aa}`);
+  console.log(`  [decor decorative-bars] mask_reconciliation=${cb.mask_reconciliation ? "FIRES (bad)" : "none"}  -> F11 fixed: ${cb.all_meet_aa === true && !cb.mask_reconciliation ? "YES" : "NO"}`);
+
+  const dp = await call("measure_image", { image_source: toUri(await droppedPanel()), mode: "contrast", region });
+  const cd = dp.measurements.contrast;
+  const named = cd.mask_reconciliation?.unmasked_failing_colours?.map((x) => x.foreground + "@" + x.contrast_ratio) ?? [];
+  console.log(`  [panel-shaped dropped] mask_reconciliation=${cd.mask_reconciliation ? JSON.stringify(named) : "none"} all_meet_aa=${cd.all_meet_aa}  -> must still disclose: ${cd.mask_reconciliation ? "YES" : "NO"}`);
+}
+
 await client.close();
