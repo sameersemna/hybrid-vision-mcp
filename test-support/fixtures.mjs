@@ -199,3 +199,73 @@ export const TWO_PANEL = {
   contentRatio: 9.75,
   sidebarCrop: { left: 20, top: 60, width: 240, height: 130 },
 };
+
+/**
+ * A shallow, NOISELESS horizontal gradient with two text runs — the fifth-audit
+ * F6 fixture.
+ *
+ * It is the disclosed residual made concrete: `explained_fraction` lands at ~0.5
+ * (just above the adequacy floor, so the global path calls it fine), yet the
+ * background ramps across the region, so a global background misses the dark
+ * text run that the per-tile model resolves. The point of the fixture is that
+ * the response must not read `all_meet_aa: true` with empty `notes`.
+ *
+ * @param {{ w?:number, h?:number, lo?:number, hi?:number, bright?:string,
+ *           dark?:string, fontSize?:number }} [opts]
+ */
+export async function buildShallowGradientFixture({
+  w = 900, h = 420, lo = 48, hi = 60,
+  bright = "#f0f0f0", dark = "#8c8c8c", fontSize = 46,
+} = {}) {
+  const buf = Buffer.alloc(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const v = Math.round(lo + (hi - lo) * (x / w));
+      const i = (y * w + x) * 3;
+      buf[i] = v; buf[i + 1] = v; buf[i + 2] = v;
+    }
+  }
+  const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<text x="40" y="60" font-family="DejaVu Sans, sans-serif" font-size="${fontSize}" fill="${bright}">BRIGHT-ONE</text>` +
+    `<text x="40" y="200" font-family="DejaVu Sans, sans-serif" font-size="${fontSize}" fill="${dark}">DARK-TWO</text>` +
+    `</svg>`;
+  return sharp(buf, { raw: { width: w, height: h, channels: 3 } })
+    .composite([{ input: Buffer.from(svg), blend: "over" }])
+    .png().toBuffer();
+}
+
+/** A STEEP noiseless gradient (a clear failure of the single-colour model). */
+export async function buildSteepGradientFixture() {
+  return buildShallowGradientFixture({ lo: 20, hi: 220 });
+}
+
+/** A plain flat UI with a grid of cards — a legitimate single-background case. */
+export async function buildCardsFlatFixture() {
+  const W = 1200, H = 800;
+  const parts = [`<rect width="${W}" height="${H}" fill="#f5f5f5"/>`];
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const x = 40 + c * 380;
+      const y = 40 + r * 240;
+      parts.push(`<rect x="${x}" y="${y}" width="340" height="200" rx="8" fill="#ffffff" stroke="#dddddd"/>`);
+      parts.push(`<text x="${x + 20}" y="${y + 60}" font-family="DejaVu Sans, sans-serif" font-size="28" fill="#333333">Card ${r}${c}</text>`);
+    }
+  }
+  return sharp(Buffer.from(`<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+/** A text-heavy FLAT page — must NOT be flagged as a marginal/gradient region. */
+export async function buildTextHeavyFlatFixture() {
+  const W = 1200, H = 800;
+  const lines = [];
+  for (let i = 0; i < 30; i++) {
+    lines.push(`<text x="20" y="${30 + i * 25}" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#222222">The quick brown fox jumps over the lazy dog 0123456789</text>`);
+  }
+  return sharp(Buffer.from(`<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg"><rect width="${W}" height="${H}" fill="#ffffff"/>${lines.join("")}</svg>`)).png().toBuffer();
+}
+
+export const SHALLOW_GRADIENT = {
+  region: { left: 0, top: 0, width: 900, height: 420 },
+  darkText: "#8c8c8c",
+  crop: { left: 30, top: 180, width: 400, height: 70 },
+};

@@ -31,7 +31,9 @@ const cases = [
     file: "lib/measure.js",
     // The test asserts on the note pushed into the enumeration result, so the
     // revert must target that site (not assessBackgroundFit's own warnings).
-    from: "  if (backgroundFit && !backgroundFit.adequate) {",
+    // Anchor updated after the 5th audit added the `applicable` guard and the
+    // marginal-fit branch ahead of it.
+    from: "  if (backgroundFit && backgroundFit.applicable && !backgroundFit.adequate) {",
     to: "  if (false) { // REVERTED: never disclose an inadequate background model",
   },
   {

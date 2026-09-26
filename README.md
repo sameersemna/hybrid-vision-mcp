@@ -648,9 +648,17 @@ result carries a `background_fit` block and a warning in `notes`:
   "explained_fraction": 0.007,
   "tolerance": 8,
   "adequate": false,
+  "applicable": true,
   "warnings": ["A single global background colour accounts for only 0.7% ..."]
 }
 ```
+
+A fit between 0.5 and 0.8 is **marginal**: it clears the adequacy floor but is
+still a weak model, so it is disclosed too, and a verdict is never silent about it.
+
+The `adequate` flag is only meaningful when a single background applies. In a
+multi-plateau region it is `null` (with `applicable: false` and a reason), so it
+cannot read as "fine" for a value that does not apply there.
 
 For such images pass `background_mode: "local"`, which uses a per-tile median
 background with a threshold that scales with each tile's measured noise. On a
@@ -737,6 +745,25 @@ never has to infer which background produced a ratio.
 **Panel fills are not text colours.** In a multi-plateau region the large
 near-solid panel colours are returned under `panel_fills[]` and excluded from the
 text enumeration, so a panel's own fill is never reported as a "failing colour".
+
+**A clean verdict is never silent about a weak premise.** When the global model
+reports no failing colour, the region is re-measured with the per-tile (local)
+model. If local finds a failing tone the global model missed — the signature of a
+background that varies across the region — the result carries a
+`model_disagreement` block and a note asking you to re-measure with a `region`:
+
+```json
+"model_disagreement": {
+  "global_all_meet_aa": true,
+  "local_all_meet_aa": false,
+  "local_failing_count": 1,
+  "local_failing_colours": [ { "foreground": "#8c8c8c", "contrast_ratio": 3.81, "measured_against": "#3f3f3f" } ],
+  "note": "the two background models disagree on this region ... Treat the clean verdict as UNVERIFIED ... Note that local mode is not generally more accurate: it over-reports on dense flat panels, which is why it is not the default."
+}
+```
+
+This is a detector, not an endorsement: on dense flat panels local *over-reports*,
+so the note explicitly does not claim local is better.
 
 ---
 

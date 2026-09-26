@@ -1,5 +1,75 @@
 # Changelog
 
+## Fifth-audit follow-up: the gradient residual is disclosed in the response — 2026-09-25
+
+The fourth round disclosed a residual in `CHANGELOG.md` (a noise-free gradient can
+band, and a global background can miss a tone on it). The fifth audit's objection
+was narrow and correct: **the response did not carry that caveat**, so a caller saw
+`all_meet_aa: true` with `notes: []` over a text run that fails. See
+`ACCURACY.md` §5f.
+
+### Fixed
+
+- **F6 — a clean verdict is never silent about a weak premise.** A single-colour
+  fit below `GOOD_FIT_FRACTION` (0.8) now always produces a `notes` entry naming
+  the gradient possibility and the `background_mode: "local"` remedy — even when
+  the 0.5 adequacy floor calls it adequate. Measured case: a shallow gradient at
+  `explained_fraction 0.542` previously returned `notes: []`.
+- **F6 — a clean global verdict is arbitrated against the per-tile model.** When
+  the global result is about to be `all_meet_aa: true`, the same region is
+  re-measured with the local model and any failing tone it finds is disclosed in a
+  new `model_disagreement` block and in `notes`. This closes the invariant: no
+  response may read `all_meet_aa: true` with empty `notes` while a text run in
+  scope fails contrast and an available mode returns it.
+- **§3 — `background_fit` no longer contradicts its own note.** In multi-plateau
+  mode it previously said the value was meaningless while still reporting
+  `adequate: true`. It now reports `applicable: false`, `adequate: null` (falsy)
+  and `not_applicable_reason`.
+
+### Changed (documented semantics)
+
+- `background_fit` gains `applicable` (boolean). In a multi-plateau region
+  `adequate` is now **`null`** rather than `true` — a caller testing
+  `if (background_fit.adequate)` now correctly gets "not fine" instead of a
+  contradiction. The raw `explained_fraction` is still reported.
+- New `notes` may appear on regions with a fit between 0.5 and 0.8 that previously
+  produced no note. This is deliberate: a 50–80% fit is not a good background
+  model, and the response says so.
+
+### Added
+
+- `model_disagreement` result key: `{ global_all_meet_aa, local_all_meet_aa,
+  local_failing_count, local_failing_colours[], note }`. Only present when the
+  global verdict is a clean pass and the per-tile model disagrees.
+- `GOOD_FIT_FRACTION` constant (0.8) in `lib/measure.js`.
+- `buildShallowGradientFixture()`, `buildSteepGradientFixture()`,
+  `buildCardsFlatFixture()`, `buildTextHeavyFlatFixture()` in
+  `test-support/fixtures.mjs`; 6 tests in `test/background.test.js` (now 30).
+- `verify/nonvacuity-round5.mjs` (3 non-vacuous cases).
+- `verify/verify-background-live.mjs` now also prints the round-5 (F6) checks,
+  including that the caveat reaches the `analyze_image_structured` prose.
+
+### Considered and REJECTED on measurement (recorded so it is not retried)
+
+- **Raising the adequacy floor.** Fit on legitimate flat UIs was measured at
+  0.904 (text-heavy page) and 0.619 (card grid). Any floor that catches a 0.542
+  gradient would also flag a perfectly flat page. Floor left at 0.5.
+- **A tile-modal spatial-spread gate.** Measured 17.3 on the shallow gradient vs
+  325.6 on a two-panel layout — it does not separate a gradient from a panel, so
+  it cannot be a lone gate.
+- **Presenting `local` as the remedy for every disagreement.** On a dense flat
+  dashboard the two models disagree because local *over-reports* (the known §5c
+  behaviour), so `model_disagreement` is a detector whose wording states that
+  local is not generally more accurate.
+
+### Deliberately NOT changed
+
+- The adequacy floor (0.5), the WCAG formula, and the ≥2-plateau gate.
+- The §1 acceptance path: with one plateau and a clean fit the result is unchanged
+  (no marginal note, no `model_disagreement`).
+
+---
+
 ## Fourth-audit follow-up: multi-panel backgrounds (F5) — 2026-09-25
 
 A fourth independent audit found the most serious defect of the whole effort: on

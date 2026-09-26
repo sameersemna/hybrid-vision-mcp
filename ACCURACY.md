@@ -802,6 +802,100 @@ of §1-§5d is preserved by construction rather than by re-tuning.
 | live MCP (new code, port 11498) | F5 fixed: YES in both modes |
 | non-vacuity | 9 + 11 + 7 + 5 + **6 (round 4)** all non-vacuous |
 
+## 5f. Fifth audit: the gradient residual must be visible to the caller
+
+The fourth round disclosed a residual in `CHANGELOG.md`: a noise-free smooth
+gradient can band into flat quantised plateaus. The fifth audit made a narrow and
+correct objection — **the disclosure was in the changelog, not in the response**.
+A caller sees only the JSON.
+
+### The defect (F6)
+
+Fixture: a shallow noiseless gradient (48→60 over 900px) with `#f0f0f0` text
+(11.25:1) and `#8c8c8c` text (failing). Reproduced:
+
+```json
+"plateaus": [], "background_model": "global",
+"colours": [ { "foreground": "#f0f0f0", "contrast_ratio": 11.25 } ],
+"all_meet_aa": true, "notes": [],
+"background_fit": { "explained_fraction": 0.542, "adequate": true }
+```
+
+`#8c8c8c` is absent, a crop finds it failing, and `background_mode: "local"`
+returns it. So the tool had a working answer and did not say so.
+
+**The gate is a knife-edge.** `adequate: frac >= 0.5` decides everything, and the
+audit's fixture landed at 0.501 (silent) while a slightly steeper one landed at
+0.419 (warned). The difference is not semantic — it is which side of a round
+number the image fell on.
+
+### What was measured before choosing a fix
+
+Two candidate signals were tested and **rejected on evidence**:
+
+- **Tile-modal spatial spread** (does the background ramp across tiles?):
+  acceptance 0.0, two-panel 325.6, dense dashboard 21, shallow gradient 17.3. The
+  shallow gradient does not separate from the two-panel layout, so it cannot be a
+  lone gate.
+- **Raising the adequacy floor.** Measured fit on legitimate flat UIs: text-heavy
+  white page 0.904, card grid on grey 0.619, acceptance 0.962. A text-heavy flat
+  UI sits at 0.619, so any threshold that catches a 0.542 gradient would also flag
+  a perfectly flat page. **The floor was left at 0.5.**
+
+A third signal — the local/global self-check — was tested and *nearly* over-claimed:
+on a dense dashboard the two models disagree because local *over-reports* (the
+known §5c behaviour). So it is used as a **detector**, and its wording explicitly
+says local is **not** generally more accurate.
+
+### The fix: never silent about a weak premise
+
+1. **Marginal-fit disclosure.** Any single-colour fit below `GOOD_FIT_FRACTION`
+   (0.8) is disclosed in `notes`, naming the gradient possibility and the `local`
+   remedy — **even when the 0.5 floor calls it adequate**. This guarantees
+   `notes` is non-empty for every weak premise and carries no threshold risk,
+   because it only adds a note.
+2. **Local arbitration on a clean verdict.** When the global verdict is about to
+   be a clean pass (`all_meet_aa: true`), the same region is re-measured with the
+   per-tile model. Any failing tone local finds is disclosed in a
+   `model_disagreement` block and in `notes`. This is the guard that closes the
+   stated invariant: *no response may read `all_meet_aa: true` with empty `notes`
+   while a text run in scope fails contrast and an available mode returns it.*
+   The note asks the caller to re-measure with a `region`.
+
+### §3 — `background_fit` no longer contradicts its own note
+
+In multi-plateau mode a note said `background_fit` "is not meaningful here" while
+the value was still populated with `adequate: true`. It now carries
+`applicable: false`, `adequate: null` (falsy, so it cannot be read as "fine") and
+`not_applicable_reason`; `explained_fraction` is still reported for information.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **67/67** (was 61; +6 round-5 tests) |
+| F6 global | `fit 0.542`, `adequate true`, **notes non-empty**, `model_disagreement` names `#8c8c8c` |
+| F6 local | 2 colours, `#8c8c8c` failing |
+| F6 crop | finds `#8c8c8c` failing in isolation |
+| steep / moderate gradients | `adequate: false`, warning present (floor unchanged) |
+| §3 multi-plateau | `applicable: false`, `adequate: null`, reason present |
+| §1 acceptance | unchanged: 1 plateau, 5 colours, 1.04 / 13.42, failing 2, `applicable: true`, no marginal note, no disagreement |
+| flat/local equivalence | byte-identical, `effT 4` |
+| legitimate flat UIs | text-heavy page (0.904) not flagged marginal; card grid (0.619) flagged marginal but no false disagreement |
+| live MCP (new code, 11498) | F6 not silent: YES; caveat reaches structured prose: YES |
+| non-vacuity | 9 + 11 + 7 + 5 + 6 + **3 (round 5)** all non-vacuous |
+
+### Cost and residual
+
+The self-check runs one extra enumeration **only when the global verdict is a
+clean pass**. Measured: acceptance 76ms, dense dashboard 579ms, full-HD flat
+813ms — all model-free and sub-second.
+
+The underlying residual is unchanged and now **disclosed in the response rather
+than only the changelog**: a noise-free synthetic gradient still bands, and the
+global model can still miss a tone on it. What has changed is that the caller is
+told, and given the mode that resolves it.
+
 ## 9. New module map
 
 | File | Responsibility |

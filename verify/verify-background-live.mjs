@@ -177,7 +177,54 @@ console.log("\n=== 4. round-4 checks (F5 two-panel multi-plateau) ===");
     console.log(`  [${mode}] sidebar #3c3c3c = ${sidebar ? sidebar.contrast_ratio + ":1" : "MISSING"}  all_meet_aa=${c.all_meet_aa}  failing=${c.failing_count}`);
     console.log(`  [${mode}] content #282828 = ${content ? content.contrast_ratio + ":1 vs " + content.measured_against : "MISSING"}`);
     console.log(`  [${mode}] local_background on colours: ${c.colours.every((x) => x.local_background !== undefined) ? "YES" : "NO"}  -> F5 fixed: ${sidebar && sidebar.contrast_ratio === 1.64 && c.all_meet_aa === false ? "YES" : "NO"}`);
+    console.log(`  [${mode}] background_fit applicable=${c.background_fit?.applicable} adequate=${c.background_fit?.adequate}`);
   }
+}
+
+// Round-5 checks (fifth audit F6: the gradient residual must be disclosed).
+async function shallowGradient() {
+  const w = 900, h = 420, lo = 48, hi = 60;
+  const buf = Buffer.alloc(w * h * 3);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = Math.round(lo + (hi - lo) * (x / w));
+    const i = (y * w + x) * 3;
+    buf[i] = v; buf[i + 1] = v; buf[i + 2] = v;
+  }
+  return sharp(buf, { raw: { width: w, height: h, channels: 3 } })
+    .composite([{ input: Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+      <text x="40" y="60" font-family="DejaVu Sans, sans-serif" font-size="46" fill="#f0f0f0">BRIGHT-ONE</text>
+      <text x="40" y="200" font-family="DejaVu Sans, sans-serif" font-size="46" fill="#8c8c8c">DARK-TWO</text>
+    </svg>`), blend: "over" }])
+    .png().toBuffer();
+}
+
+console.log("\n=== 5. round-5 checks (F6 gradient residual is not silent) ===");
+{
+  const grad = toUri(await shallowGradient());
+  const region = { left: 0, top: 0, width: 900, height: 420 };
+  const r = await call("measure_image", { image_source: grad, mode: "contrast", region });
+  const c = r.measurements.contrast;
+  console.log(`  fit=${c.background_fit?.explained_fraction} adequate=${c.background_fit?.adequate} all_meet_aa=${c.all_meet_aa} colours=${c.colours.length} notes=${r.notes.length}`);
+  console.log(`  marginal note: ${r.notes.some((n) => /marginal/i.test(n)) ? "YES" : "NO"}`);
+  console.log(`  model_disagreement: ${c.model_disagreement ? JSON.stringify(c.model_disagreement.local_failing_colours.map((x) => x.foreground)) : "none"}`);
+  console.log(`  -> not silent: ${r.notes.length > 0 && c.all_meet_aa === true ? "YES" : "NO"}`);
+  const l = await call("measure_image", { image_source: grad, mode: "contrast", region, background_mode: "local" });
+  const cl = l.measurements.contrast;
+  console.log(`  local: colours=${cl.colours.length} #8c8c8c=${cl.colours.find((x) => x.foreground === "#8c8c8c")?.contrast_ratio}:1 failing=${cl.failing_count}`);
+}
+
+console.log("\n=== 6. round-5 checks (structured analysis carries the same caveats) ===");
+{
+  const grad = toUri(await shallowGradient());
+  const s = await call("analyze_image_structured", {
+    image_source: grad,
+    prompt: "Are there any accessibility or contrast problems in this image?",
+  });
+  const prose = JSON.stringify([...(s.abstained || []), ...(s.observations || [])]);
+  console.log(`  answered_by=${s.answered_by} model_consulted=${s.model_consulted}`);
+  console.log(`  measurements.contrast.background_fit=${JSON.stringify(s.measurements?.contrast?.background_fit?.explained_fraction)}`);
+  console.log(`  model_disagreement surfaced: ${s.measurements?.contrast?.model_disagreement ? "YES" : "NO"}`);
+  console.log(`  prose mentions the dark tone: ${/8c8c8c/i.test(prose) ? "YES" : "NO"}  -> caveat reaches prose: ${/disagree|marginal/i.test(prose) ? "YES" : "NO"}`);
 }
 
 await client.close();

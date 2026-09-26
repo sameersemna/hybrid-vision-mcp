@@ -38,8 +38,13 @@ import {
   buildGradientTextFixture,
   buildFlatTextFixture,
   buildTwoPanelFixture,
+  buildShallowGradientFixture,
+  buildSteepGradientFixture,
+  buildCardsFlatFixture,
+  buildTextHeavyFlatFixture,
   FIXTURE,
   TWO_PANEL,
+  SHALLOW_GRADIENT,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -466,9 +471,16 @@ test("F5: multi-plateau adequacy is disclosed even though the modal colour domin
   const r = contrastInRegion(pixels, TWO_PANEL.region);
 
   // The modal colour explains ~69% — a single-colour "fit" would call this
-  // adequate. Multi-plateau detection must still flag the region.
-  assert.equal(r.background_fit.adequate, true, "the single-colour fit alone is genuinely ~0.69");
-  assert.equal(r.background_model, "multi-plateau", "but the model must be reported as multi-plateau");
+  // adequate. But `background_fit` describes ONE background, so in a multi-
+  // plateau region it is explicitly NOT applicable: `adequate` is null (falsy,
+  // so it cannot read as "fine") with a reason, rather than a contradictory
+  // `true` beside a note saying the value is meaningless (§3 of the 5th audit).
+  assert.equal(r.background_fit.applicable, false, "a single-colour fit does not apply to a multi-panel region");
+  assert.equal(r.background_fit.adequate, null, "and must not read as adequate");
+  assert.ok(r.background_fit.not_applicable_reason, "the non-applicability must be explained");
+  assert.equal(r.background_fit.explained_fraction >= 0.5, true, "the raw fraction is still reported (~0.69)");
+
+  assert.equal(r.background_model, "multi-plateau", "the model must be reported as multi-plateau");
   assert.ok(r.plateaus.length >= 2);
   assert.ok(
     r.notes.some((n) => /Multi-plateau region/.test(n)),
@@ -539,5 +551,115 @@ test("F5 does not invent plateaus on a gradient (falls back, still warns)", asyn
     `a smooth gradient must not be treated as multi-plateau (got ${s.plateaus.length}: ${s.plateaus.map((p) => p.hex).join(", ")})`,
   );
   assert.equal(s.background_model, "global");
+});
+
+// ==========================================================================
+// Fifth-audit acceptance tests (F6 gradient residual is not silent; §3
+// background_fit applicability). Non-vacuous per verify/nonvacuity-round5.mjs.
+// ==========================================================================
+
+test("F6: a clean global verdict is never silent when a fit is marginal", async () => {
+  const png = await buildShallowGradientFixture();
+  const pixels = await loadPixels(png);
+  const r = contrastInRegion(pixels, SHALLOW_GRADIENT.region);
+
+  // The premise: the fit sits just above the adequacy floor, so the old code
+  // reported a clean pass with NO notes at all.
+  assert.equal(r.background_model, "global", "the shallow gradient has no plateaus");
+  assert.equal(r.background_fit.explained_fraction >= 0.5, true, "the fit is at/above the floor");
+  assert.equal(r.background_fit.adequate, true, "so the floor alone would call it fine");
+
+  // The guarantee: it can never be silent about a marginal premise.
+  assert.ok(
+    r.notes.some((n) => /marginal/i.test(n)),
+    `a marginal fit must be disclosed in notes (got: ${JSON.stringify(r.notes)})`,
+  );
+  assert.ok(
+    r.notes.some((n) => /background_mode:\\s*"local"|background_mode: "local"/.test(n)),
+    "the note must name the per-tile remedy",
+  );
+  assert.ok(r.notes.length > 0, "notes must never be empty on a marginal fit");
+});
+
+test("F6: local arbitration flags the tone a global background missed", async () => {
+  const png = await buildShallowGradientFixture();
+  const pixels = await loadPixels(png);
+  const r = contrastInRegion(pixels, SHALLOW_GRADIENT.region);
+
+  // Global sees only the bright run; local recovers the failing dark run.
+  assert.equal(r.all_meet_aa, true, "the global verdict is a clean pass");
+  assert.ok(r.model_disagreement, "a clean global verdict must be arbitrated against local");
+  assert.equal(r.model_disagreement.global_all_meet_aa, true);
+  assert.ok(r.model_disagreement.local_failing_count >= 1);
+  assert.ok(
+    r.model_disagreement.local_failing_colours.some((c) => c.foreground === SHALLOW_GRADIENT.darkText),
+    "the disagreement must name the dark run local found",
+  );
+  assert.ok(
+    r.notes.some((n) => /Model disagreement/.test(n)),
+    "the disagreement must be in notes, not only in a structured field",
+  );
+  // It must NOT claim local is universally better (it over-reports on panels).
+  assert.match(r.model_disagreement.note, /not generally more accurate/i);
+
+  // And the run really is detectable: a crop finds it failing.
+  const crop = contrastInRegion(pixels, SHALLOW_GRADIENT.crop);
+  assert.equal(crop.all_meet_aa, false);
+  assert.ok(crop.worst.contrast_ratio < 4.5, `the dark run must fail in isolation (got ${crop.worst.contrast_ratio})`);
+});
+
+test("F6: local mode resolves the failing tone (keep green)", async () => {
+  const png = await buildShallowGradientFixture();
+  const pixels = await loadPixels(png);
+  const local = contrastInRegion(pixels, SHALLOW_GRADIENT.region, { backgroundMode: "local" });
+  assert.equal(local.colours.length, 2, "local resolves both text runs");
+  assert.equal(local.all_meet_aa, false);
+  assert.ok(local.colours.some((c) => c.foreground === SHALLOW_GRADIENT.darkText && !c.wcag_aa));
+});
+
+test("F6: steep and clear-fail gradients still warn (floor unchanged)", async () => {
+  const steep = contrastInRegion(await loadPixels(await buildSteepGradientFixture()), SHALLOW_GRADIENT.region);
+  assert.equal(steep.background_fit.adequate, false);
+  assert.ok(steep.notes.some((n) => /Background fit warning/.test(n)));
+  assert.equal(steep.background_fit.applicable, true);
+
+  // A moderate gradient (measured fit ~0.41) is still below the floor and warns.
+  const moderate = contrastInRegion(
+    await loadPixels(await buildShallowGradientFixture({ lo: 36, hi: 58 })),
+    SHALLOW_GRADIENT.region,
+  );
+  assert.equal(moderate.background_fit.adequate, false, `moderate fit must be below the floor (got ${moderate.background_fit.explained_fraction})`);
+  assert.ok(moderate.notes.some((n) => /Background fit warning/.test(n)));
+});
+
+test("F6: a legitimate flat UI is NOT flagged marginal or disagreement", async () => {
+  // Text-heavy flat page: fit 0.904, no ramping background. Must stay quiet
+  // beyond its own (real) contrast findings.
+  const heavy = contrastInRegion(await loadPixels(await buildTextHeavyFlatFixture()), { left: 0, top: 0, width: 1200, height: 800 });
+  assert.ok(heavy.background_fit.explained_fraction >= 0.8, "a flat page explains itself well");
+  assert.ok(!heavy.notes.some((n) => /marginal/i.test(n)), "a flat page must not be called marginal");
+  assert.equal(heavy.model_disagreement, null, "and there is nothing to arbitrate");
+
+  // Card grid: fit 0.619 (< 0.8) so the marginal note IS warranted, but the two
+  // models agree, so there is no disagreement to report.
+  const cards = contrastInRegion(await loadPixels(await buildCardsFlatFixture()), { left: 0, top: 0, width: 1200, height: 800 });
+  assert.equal(cards.model_disagreement, null, "models agree on a flat card grid");
+});
+
+test("§3: background_fit is explicitly not-applicable in multi-plateau mode", async () => {
+  const png = await buildTwoPanelFixture();
+  const r = contrastInRegion(await loadPixels(png), TWO_PANEL.region);
+
+  // It must not read as "fine" while a note calls the value meaningless.
+  assert.equal(r.background_fit.applicable, false);
+  assert.equal(r.background_fit.adequate, null, "null is falsy, so it cannot be read as adequate");
+  assert.ok(r.background_fit.not_applicable_reason);
+  assert.ok(r.background_fit.explained_fraction, "the raw measurement is still reported");
+  assert.equal(r.background_fit.adequate ? true : false, false, "a caller reading it as a boolean sees NOT fine");
+
+  // Global mode keeps a real applicability flag.
+  const acc = contrastInRegion(await loadPixels(await buildContrastFixture()), { left: 0, top: 0, width: 900, height: 420 });
+  assert.equal(acc.background_fit.applicable, true);
+  assert.equal(acc.background_fit.adequate, true);
 });
 
