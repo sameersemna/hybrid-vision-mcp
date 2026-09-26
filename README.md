@@ -744,11 +744,13 @@ disclosed under `mask_reconciliation` and in `notes`, with the raw evidence:
 
 **The gate is UNCONDITIONAL.** Every failing colour the mask removed is disclosed —
 there is no size threshold. The tool does **not** classify whether a flagged colour is
-decoration or text; it reports raw, monotonic evidence so you can judge:
+decoration or text; it reports raw evidence so you can judge:
 
-- `detected_plateau` / `plateau_share` — whether the colour was itself read as a
-  background plateau, and how much of the region that plateau covers (this is the
-  field that orders a wide tiled region above a glyph run);
+- `detected_plateau` — whether the colour was itself read as a background plateau
+  (evidence, **not** a classifier: real text is often read as a plateau too);
+- `plateau_share` — the plateau's **coverage** of the region. Fragmentation-invariant,
+  but it orders **large from small, not decoration from text**: a dense glyph run can
+  cover MORE than a bar chart (measured 0.1561 text vs 0.0986 bars);
 - `component_count`, `mean_component_area`, `largest_component_share`, `pixel_count`.
 
 It remains disclosure, not refusal, so it cannot turn a correct verdict into a wrong
@@ -771,7 +773,8 @@ one.
 > failing text. That is the deliberate trade — the disclosure is advisory and names
 > its own evidence, whereas the F14 omission was silent. If you want to ignore
 > decoration, filter on `detected_plateau` / `plateau_share` rather than expecting it
-> to be suppressed.
+> to be suppressed. Be aware (fourteenth audit F16) that **neither field classifies**
+> decoration vs text — see `ACCURACY.md` §5p.
 >
 > **No classification is provided (thirteenth audit F15).** An earlier version also
 > emitted `shape: "panel-shaped" | "text-sized"`. It was **removed**: its threshold was

@@ -480,4 +480,29 @@ console.log("\n=== 13. round-12 checks (F14 more failing text must not silence t
   console.log(`  [F15] shape field present: ${eEntry && "shape" in eEntry ? "YES (bad)" : "no"}  raw fields: comps=${eEntry?.component_count} plateau_share=${eEntry?.plateau_share} detected_plateau=${eEntry?.detected_plateau}`);
 }
 
+// Round-14 checks (fourteenth audit F16: `plateau_share` is coverage, NOT a
+// decoration/text classifier — a dense glyph run covers MORE than a bar chart).
+async function barsRefF16() {
+  const bars = Array.from({ length: 9 }, (_, i) =>
+    `<rect x="${80 + i * 95}" y="${520 - (i * 22 + 40)}" width="60" height="${i * 22 + 40}" rx="4" fill="#464646"/>`).join("");
+  return sharp(Buffer.from(`<svg width="1000" height="700" xmlns="http://www.w3.org/2000/svg"><rect width="1000" height="700" fill="#0d0c0b"/><rect x="0" y="0" width="1000" height="620" fill="#1c1a17"/>${bars}<text x="60" y="60" font-family="DejaVu Sans" font-size="30" font-weight="bold" fill="#e8dfd0">Revenue</text></svg>`)).png().toBuffer();
+}
+async function denseTextF16() {
+  const t = (y) => `<text x="30" y="${y}" font-family="DejaVu Sans" font-weight="bold" font-size="260" fill="#464646">IIIIII</text>`;
+  return sharp(Buffer.from(`<svg width="1000" height="700" xmlns="http://www.w3.org/2000/svg"><rect width="1000" height="700" fill="#0d0c0b"/><rect x="0" y="0" width="1000" height="620" fill="#1c1a17"/>${t(300)}${t(580)}</svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 15. round-14 checks (F16 plateau_share is coverage, not a classifier) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  const get = (c, fg) => c.mask_reconciliation?.unmasked_failing_colours?.find((x) => x.foreground === fg);
+  const a = await call("measure_image", { image_source: toUri(await barsRefF16()), mode: "contrast", region });
+  const t = await call("measure_image", { image_source: toUri(await denseTextF16()), mode: "contrast", region });
+  const ca = a.measurements.contrast, ct = t.measurements.contrast;
+  const ea = get(ca, "#464646"), et = get(ct, "#464646");
+  console.log(`  [A bars]   disclosed=${!!ea} plateau_share=${ea?.plateau_share} comps=${ea?.component_count} kind_field=${ea && ("shape" in ea || "kind" in ea) ? "PRESENT (bad)" : "none"}`);
+  console.log(`  [T text]   disclosed=${!!et} plateau_share=${et?.plateau_share} comps=${et?.component_count} kind_field=${et && ("shape" in et || "kind" in et) ? "PRESENT (bad)" : "none"}`);
+  console.log(`  [F16] real text (${et?.plateau_share}) > bars (${ea?.plateau_share})? ${et && ea && et.plateau_share > ea.plateau_share ? "YES -> the old claim inverts, as expected" : "NO"}`);
+}
+
 await client.close();

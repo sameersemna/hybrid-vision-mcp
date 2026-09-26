@@ -23,11 +23,19 @@ nothing else on screen changing.
   the same kind of object (replicated elements, no dominant blob), so any new scalar
   would invert in turn.
 - **The tool no longer implies it classifies.** Each disclosure carries the raw,
-  monotonic evidence only — `component_count`, `mean_component_area`, `plateau_share`,
+  evidence only — `component_count`, `mean_component_area`, `plateau_share`,
   `largest_component_share`, `detected_plateau`, `pixel_count`, `contrast_ratio`,
-  `measured_against` — so a caller judges. The note text now says explicitly that the
-  tool does not classify decoration vs text. `plateau_share` is the fragmentation-
-  invariant field that orders the pair (0.099 decoration vs 0.049 text).
+  `measured_against` — so a caller judges. The note text says explicitly that the tool
+  does not classify decoration vs text.
+
+> **AMENDED (fourteenth audit F16).** This entry said `plateau_share` "is the
+> fragmentation-invariant field that orders the pair (0.099 decoration vs 0.049").
+> **That is false.** `plateau_share` is the plateau's COVERAGE, and coverage is not
+> kind: a DENSE glyph run covers MORE than a bar chart — measured **0.1561 (real
+> dense text) vs 0.0986 (bars)**. The round-13 pair happened to order that way by
+> coincidence, and following the stated meaning inverts the reading. It is
+> fragmentation-invariant (a real, useful property) but it separates large from
+> small, not decoration from text. See `ACCURACY.md` §5p.
 
 ### Amended
 

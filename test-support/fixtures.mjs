@@ -710,6 +710,58 @@ export const DECOR_BARS_F15 = {
 export const FRAG_SWEEP = { ...DECOR_BARS_F15 };
 
 /**
+ * Nine decorative chart bars in one failing colour on a dark page — the
+ * fourteenth-audit F16 fixture A (the "decoration" half of the pair).
+ *
+ * `plateau_share` for this fixture is ~0.0986. The removed claim said that field
+ * "orders decoration from a glyph run", so this is the reference a caller would read
+ * as "most likely decoration" — except that `buildDenseTextIINumbers` scores HIGHER.
+ */
+export async function buildBarsReferenceF16Fixture({
+  fill = "#464646", page = "#0d0c0b", cardFill = "#1c1a17", bars = 9, w = 1000, h = 700,
+} = {}) {
+  const rects = Array.from({ length: bars }, (_, i) =>
+    `<rect x="${80 + i * 95}" y="${520 - (i * 22 + 40)}" width="60" height="${i * 22 + 40}" rx="4" fill="${fill}"/>`).join("");
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${page}"/>` +
+    `<rect x="0" y="0" width="${w}" height="620" fill="${cardFill}"/>${rects}` +
+    `<text x="60" y="60" font-family="DejaVu Sans, sans-serif" font-size="30" font-weight="bold" fill="#e8dfd0">Revenue</text>` +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+/**
+ * Six 260px bold `IIIIII` runs in one failing colour — the fourteenth-audit F16
+ * fixture T. This is **real failing text**, and its `plateau_share` is **~0.1561**,
+ * HIGHER than the decorative bars' ~0.0986.
+ *
+ * That is the whole point of F16: `plateau_share` is the plateau's COVERAGE of the
+ * region, so a dense glyph run covers more than a bar chart. The field orders large
+ * from small, not decoration from text, and following the removed claim would invert
+ * the reading — the highest value is the real text.
+ */
+export async function buildDenseTextIINumbersFixture({
+  fill = "#464646", page = "#0d0c0b", cardFill = "#1c1a17", size = 260, w = 1000, h = 700,
+} = {}) {
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${page}"/>` +
+    `<rect x="0" y="0" width="${w}" height="620" fill="${cardFill}"/>` +
+    `<text x="30" y="300" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="${size}" fill="${fill}">IIIIII</text>` +
+    `<text x="30" y="580" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="${size}" fill="${fill}">IIIIII</text>` +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+export const BARS_REF_F16 = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  text: "#464646",
+  ratio: 1.88,
+};
+export const DENSE_TEXT_F16 = { ...BARS_REF_F16 };
+
+/**
  * A dashboard with a small SOLID decorative accent block — the ninth-audit §3
  * observation. Deliberately retained as a KNOWN, DECLINED false positive: see
  * ACCURACY.md 5k for the measurement showing a bold "I" at 150px is

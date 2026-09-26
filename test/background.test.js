@@ -61,6 +61,8 @@ import {
   buildResidualSolidTiledFixture,
   buildDecorativeBarsF15Fixture,
   buildFragmentationFixture,
+  buildBarsReferenceF16Fixture,
+  buildDenseTextIINumbersFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
@@ -78,6 +80,8 @@ import {
   RESIDUAL_SOLID_TILED,
   DECOR_BARS_F15,
   FRAG_SWEEP,
+  BARS_REF_F16,
+  DENSE_TEXT_F16,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -1085,6 +1089,73 @@ test("F15: the fragmentation sweep shows `shape` used to flip with nothing chang
   assert.ok(f.component_count < s.component_count, "more pieces at n=6");
   assert.equal(f.detected_plateau, true);
   assert.equal(s.detected_plateau, true);
+});
+
+// ==========================================================================
+// Fourteenth-audit acceptance tests (F16: the `plateau_share` classification
+// claim was FALSE — it is a coverage measure, and a dense glyph run covers MORE
+// than a bar chart). The durable guard is that no exposed field is documented as
+// distinguishing decoration from text. Non-vacuous per
+// verify/nonvacuity-round14.mjs.
+// ==========================================================================
+
+test("F16: `plateau_share` does NOT order decoration from text (it inverts)", async () => {
+  // The pair: A is decorative bars, T is REAL failing text of the same colour.
+  const A = contrastInRegion(await loadPixels(await buildBarsReferenceF16Fixture()), BARS_REF_F16.region);
+  const T = contrastInRegion(await loadPixels(await buildDenseTextIINumbersFixture()), DENSE_TEXT_F16.region);
+  const a = A.mask_reconciliation?.unmasked_failing_colours.find((c) => c.foreground === BARS_REF_F16.text);
+  const t = T.mask_reconciliation?.unmasked_failing_colours.find((c) => c.foreground === DENSE_TEXT_F16.text);
+  assert.ok(a, "A (decoration) is disclosed");
+  assert.ok(t, "T (real text) is disclosed");
+  // Both carry the field...
+  assert.equal(typeof a.plateau_share, "number");
+  assert.equal(typeof t.plateau_share, "number");
+  // ...and the REAL TEXT scores HIGHER, which is why the removed claim inverted.
+  assert.ok(
+    t.plateau_share > a.plateau_share,
+    `plateau_share must show real text ABOVE decoration here (text ${t.plateau_share} vs bars ${a.plateau_share})`,
+  );
+  // And neither is labelled by kind — the fields are raw only.
+  for (const k of ["shape", "kind", "is_decoration", "is_text", "classified_as"]) {
+    assert.equal(k in a, false, `A must not carry a kind field (${k})`);
+    assert.equal(k in t, false, `T must not carry a kind field (${k})`);
+  }
+});
+
+test("F16: `detected_plateau` is evidence, not a classifier — real text is detected too", async () => {
+  // Real failing text that IS read as a plateau (the F13a/F14 forms and the dense
+  // `IIIIII` run). If `detected_plateau` were a decoration classifier these would be
+  // mislabelled, so the test pins that it is TRUE for genuine text.
+  const T = contrastInRegion(await loadPixels(await buildDenseTextIINumbersFixture()), DENSE_TEXT_F16.region);
+  const t = T.mask_reconciliation?.unmasked_failing_colours.find((c) => c.foreground === DENSE_TEXT_F16.text);
+  assert.equal(t.detected_plateau, true, "real failing text is detected as a plateau — so it cannot mean 'decoration'");
+});
+
+test("F16: NO documentation claims an exposed field distinguishes decoration from text", async () => {
+  // The durable guard. F14 removed a threshold, F15 a label, and the claim survived in
+  // the PROSE — where no test could fail it. This asserts the prose, so the claim
+  // cannot silently return to a comment or a doc.
+  const { readFile } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const root = path.resolve(import.meta.dirname, "..");
+  const files = ["lib/measure.js", "README.md", "ACCURACY.md", "CHANGELOG.md"];
+  // Phrases that would assert a field CLASSIFIES/ORDERS decoration vs text. The
+  // retraction records quote the old wording, so a line is allowed if it is inside a
+  // retraction/amendment context (mentions false/removed/retract/amendment/does NOT).
+  const CLAIM = /(orders|distinguishes|separates|classifies|tells? apart)[^.\n]{0,60}(decoration[^.\n]{0,30}from[^.\n]{0,20}text|panel[^.\n]{0,20}from[^.\n]{0,20}text|glyph run from|a glyph run)/i;
+  const EXCULPATORY = /(false|retract|amend|removed|does NOT|does not|cannot|none of|neither|no field|not a classifier|invert|coincidence|mislabell?ed|misleading|NOT distinguish|not decoration|rather than decoration|large from small)/i;
+  for (const rel of files) {
+    const text = await readFile(path.join(root, rel), "utf8");
+    const bad = text
+      .split("\n")
+      .map((line, i) => ({ line, n: i + 1 }))
+      .filter(({ line }) => CLAIM.test(line) && !EXCULPATORY.test(line));
+    assert.equal(
+      bad.length,
+      0,
+      `${rel} asserts a field classifies decoration vs text:\n` + bad.map((b) => `  ${b.n}: ${b.line.trim()}`).join("\n"),
+    );
+  }
 });
 
 test("§3 (DECLINED): a solid accent block collides with real solid text", async () => {

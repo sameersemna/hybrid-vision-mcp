@@ -1654,7 +1654,7 @@ does not work**, so it was not adopted:
 | `mean_component_area / area` (old) | 0.0110 | 0.0004 | inverted |
 | `largest_component_share` (fix #1) | **0.0185** | **0.0174** | **no (within 6%)** |
 | `largest / total_failing` | 0.187 | 0.275 | no (both "no dominant piece") |
-| `plateau_share` (total region share) | 0.0986 | 0.0489 | yes, and fragmentation-invariant |
+| `plateau_share` (total region share) | 0.0986 | 0.0489 | **appeared** to (see §5p — it does NOT; this pair was a coincidence) |
 
 `largest_component_share` is itself `total / N` shaped, so it flips identically in the
 sweep. Structurally, a 9-bar chart and a 164-glyph run are **the same kind of object**
@@ -1662,10 +1662,11 @@ sweep. Structurally, a 9-bar chart and a 164-glyph run are **the same kind of ob
 difference** without a threshold that will invert in turn. Substituting a new constant
 would hand the next audit a fresh inversion, so none was added.
 
-What a caller gets instead is the raw, monotonic evidence already carried on each
+What a caller gets instead is the raw evidence already carried on each
 entry: `component_count`, `mean_component_area`, `plateau_share`,
 `largest_component_share`, `detected_plateau`, `pixel_count`, `contrast_ratio`,
-`measured_against`. `plateau_share` is the field that actually orders the pair.
+`measured_against`. **None of these classifies decoration vs text** (fourteenth audit
+F16 — see §5p).
 
 ### No false-positive flooding (audit controls, all `recon: null`)
 
@@ -1686,8 +1687,9 @@ field, not the disclosure rate.
   constructed; the claim is **reachability and direction** (more fragmentation ⇒ less
   "panel"), not frequency.
 - Whether removing `shape` entirely and relying on `plateau_share` alone is
-  **sufficient** for a caller to route was **not tested**. `plateau_share` orders
-  correctly, but that is a measurement of ordering, **not** a validated routing rule.
+  **sufficient** for a caller to route was **not tested**. §5p then showed it is not
+  even **correct** — `plateau_share` orders large from small, not decoration from
+  text — so this is now moot for routing purposes.
 - How many real dashboards flag more than one colour was **not measured**, so the
   "several extra round trips" consequence is reasoning from the mechanism, not a count.
 
@@ -1708,6 +1710,102 @@ field, not the disclosure rate.
 Deleting `shape` broke literal anchors in `verify/nonvacuity-round9.mjs` and
 `-round10.mjs`; both obsolete cases were **removed** with documentation (their
 coverage moved to round 13).
+
+## 5p. Fourteenth audit: `plateau_share` does not classify either
+
+### What was wrong
+
+Round 13 removed the `shape` *label*. But the **prose** kept asserting the same
+classification, in four places:
+
+- **[REMOVED CLAIM]** `lib/measure.js` — *"`plateau_share` … orders decoration (a wide tiled region) from a glyph run."*
+- **[REMOVED CLAIM]** `lib/measure.js` (function note) — *"the field that actually orders the pair"*
+- **[REMOVED CLAIM]** `ACCURACY.md` §5o — *"`plateau_share` is the field that actually orders the pair"*
+- **[REMOVED CLAIM]** `CHANGELOG.md` — *"invariant field that orders the pair (0.099 decoration vs 0.049 text)"*
+
+This is the **third round in a row** with the same defect class — a scalar claimed to
+separate two classes it cannot distinguish — and the claim had moved from a *threshold*
+(F14) to a *label* (F15) to the *commentary*, where no test could fail it.
+
+### The measurement (live 11402, region 0,0,1000,700, failing `#464646`)
+
+| fixture | what it is | comps | `plateau_share` |
+|---|---|---|---|
+| `A_bars_reference` | 9 decorative chart bars | 9 | **0.0986** |
+| `T_real_text_dense_II` | six 260px bold `IIIIII` runs — **real failing text** | 12 | **0.1561** |
+
+**Real text scores HIGHER than the decoration.** `plateau_share` is
+`colour_area / region_area` — a **coverage** measure. It orders *large from small*, not
+decoration from text.
+
+### The direction is the dangerous way round
+
+A caller following the comment would read the **highest** `plateau_share` as "most
+likely decoration" — and in the fixture above that value belongs to the **real failing
+text**. The field is not merely uninformative here; its stated meaning **inverts** the
+reading. The round-13 pair (0.099 bars vs 0.049 text) ordered that way by
+**coincidence**, and I generalised from one sample.
+
+### Independent corroboration of the structural argument (audit's `fill` measurement)
+
+The audit computed `fill = area / bounding_box_area` per connected component in Python,
+**outside the tool**, for the failing colour:
+
+| fixture | comps | mean_fill | max_fill |
+|---|---|---|---|
+| decorative bars | 9 | 0.997 | 0.998 |
+| real failing text (`IIIIII` @260px) | 12 | **1.000** | 1.000 |
+
+Solid-stem glyphs (`I`, blocky numerals) are **pixel-identical to rectangles**, so
+rectangularity cannot separate them either. This is a **stronger negative** than the two
+scalars we each proposed: it shows the components themselves are the same shape. My round
+13 conclusion — that a bar chart and a replicated glyph run are the *same kind of object*
+— holds for a third measure.
+
+### The fix: delete the claim, keep the fields, keep the honest note
+
+1. All four sites now state the measurable truth: `plateau_share` is the plateau's
+   **coverage**; it is fragmentation-invariant; it does **NOT** distinguish decoration
+   from text, because a dense glyph run can exceed a bar chart.
+2. `detected_plateau` is kept but re-described as **evidence, not a classifier**: real
+   text is frequently read as a plateau (F13a `plateau_share` 0.021, F14/E 0.0489,
+   `T_real_text_dense_II` 0.1561 all *are* detected plateaus).
+3. The **runtime note was already honest** and is unchanged — it hedges ("usually
+   backgrounds or decoration, but they could be text") and does not classify.
+4. **No new scalar was added.** Three are now measured and rejected: mean component
+   area, largest component share, component rectangularity (`fill`).
+
+### What this audit has NOT proven
+
+- No **natural** screenshot was shown where a caller would misread the field. The claim
+  is that the assertion is **false and misdirecting**, not that it has already produced a
+  wrong report.
+- **No** geometric scalar over connected components was found that separates the pair.
+  That is **not** a claim that none exists — only that three candidates fail, and that
+  `fill` is the strongest negative because solid glyph stems and bars are pixel-identical.
+- Whether a **colour-count** or **baseline-alignment** feature would separate them was
+  **not measured**. Those are outside the per-component geometry the code already
+  computes and would be new work — and by round 13/14's lesson, a new classification
+  term is a design decision, not a patch.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **106/106** (was 104; +2 round-14 tests) |
+| A/T pair | both disclosed, neither labelled by kind |
+| prose guard | a test asserts **none** of `lib/measure.js` / `ACCURACY.md` / `CHANGELOG.md` / `README.md` carries an un-retracted claim that a field classifies the two kinds |
+| must-quiet set | acceptance, sidebar, dense_small_cards, hero, `fp_*` — all `mask_reconciliation: null` |
+| live MCP (scratch 11498) | §15: `plateau_share` present for both, no kind field, honest note |
+| non-vacuity | all guards non-vacuous (+2 round 14) |
+
+### The durable lesson (three rounds)
+
+The defect is not any single scalar — it is **claiming a scalar separates two classes
+that are geometrically the same**. F14 removed a threshold, F15 removed a label, F16
+removed the claim from the prose. Each fix was correct and each left the claim alive one
+layer out. The guard that finally closes it is a **prose assertion in the test suite**, so
+the claim cannot silently return to a comment.
 
 ## 9. New module map
 
