@@ -1088,6 +1088,103 @@ A verdict is now constrained on all three edges: **a clean result is never
 silent**, **a failure is never attributed to a background region**, and **a text
 colour is never reclassified as a background region and then unreported**.
 
+## 5i. Eighth audit: an inset content-dense panel hid a failing text colour
+
+The third invariant (round 7) leaked through the `panelShape` gate that round 7
+added. This is the same class as the original F4/F5 false negatives, re-entering
+one layer in: the tool reported `all_meet_aa: true` on an image whose card text is
+at 2.47:1.
+
+### The defect (F10)
+
+Fixture: a dark inset card on a light page, the card perforated by 64 light bars,
+with `#666460` text on the card. Reproduced exactly:
+
+```json
+"plateaus": [ { "#f0efec", 21.8% }, { "#ebe6dc", 24.8% } ],
+"colours": [ { "foreground": "#2d2822", "contrast_ratio": 11.74, "wcag_aa": true } ],
+"failing_count": 0, "all_meet_aa": true
+```
+
+The card's own fill is **not** a plateau; the reported "colour" is the card fill
+measured against the **bars** at 11.74:1; and the real text `#666460` at
+**2.47:1** is absent from every channel. A crop of the header finds it — so it is
+real and detectable, and disappears only at full-frame.
+
+**Cause.** Round 7's shape test was `touchesBorder || fill >= 0.85`. Dense content
+perforates the card, dropping its fill below 0.85, so the card stopped being a
+plateau; its fill then became ink, and its representative colour resolved against
+the light bars (passing), absorbing the text. **`fill` conflates "is a ring" with
+"is perforated"** — a glyph ring is hollow for one reason (a single aperture), a
+content-dense panel for a completely different one (many small holes).
+
+The audit's border-touching control isolates it: identical content density, only
+`touchesBorder` differing, and the result flips from wrong to right.
+
+### The fix: measure the SHAPE of the holes, not the fill
+
+Measured, per blob, the **largest enclosed aperture as a fraction of its bbox**:
+
+| case | fill | holes | largest hole / bbox |
+|---|---|---|---|
+| **glyph ring** (F8) | 0.56 | 1 | **0.253–0.257** |
+| **perforated card** (F10) | 0.67 | 80 | **0.008** |
+| solid card / page / panel / dense background | 0.20–0.99 | — | 0.001–0.033 |
+
+A ring has **one large aperture**; a perforated panel has **many small ones**. So
+the inset test became `largestHoleFrac >= 0.12` (measured gap: rings ≥ 0.25,
+panels ≤ 0.033) instead of `fill >= 0.85`. The outermost-colour exemption
+(`touchesBorder`) is retained and is now *required*: a page frame's largest "hole"
+is the card inside it (measured 0.669), so it must qualify by touching the border,
+not by hole shape.
+
+**The dominance floor was raised to 0.6** (was 0.5), from a measured gap: two
+identical glyphs give dominance 0.50–0.505, while every real panel is ≥ 0.78. This
+is not required for the *verdict* (the ring test already rejects rings) but for the
+*colour*: at 0.5 a glyph pair is accepted as a plateau and only an AA remnant
+survives, so the reported failing colour is not the one the user can see.
+
+### The guarantee: mask reconciliation (the audit's fix 3)
+
+The shape tests decide each case, but a **solid** glyph block (fill 1.0, dominance
+1.0, no holes, inset) is, by geometry alone, indistinguishable from a solid inset
+panel. Rather than pretend otherwise, the mask is now **reconciled**: when masking
+occurred, the region is re-enumerated with no plateau mask, and any failing colour
+that the masked run dropped is disclosed in `mask_reconciliation` and in `notes`.
+
+This is disclosure, not refusal — the same shape as round 5's global-vs-local
+arbitration — so it cannot turn a correct verdict into a wrong one. The audit's
+*refusal* variant was correctly rejected: it would regress F5, because the
+two-panel's dark page legitimately appears as ink in the un-masked run.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **84/84** (was 78; +6 round-8 tests) |
+| F10 inset dense, global + local | card fill is a plateau; `#666460` reported at **2.47:1 failing**; `all_meet_aa: false` |
+| F10 header crop | unchanged (failing 1) |
+| F10 controls (border-touching dense, inset sparse, clean) | all correct |
+| solid-block glyphs | **never** `all_meet_aa: true`; disclosed via `mask_reconciliation` |
+| F8 (OO, hard-edged, and the whole glyph family) | still report `#464646` 1.88:1 |
+| §1 acceptance | unchanged: 1 plateau, 5 colours, 1.04 / 13.42, failing 2; no reconciliation |
+| F5 two-panel | sidebar 1.64:1 failing; no reconciliation |
+| F7 tiled (dark + light) | `all_meet_aa: true`, only `#e8dfd0` |
+| live MCP (new code, 11498) | F10 fixed: YES; clean variant still passes |
+| non-vacuity | 9+11+7+5+4+3+4+3+**3 (round 8)** all non-vacuous |
+
+### Residual (disclosed, not hidden)
+
+Two shapes remain genuinely ambiguous and are **disclosed rather than decided**:
+
+- a **single huge glyph ring** that is large enough to touch the region border
+  (its `touchesBorder` exemption lets it pass the inset test);
+- a run of **solid** glyph blocks that merge into one blob (no hole to measure).
+
+Both now carry `mask_reconciliation` naming the failing colour, and neither can
+report `all_meet_aa: true` while dropping it. The first is pathological; the second
+is the input the audit classed as narrow.
+
 ## 9. New module map
 
 | File | Responsibility |

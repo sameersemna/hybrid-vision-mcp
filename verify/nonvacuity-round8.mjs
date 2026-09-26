@@ -1,14 +1,6 @@
-// Non-vacuity verification for the SEVENTH-audit acceptance tests (F8: a text
-// colour accepted as a plateau and masked).
-//
-// NOTE (round 8): the F8 behaviour is now protected by THREE overlapping guards —
-// the glyph-ring shape test, the dominance floor, and mask reconciliation. Any one
-// of them alone rejects the F8 fixtures, so no single-site revert can fail these
-// tests. The honest demonstration is therefore a COMBINED revert: with all three
-// guards disabled the F8 fixtures revert to the round-6 behaviour and the tests
-// fail, which shows the behaviour is genuinely guarded rather than incidentally
-// coinciding. (Single-guard non-vacuity for each of the three is covered in
-// nonvacuity-round8.mjs, where the guards are the ones under test.)
+// Non-vacuity verification for the EIGHTH-audit acceptance tests (F10: an inset
+// content-dense panel hides a failing text colour). Reverts each round-8 guard,
+// confirms the matching test FAILS, then restores.
 //
 // SAFETY: mutates source under lib/ temporarily. Kept OUT of test/ so
 // `node --test` can never discover and run it.
@@ -19,26 +11,28 @@ import { spawnSync } from "node:child_process";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const TESTFILE = path.join(ROOT, "test", "background.test.js");
 
-// Each case applies ALL of these edits before running, then restores.
-const DISABLE_ALL = [
+const cases = [
   {
+    id: "F10 panel shape uses hole SHAPE, not raw fill",
+    test: "content-dense inset panel still reports its failing text",
+    file: "lib/measure.js",
     from: "    const isRing = !b.touchesBorder && b.largestHoleFrac >= RING_HOLE_FRACTION;",
-    to: "    const isRing = false; // REVERTED: any inset blob is a panel",
+    to: "    const isRing = !b.touchesBorder && b.fill < PLATEAU_SOLID_FILL; // REVERTED: fill-based",
   },
   {
+    id: "F8 repeated glyphs rejected by the dominance floor",
+    test: "repeated large glyphs report the REAL text colour",
+    file: "lib/measure.js",
     from: "const PLATEAU_DOMINANCE = 0.6;",
     to: "const PLATEAU_DOMINANCE = 0.5; // REVERTED: repeated glyphs pass at 0.5",
   },
   {
+    id: "F10 mask reconciliation discloses dropped failing colours",
+    test: "a shape test cannot resolve solid glyphs",
+    file: "lib/measure.js",
     from: "  if (plateauFills.length > 0 || multiPlateau) {",
     to: "  if (false) { // REVERTED: no un-masked reconciliation",
   },
-];
-
-const cases = [
-  { id: "F8 huge identical glyphs are reported as failing text", test: "huge identical glyphs are reported as failing text" },
-  { id: "F8 hard-edged glyphs are not 'no text was found'", test: "hard-edged glyphs are not reported as" },
-  { id: "F8 plateaus_without_text never lists a text colour", test: "never lists a colour that is itself text" },
 ];
 
 function runTest(pattern) {
@@ -51,18 +45,15 @@ function runTest(pattern) {
 
 const results = [];
 for (const c of cases) {
-  const filePath = path.join(ROOT, "lib", "measure.js");
+  const filePath = path.join(ROOT, c.file);
   const original = fs.readFileSync(filePath, "utf8");
 
-  const missing = DISABLE_ALL.find((e) => !original.includes(e.from));
-  if (missing) {
-    results.push({ id: c.id, error: `anchor not found: ${missing.from.slice(0, 60)}` });
+  if (!original.includes(c.from)) {
+    results.push({ id: c.id, error: `anchor not found in ${c.file}` });
     continue;
   }
   const before = runTest(c.test);
-  let disabled = original;
-  for (const e of DISABLE_ALL) disabled = disabled.replace(e.from, e.to);
-  fs.writeFileSync(filePath, disabled, "utf8");
+  fs.writeFileSync(filePath, original.replace(c.from, c.to), "utf8");
   const after = runTest(c.test);
   fs.writeFileSync(filePath, original, "utf8");
 
@@ -80,7 +71,7 @@ for (const c of cases) {
   });
 }
 
-console.log("\n=== ROUND-7 NON-VACUITY REPORT ===");
+console.log("\n=== ROUND-8 NON-VACUITY REPORT ===");
 let allGood = true;
 for (const r of results) {
   if (r.error) { console.log(`ERR            ${r.id}: ${r.error}`); allGood = false; continue; }
@@ -90,5 +81,5 @@ for (const r of results) {
       `(pass-with-fix=${r.passesWithFix}, fail-without-fix=${r.failsWithoutFix})`,
   );
 }
-console.log(allGood ? "\nAll round-7 guards confirmed non-vacuous." : "\nSOME GUARDS ARE VACUOUS — investigate.");
+console.log(allGood ? "\nAll round-8 guards confirmed non-vacuous." : "\nSOME GUARDS ARE VACUOUS — investigate.");
 process.exitCode = allGood ? 0 : 1;

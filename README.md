@@ -720,11 +720,27 @@ note). Real text averages <= 0.10% of the region per blob against 37.7% for a pa
 background, so this cannot drop a text run. See `ACCURACY.md` §5g.
 
 **A text colour is never a plateau.** A plateau blob must be either the outermost
-colour (the background, with panels cut out of it, so a low fill is expected) or a
-near-solid inset panel. An *inset hollow* blob is a glyph ring, not a panel, so two
-huge identical glyphs can no longer be mistaken for a background — which had made
-failing text `#464646` disappear (hard-edged) behind a "no text was found" note.
-See `ACCURACY.md` §5h.
+colour (the background, with panels cut out of it, so a low fill is expected) or an
+inset blob that is not a glyph RING. A ring is recognised by one large enclosed
+aperture; a content-dense panel (a chart card, a table, a thumbnail grid) is
+perforated by many small holes and is still a panel. Two huge identical glyphs can
+no longer be mistaken for a background — which had made failing text disappear.
+See `ACCURACY.md` §5h-§5i.
+
+**Mask reconciliation.** When a plateau mask removed a colour, the region is
+re-enumerated with no mask. If the un-masked pass measures a failing colour that the
+masked result dropped, it is disclosed under `mask_reconciliation` and in `notes`:
+
+```json
+"mask_reconciliation": {
+  "unmasked_failing_colours": [ { "foreground": "#464646", "contrast_ratio": 1.88 } ],
+  "note": "the plateau mask removed colour(s) that an un-masked enumeration measures as failing text ..."
+}
+```
+
+This is disclosure, not refusal, so it cannot turn a correct verdict into a wrong
+one. It closes the third invariant for shapes the geometry genuinely cannot resolve
+(a solid glyph block, a single ring large enough to touch the region border).
 
 ---
 

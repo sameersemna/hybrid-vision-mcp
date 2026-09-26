@@ -47,11 +47,14 @@ import {
   buildTiledCardsLightFixture,
   buildTexturedPageCardsFixture,
   buildHugeGlyphFixture,
+  buildDensePanelFixture,
+  buildSolidGlyphFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
   TILED_CARDS,
   HUGE_GLYPH,
+  DENSE_PANEL,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -847,6 +850,104 @@ test("F8 controls: ordinary failing text is unaffected (keep green)", async () =
     const r = contrastInRegion(await loadPixels(png), HUGE_GLYPH.region);
     assert.ok(r.colours.some((c) => c.foreground === HUGE_GLYPH.text), `"${text}" must be reported`);
     assert.equal(r.failing_count, 1, `"${text}" fails`);
+  }
+});
+
+test("F8: repeated large glyphs report the REAL text colour, not an AA remnant", async () => {
+  // A pair of large similar glyphs has dominance ~0.5, which is exactly the old
+  // single-blob floor. With the floor at 0.5 the colour is accepted as a plateau
+  // and only an AA remnant survives; at the measured 0.6 floor the real colour is
+  // reported. Both fail, but only one names the colour the user can see.
+  for (const text of ["HH", "OO"]) {
+    const png = await buildHugeGlyphFixture({ text, size: 300 });
+    const r = contrastInRegion(await loadPixels(png), HUGE_GLYPH.region);
+    assert.ok(
+      r.colours.some((c) => c.foreground === HUGE_GLYPH.text),
+      `"${text}" must report the real text colour ${HUGE_GLYPH.text} (got ${r.colours.map((c) => c.foreground).join(", ") || "none"})`,
+    );
+    assert.equal(r.all_meet_aa, false, `"${text}" fails`);
+  }
+});
+
+// ==========================================================================
+// Eighth-audit acceptance tests (F10: an inset content-dense panel hides a
+// failing text colour). Non-vacuous per verify/nonvacuity-round8.mjs.
+// ==========================================================================
+
+test("F10: a content-dense inset panel still reports its failing text", async () => {
+  const png = await buildDensePanelFixture();
+  const pixels = await loadPixels(png);
+
+  // The card fill is perforated by many bars, so it is NOT near-solid — but it is
+  // a panel, not a ring (many small holes, not one big one).
+  const plateaus = detectPlateaus(pixels, DENSE_PANEL.region);
+  assert.ok(plateaus.some((p) => p.hex === "#2d2822"), `the card fill must be a plateau (got ${plateaus.map((p) => p.hex).join(", ")})`);
+
+  for (const mode of ["global", "local"]) {
+    const r = contrastInRegion(pixels, DENSE_PANEL.region, { backgroundMode: mode });
+    const text = r.colours.find((c) => c.foreground === DENSE_PANEL.text);
+    assert.ok(
+      text,
+      `[${mode}] the 2.47:1 text must be reported (colours: ${r.colours.map((c) => c.foreground).join(", ") || "none"})`,
+    );
+    assert.equal(text.contrast_ratio, DENSE_PANEL.ratio, `[${mode}] measured against its own panel`);
+    assert.equal(text.wcag_aa, false);
+    assert.equal(r.failing_count >= 1, true, `[${mode}] the failure must be counted`);
+    assert.equal(r.all_meet_aa, false, `[${mode}] must not report a clean pass`);
+  }
+});
+
+test("F10: the header crop is unchanged (keep green)", async () => {
+  const png = await buildDensePanelFixture();
+  const crop = contrastInRegion(await loadPixels(png), DENSE_PANEL.headerCrop);
+  assert.equal(crop.failing_count, 1);
+  assert.equal(crop.all_meet_aa, false);
+  assert.ok(crop.colours.some((c) => c.foreground === DENSE_PANEL.text));
+});
+
+test("F10: panel shape is decided by hole SHAPE, not by fill", () => {
+  // A ring has ONE large enclosed aperture; a perforated panel has MANY tiny ones.
+  // fill alone conflates them, which is what rejected the dense panel (F10).
+  const ring = { touchesBorder: false, largestHoleFrac: 0.256 };   // measured glyph
+  const panel = { touchesBorder: false, largestHoleFrac: 0.008 };  // measured card
+  assert.ok(ring.largestHoleFrac > panel.largestHoleFrac * 10, "the measured separation is large");
+});
+
+test("F10 controls: border-touching and sparse variants stay correct", async () => {
+  // Border-touching card with the SAME dense content: correct before and after.
+  const touching = await buildDensePanelFixture({ inset: false });
+  const t = contrastInRegion(await loadPixels(touching), DENSE_PANEL.region);
+  assert.ok(t.colours.some((c) => c.foreground === DENSE_PANEL.text), "border-touching dense card is reported");
+  assert.equal(t.all_meet_aa, false);
+
+  // Sparse inset card: the card fill is near-solid, so it is a plateau either way.
+  const sparse = await buildDensePanelFixture({ dense: false });
+  const s = contrastInRegion(await loadPixels(sparse), DENSE_PANEL.region);
+  assert.ok(s.colours.some((c) => c.foreground === DENSE_PANEL.text), "sparse inset card is reported");
+  assert.equal(s.all_meet_aa, false);
+
+  // Clean variant: all text passes, so a clean pass is correct.
+  const clean = await buildDensePanelFixture({ text: "#dcd7cd" });
+  const c = contrastInRegion(await loadPixels(clean), DENSE_PANEL.region);
+  assert.equal(c.all_meet_aa, true, "a passing panel must still pass");
+});
+
+test("F10: a shape test cannot resolve solid glyphs — they must disclose, never pass", async () => {
+  // two solid blocks merge into ONE blob with fill 1.0, dominance 1.0, no holes,
+  // inset: geometrically identical to a solid inset panel. The mask therefore
+  // drops it, and the reconciliation must disclose it rather than pass silently.
+  for (const text of ["\u2588\u2588", "\u25A0\u25A0"]) {
+    const png = await buildSolidGlyphFixture({ text });
+    const r = contrastInRegion(await loadPixels(png), HUGE_GLYPH.region);
+    assert.notEqual(r.all_meet_aa, true, `"${text}" must never report all_meet_aa true`);
+    if (!r.colours.some((c) => c.foreground === HUGE_GLYPH.text)) {
+      assert.ok(r.mask_reconciliation, `"${text}" dropped by masking must be disclosed`);
+      assert.ok(
+        r.mask_reconciliation.unmasked_failing_colours.some((c) => c.foreground === HUGE_GLYPH.text),
+        `"${text}" disclosure must name the failing colour`,
+      );
+      assert.ok(r.notes.some((n) => /Mask reconciliation/.test(n)), `"${text}" must be in notes`);
+    }
   }
 });
 

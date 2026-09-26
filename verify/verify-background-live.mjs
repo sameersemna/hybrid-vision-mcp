@@ -292,4 +292,41 @@ console.log("\n=== 8. round-7 checks (F8 a text colour is not masked as a platea
   }
 }
 
+// Round-8 checks (eighth audit F10: an inset content-dense panel must not hide a
+// failing text colour).
+async function densePanel({ inset = true, dense = true, text = "#666460" } = {}) {
+  const w = 1000, h = 700;
+  const box = inset ? { x: 60, y: 40, w: 880, h: 620 } : { x: 0, y: 0, w, h };
+  const parts = [`<rect width="${w}" height="${h}" fill="#f0efec"/>`,
+    `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="#2d2822"/>`];
+  if (dense) {
+    let s4 = 4;
+    const rnd = () => { s4 = (s4 * 1103515245 + 12345) & 0x7fffffff; return s4 / 0x7fffffff; };
+    for (let i = 0; i < 64; i++) {
+      const x = box.x + 18 + i * 13;
+      const hh = 80 + Math.round(rnd() * 300);
+      parts.push(`<rect x="${x}" y="${box.y + box.h - 40 - hh}" width="11" height="${hh}" fill="#ebe6dc"/>`);
+    }
+  }
+  parts.push(`<text x="${box.x + 20}" y="${box.y + 50}" font-family="DejaVu Sans, sans-serif" font-size="34" fill="${text}">DASHBOARD</text>`);
+  parts.push(`<text x="${box.x + 20}" y="${box.y + 100}" font-family="DejaVu Sans, sans-serif" font-size="34" fill="${text}">summary</text>`);
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 9. round-8 checks (F10 inset content-dense panel reports its failing text) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  for (const [label, opts] of [["inset dense", {}], ["border-touching dense", { inset: false }], ["inset sparse", { dense: false }]]) {
+    const p = toUri(await densePanel(opts));
+    const r = await call("measure_image", { image_source: p, mode: "contrast", region });
+    const c = r.measurements.contrast;
+    const text = c.colours.find((x) => x.foreground === "#666460");
+    console.log(`  [${label}] plateaus=${c.plateaus.map((x) => x.hex).join("/")} colours=${c.colours.map((x) => x.foreground).join(",")}`);
+    console.log(`  [${label}] #666460 = ${text ? text.contrast_ratio + ":1" : "MISSING"} all_meet_aa=${c.all_meet_aa} failing=${c.failing_count}  -> F10 fixed: ${text && text.contrast_ratio === 2.47 && c.all_meet_aa === false ? "YES" : "NO"}`);
+  }
+  const clean = toUri(await densePanel({ text: "#dcd7cd" }));
+  const rc = await call("measure_image", { image_source: clean, mode: "contrast", region });
+  console.log(`  [clean inset dense] all_meet_aa=${rc.measurements.contrast.all_meet_aa} (must be true)`);
+}
+
 await client.close();

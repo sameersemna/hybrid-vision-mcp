@@ -391,3 +391,64 @@ export const HUGE_GLYPH = {
   ratio: 1.88,
   background: "#1a1814",
 };
+
+/**
+ * A content-dense inset panel (chart card) — the eighth-audit F10 fixture.
+ *
+ * A dark inset card is perforated by many light bars. The card's fill therefore
+ * drops below a global fill threshold, and the pre-fix `fill >= 0.85` shape test
+ * rejected the card as a panel: the card fill became ink, its representative
+ * colour resolved against the LIGHT bars (11.74:1, passing), and the real text
+ * `#666460` at 2.47:1 was absorbed and never enumerated — a false pass.
+ *
+ * An inset panel whose interior is dense content is an ordinary shape (chart
+ * card, table, thumbnail grid), so this must be treated as a panel.
+ *
+ * @param {{ w?:number, h?:number, page?:string, card?:string, bar?:string,
+ *           text?:string, inset?:boolean, dense?:boolean, bars?:number }} [opts]
+ */
+export async function buildDensePanelFixture({
+  w = 1000, h = 700, page = "#f0efec", card = "#2d2822", bar = "#ebe6dc",
+  text = "#666460", inset = true, dense = true, bars = 64,
+} = {}) {
+  const box = inset ? { x: 60, y: 40, w: 880, h: 620 } : { x: 0, y: 0, w, h };
+  const parts = [`<rect width="${w}" height="${h}" fill="${page}"/>`,
+    `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="${card}"/>`];
+  if (dense) {
+    // Deterministic pseudo-random bar heights (no RNG dependency).
+    let s = 4;
+    const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+    for (let i = 0; i < bars; i++) {
+      const x = box.x + 18 + i * 13;
+      const hh = 80 + Math.round(rnd() * 300);
+      parts.push(`<rect x="${x}" y="${box.y + box.h - 40 - hh}" width="11" height="${hh}" fill="${bar}"/>`);
+    }
+  }
+  if (text) {
+    parts.push(`<text x="${box.x + 20}" y="${box.y + 50}" font-family="DejaVu Sans, sans-serif" font-size="34" fill="${text}">DASHBOARD</text>`);
+    parts.push(`<text x="${box.x + 20}" y="${box.y + 100}" font-family="DejaVu Sans, sans-serif" font-size="34" fill="${text}">summary</text>`);
+  }
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+export const DENSE_PANEL = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  text: "#666460",
+  ratio: 2.47,
+  headerCrop: { left: 70, top: 45, width: 300, height: 90 },
+};
+
+/**
+ * Two huge SOLID glyph blocks on a plain background — the residual F10 shape the
+ * shape tests cannot resolve (a solid glyph has fill 1.0, dominance 1.0, no holes,
+ * inset — indistinguishable from a solid inset panel by geometry alone). It must
+ * therefore ABSTAIN or DISCLOSE, never report `all_meet_aa: true`.
+ */
+export async function buildSolidGlyphFixture({ text = "\u2588\u2588", size = 300, w = 900, h = 420 } = {}) {
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="#1a1814"/>` +
+    `<text x="20" y="${size}" font-family="DejaVu Sans, sans-serif" font-size="${size}" fill="#464646">${text}</text>` +
+    `</svg>`,
+  )).png().toBuffer();
+}

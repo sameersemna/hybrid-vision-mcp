@@ -1,5 +1,56 @@
 # Changelog
 
+## Eighth-audit follow-up: an inset content-dense panel hid a failing text colour — 2026-09-26
+
+The third invariant (round 7) leaked through the `panelShape` gate round 7 added:
+a card that fails contrast was not reported and the result read `all_meet_aa: true`.
+See `ACCURACY.md` §5i.
+
+### Fixed
+
+- **F10 — the panel shape test now measures hole SHAPE, not fill.** Round 7 used
+  `touchesBorder || fill >= 0.85`. Dense content perforates a card, dropping its
+  fill below 0.85, so the card stopped being a plateau; its fill then became ink
+  and its representative colour resolved against the light bars (11.74:1, passing),
+  absorbing the real text (`#666460`, 2.47:1) so it vanished from every channel.
+  The test is now based on the **largest enclosed aperture as a fraction of the
+  bbox**: a glyph RING has one large aperture (measured 0.253-0.257), a perforated
+  panel has many small ones (measured 0.008), every other panel <= 0.033. This
+  separates "is a ring" from "is perforated", which a single fill threshold
+  conflates.
+- **A repeated glyph pair now reports the REAL text colour, not an AA remnant.**
+  The dominance floor was raised from 0.5 to 0.6 (measured: glyph pairs 0.50-0.505,
+  every real panel >= 0.78). Not required for the verdict, but for the reported
+  colour.
+
+### Added
+
+- **Mask reconciliation** (`mask_reconciliation`): when plateau masking occurred,
+  the region is re-enumerated with NO mask and any failing colour the masked run
+  dropped is disclosed in `mask_reconciliation` and in `notes`. This is the
+  guarantee that closes the third invariant for shapes the geometry cannot resolve
+  (a solid glyph block / a single ring large enough to touch the border). It is
+  disclosure, not refusal — the refusal variant would regress F5, because the
+  two-panel's dark page legitimately appears as ink in the un-masked run.
+- `buildDensePanelFixture()`, `buildSolidGlyphFixture()` in
+  `test-support/fixtures.mjs`; 6 tests in `test/background.test.js` (now 47).
+- `verify/nonvacuity-round8.mjs` (3 non-vacuous cases).
+- `verify/verify-background-live.mjs` now also prints the round-8 (F10) checks.
+
+### Deliberately NOT changed
+
+- The WCAG formula, the adequacy floor (0.5), the `>=2-plateau` gate, the tiling
+  path, `background_regions`, and the outermost-colour exemption (`touchesBorder`),
+  which is now *required*: a page frame's largest "hole" is the card inside it
+  (measured 0.669), so it must qualify by touching the border.
+- The §1 acceptance path (one flat background, no masking -> no reconciliation).
+- **Known residual (disclosed, not hidden):** a SINGLE huge glyph ring large enough
+  to touch the region border, and a run of SOLID glyph blocks that merge into one
+  blob, remain geometrically ambiguous. Both now carry `mask_reconciliation` and
+  neither can report `all_meet_aa: true` while dropping a failing colour.
+
+---
+
 ## Seventh-audit follow-up: a text colour accepted as a plateau and masked — 2026-09-26
 
 Round 5 removed the *silent pass*, round 6 the *spurious fail*. This round removes
