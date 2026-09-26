@@ -1484,6 +1484,120 @@ repointed:
 - `verify/nonvacuity-round9.mjs` — "reconciliation is gated (decoration excluded)".
 - `verify/nonvacuity-round10.mjs` — both F12 anchors.
 
+### A framing correction (twelfth audit)
+
+This section called the remaining seam **"irreducibly ambiguous"**. The twelfth audit
+falsified that: the seam has a **direction** (see §5n), so "ambiguous" — which implies
+directionless — understated it. The retraction of round 10's guarantee stands; it is
+not to be replaced by a framing that implies the residual is symmetric.
+
+## 5n. Twelfth audit: the disclosure gate was ANTI-CORRELATED with the evidence
+
+### What was wrong
+
+The eleventh-audit union kept a mean clause (`mean >= PLATEAU_MIN_BLOB_SHARE`) as the
+path-B channel. The audit showed that clause is not merely imprecise — it is
+**inverted**: adding failing text of the *same colour* makes the warning **vanish**.
+
+### The inversion (the audit's D/E reproduction, byte-matched)
+
+Two 1000×700 panels, background `#1a1814`, all text `#464646` = **1.88:1, failing**.
+Both have the identical 300px bold `II` heading. Panel **E** adds six 28px body lines
+in the *same* colour.
+
+| fixture | failing px | N | mean | largest | clause 1 | clause 2 | result |
+|---|---|---|---|---|---|---|---|
+| **D** `buildHeadingOnlyFixture` | 24,966 | 2 | **1.78%** | 1.74% | ✗ | ✓ | **FIRES** |
+| **E** `buildHeadingPlusBodyFixture` | **44,226** | 164 | **0.04%** | 1.74% | ✗ | ✗ | **silent (bug)** |
+
+The largest blob is **identical** in D and E (1.74%, below the 2% path-A floor), so the
+mean is the only channel — and the mean collapses as `N` rises. In E, `#464646` is a
+detected plateau at 4.9% and appears in **no** channel: not `colours`, not
+`mask_reconciliation`, not `panel_fills`, not `excluded`.
+
+### Why more text makes it worse (measured)
+
+`mean = pixel_count / component_count`. As body text is added, both rise together, so
+the mean is flat-or-falling. A sweep with the 300px bars fixed and only the small
+glyphs resized:
+
+```
+small px | mean   | largest | recon (round 11)
+      24 | 0.0009 |  0.0174 | null
+      32 | 0.0005 |  0.0174 | null
+      40 | 0.0006 |  0.0174 | null
+      52 | 0.0009 |  0.0174 | null
+```
+
+**No amount of additional failing text can satisfy a mean floor.** The gate did not
+have a boundary in the wrong place; it had the boundary *pointing the wrong way*.
+
+### Single-property controls (so a fix cannot just invert the rule)
+
+| control | role | result |
+|---|---|---|
+| `buildHeadingOnlyFixture` (D) | heading alone; largest 1.74% < 2%, so only the mean can fire | **FIRES** (mean 1.78%) |
+| `buildHeadingPlusBodyFixture` (E) | same + body text; mean collapses | **disclosed** (was silent) |
+| `buildResidualSolidTiledFixture` | 5 solid rects @0.446% (path B sums 2.26%) + 20 fragments, **no text** | **disclosed**; largest 0.45%, mean 0.11% |
+| hero (200×80 button + dots) | blob mixture fails `dominance`/`panelShape` first | **`null`** — never masked, question never arises |
+| `real_head_and_body` (150px "Heading" + body) | a *natural* heading is **not** solid enough for path B | surfaced in `colours` — the seam needs path B's solid-blob condition |
+
+### The fix: remove the gate
+
+`isDisclosableDroppedColour(colour, regionArea) → true`. The trigger *is* the mask's
+own evidence (`unmasked.colours` minus `colours`), with no second opinion. This is the
+only formulation true by construction. Three attempts to add a size gate each opened a
+silent seam (F12, F13, F14), so the stable choice is no gate.
+
+### Deliberate consequence and the trade
+
+`mask_reconciliation` now **fires on decorative dashboards** — the ninth-audit **F11**
+case. That reverses the ninth audit's precision choice, and it is intentional: the
+disclosure is advisory and names its own uncertainty, whereas the F14 omission was
+**silent**. Precision is recovered by wording: each entry carries `detected_plateau`
+and `plateau_share` (read from the already-computed `plateaus` array), so a caller can
+filter decoration. The **verdict** (`all_meet_aa`) is unchanged — F11 still reports
+`all_meet_aa: true`.
+
+### What this audit has NOT proven
+
+- No **natural** page was found where a *large solid* failing element and *small*
+  failing text share one colour. The seam needs path B's solid-blob condition; a 150px
+  "Heading" does **not** satisfy it (`real_head_and_body.png` surfaces `#464646`
+  normally). The construct is a heading built from solid bars / blocky glyphs
+  (numerals, `II`, logos) plus small text in the same colour.
+- Lowering `PLATEAU_MIN_BLOB_SHARE` alone was **not** tested as a fix. `mean` is
+  0.0004, so it would need to drop >10×, **likely silencing F11**. Not assumed to work
+  — it is why the gate was removed instead.
+- The **frequency** of the construct in real screenshots was not measured. The claim is
+  **reachability and direction**, not prevalence.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **102/102** (was 99; +3 round-12 tests) |
+| F14 D / E / solid-tiled | all **disclosed** — E no longer silent |
+| F13(a)/(b) | still disclosed (no regression) |
+| F12 band 150/200/300/420 | still surfaced |
+| F11 decorative bars | **now disclosed** (deliberate); verdict still `all_meet_aa: true` |
+| must-quiet set | acceptance, sidebar, dense_small_cards, hero, sentence/paragraph, F7 cards, textured page, cards-flat — **all `mask_reconciliation: null`** |
+| live MCP (scratch 11498) | §13: D and E both disclosed; F11 fires by design |
+| non-vacuity | 61 guards, all non-vacuous (3 new in round 12) |
+
+### Stale anchors repaired (recurring cost)
+
+Removing the predicate body broke literal anchors in **three** harnesses — all silent
+(a missing anchor is reported, never a failure):
+
+- `verify/nonvacuity-round9.mjs` — repointed to the new predicate, and the two F11
+  guards now assert the **reversal** (they were "decoration stays quiet").
+- `verify/nonvacuity-round10.mjs` — repointed; the obsolete "mean-clause" case was
+  **removed** (no mean clause exists) and its coverage moved to the unconditional
+  case + round 12.
+- `verify/nonvacuity-round11.mjs` — repointed to the predicate body and the restored
+  evidence fields.
+
 ## 9. New module map
 
 | File | Responsibility |

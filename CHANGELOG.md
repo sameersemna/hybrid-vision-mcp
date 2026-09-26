@@ -1,5 +1,39 @@
 # Changelog
 
+## Twelfth-audit follow-up: the disclosure gate was ANTI-CORRELATED with the evidence — 2026-09-26
+
+The eleventh audit's residual was described as "irreducibly ambiguous". **That framing
+was wrong**: the residual has a **direction**. Adding failing text of the *same
+colour* made the warning **disappear**, so the seam was not a boundary but an
+inversion — more evidence of a problem made the tool less likely to report it.
+
+Reproducer (audit F14): a 300px solid failing `II` heading (1.88:1) is DISCLOSED; the
+same heading **plus six 28px body lines in the same colour** is SILENT, because the
+mean collapses from 1.78% to 0.03% while the largest blob is unchanged (1.74%). A
+sweep of the small-glyph size shows the mean is flat-or-falling (0.0009 / 0.0005 /
+0.0006 / 0.0009), so **no amount of extra text can satisfy a mean floor**. See
+`ACCURACY.md` §5n.
+
+### Fixed
+
+- **F14 — the size gate is REMOVED, not re-tuned.** `isDisclosableDroppedColour` now
+  returns `true` unconditionally: any failing colour the mask removed is disclosed.
+  Three attempts to keep a size gate each opened a silent seam (F12 mean-vs-single-blob,
+  F13 union, F14 anti-correlation), so the only stable formulation is the one true by
+  construction — "the trigger *is* the mask's own evidence", with no second opinion.
+- **Precision is recovered by WORDING, not suppression.** Each disclosure entry now
+  carries `detected_plateau` and `plateau_share` (and keeps `largest_component_share`,
+  `shape`, `measured_against`), read from the `plateaus` array already computed — so a
+  caller can tell decoration from text without the tool hiding anything.
+
+### Deliberate behaviour change (not silent)
+
+`mask_reconciliation` now **fires on decorative dashboards** (the ninth-audit F11
+case): the un-masked pass re-reads a tiled bar colour as failing text. This reverses
+the ninth audit's precision choice. The trade is explicit — the disclosure is
+advisory and names its own uncertainty, whereas the F14 omission was silent. Filter on
+`detected_plateau` to ignore decoration. Documented in `README.md` and §5n.
+
 ## Eleventh-audit follow-up: the round-10 "structural guarantee" was FALSE — 2026-09-26
 
 Round 10 claimed the disclosure gate could never be stricter than the mask

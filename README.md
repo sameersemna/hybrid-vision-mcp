@@ -738,36 +738,35 @@ disclosed under `mask_reconciliation` and in `notes`, labelled by shape:
 }
 ```
 
-**The gate is the union of the mask's two acceptance tests**, so a colour the mask
-removed is disclosed if *either* test would have accepted it:
+**The gate is UNCONDITIONAL.** Every failing colour the mask removed is disclosed —
+there is no size threshold. Shape and evidence decide the *wording* only:
 
-- its **largest** blob holds ≥ 2% of the region (`PLATEAU_MIN_SHARE`) — the mask's
-  path-A test, applied per colour, so it is **true by construction** for a colour a
-  dominant-blob mask removed; or
-- its **mean** blob clears 0.4% (`PLATEAU_MIN_BLOB_SHARE`) — the mask's path-B
-  per-blob floor.
+- `shape: "panel-shaped" | "text-sized"` — from the mean blob area;
+- `detected_plateau` and `plateau_share` — whether the flagged colour was itself
+  read as a background plateau, and how much of the region that plateau covers. This
+  is how a caller tells decoration from text, because suppression is no longer used
+  to do it.
 
-Shape decides the *wording* (`panel-shaped` vs `text-sized`), never whether to
-mention it. It remains disclosure, not refusal, so it cannot turn a correct verdict
-into a wrong one.
+It remains disclosure, not refusal, so it cannot turn a correct verdict into a wrong
+one.
 
-> **Correction (eleventh audit).** An earlier version of this note claimed a
-> *structural guarantee* on the grounds that the gate "shares the mask's own
-> constant". That was wrong: `PLATEAU_MIN_SHARE` (0.02) is a **single blob's**
-> share, while the old gate compared a **mean** across blobs. A mean can fall below
-> 0.4% while a 2% blob exists, so a drop-cap beside many small glyphs (F13) was
-> masked and silent. See `ACCURACY.md` §5l (retracted) and §5m. Clause 1 above
-> *is* true by construction for path-A masks; the union is the fix. A residual gap
-> remains for a path-B mask that mixes ≥ 2 solid blobs with smaller sub-floor ones
-> (that signature is a chart/icon grid, but it is irreducible — see §5m).
-
-**A residual, documented gap.** A colour the mask reached via path B that mixes
-`≥ 2` solid blobs with smaller sub-floor blobs can have both `mean < 0.4%` and
-`largestShare < 2%`, and is then masked and undisclosed. That signature is a
-bar-chart / icon grid (the F11 decoration, kept quiet), but it is irreducibly
-ambiguous — a headline of two huge glyphs plus many small failing ones has the same
-shape. This is named rather than hidden: the reconciliation is a **measured
-heuristic with a documented seam**, not a proof.
+> **History (three attempts to add a size gate, all reverted).** A gate looks like
+> precision but keeps hiding real text:
+> - **Tenth audit (F12):** `mean >= 0.4%` compared a mean to the mask's *single-blob*
+>   floor, hiding a 2%-blob colour with many small companions.
+> - **Eleventh audit (F13):** a union added `largestShare >= 2%` (true by construction
+>   for the mask's path-A) but kept the mean clause.
+> - **Twelfth audit (F14):** the mean clause was shown to be **anti-correlated with
+>   the evidence** — adding six small body lines to a 300px failing heading took the
+>   colour from disclosed (mean 1.78%) to silent (mean 0.03%) while the largest blob
+>   was unchanged. **More failing text made the warning disappear.** The gate is
+>   therefore removed, not re-tuned. See `ACCURACY.md` §5n.
+>
+> **Consequence:** `mask_reconciliation` now fires on decorative dashboards (the
+> ninth-audit F11 case), because the un-masked pass re-reads a tiled bar colour as
+> failing text. That is the deliberate trade — the disclosure is advisory and names
+> its own evidence, whereas the F14 omission was silent. If you want to ignore
+> decoration, filter on `detected_plateau` rather than expecting it to be suppressed.
 
 ---
 

@@ -353,13 +353,18 @@ async function droppedPanel() {
   </svg>`)).png().toBuffer();
 }
 
-console.log("\n=== 10. round-9 checks (F11 reconciliation is precise, decoration is not text) ===");
+console.log("\n=== 10. round-9 checks (F11 decoration; REVERSED in round 12) ===");
 {
   const region = { left: 0, top: 0, width: 1000, height: 700 };
   const bars = await call("measure_image", { image_source: toUri(await decorativeBars()), mode: "contrast", region });
   const cb = bars.measurements.contrast;
   console.log(`  [decor decorative-bars] colours=${cb.colours.map((x) => x.foreground + "@" + x.contrast_ratio).join(",")} all_meet_aa=${cb.all_meet_aa}`);
-  console.log(`  [decor decorative-bars] mask_reconciliation=${cb.mask_reconciliation ? "FIRES (bad)" : "none"}  -> F11 fixed: ${cb.all_meet_aa === true && !cb.mask_reconciliation ? "YES" : "NO"}`);
+  // Round 12: the bars are now DELIBERATELY disclosed (F14 showed the gate that
+  // suppressed them was anti-correlated with the evidence). This check is therefore
+  // INVERTED: the VERDICT must still be a clean pass, and the disclosure must fire
+  // with the bar flagged as a detected plateau.
+  const bar = cb.mask_reconciliation?.unmasked_failing_colours?.find((x) => x.foreground === "#783c3c");
+  console.log(`  [decor decorative-bars] mask_reconciliation=${cb.mask_reconciliation ? "FIRES (intended)" : "none"} bar_flagged_plateau=${bar?.detected_plateau}  -> verdict clean: ${cb.all_meet_aa === true ? "YES" : "NO"}`);
 
   const dp = await call("measure_image", { image_source: toUri(await droppedPanel()), mode: "contrast", region });
   const cd = dp.measurements.contrast;
@@ -426,11 +431,49 @@ console.log("\n=== 12. round-11 checks (F13 the retracted guarantee: a mask-caus
   console.log(`  [panel+fragments] colours=${cFrag.colours.length} measurable=${cFrag.measurable} recon=${cFrag.mask_reconciliation ? "FIRES" : "none"}`);
   console.log(`  [panel+fragments] empty masked result still disclosed: ${fragNamed ? `${fragNamed.contrast_ratio}:1` : "MISSING (bad)"}  -> F13 fixed: ${fragNamed ? "YES" : "NO"}`);
 
-  // Keep-green: F11 decoration must stay quiet even though it is removed by the
-  // SAME plateau mechanism (it falls below BOTH gate clauses).
+  // F11 is REMOVED from the keep-green list in round 12: it is now DELIBERATELY
+  // disclosed (see section 13). The VERDICT must still be a clean pass.
   const bars = await call("measure_image", { image_source: toUri(await decorativeBars()), mode: "contrast", region });
   const cBars = bars.measurements.contrast;
-  console.log(`  [F11 keep-green] decorative bars recon=${cBars.mask_reconciliation ? "FIRES (bad)" : "none"} all_meet_aa=${cBars.all_meet_aa}`);
+  console.log(`  [F11 verdict] decorative bars all_meet_aa=${cBars.all_meet_aa} (verdict unchanged; disclosure now fires by design)`);
+}
+
+// Round-12 checks (twelfth audit F14: the disclosure gate was ANTI-CORRELATED with
+// the evidence — adding failing text of the same colour made the warning vanish).
+async function headingOnly() {
+  return sharp(Buffer.from(`<svg width="1000" height="700" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1000" height="700" fill="#1a1814"/>
+    <text x="80" y="360" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="300" fill="#464646">II</text>
+  </svg>`)).png().toBuffer();
+}
+async function headingPlusBody() {
+  const body = Array.from({ length: 6 }, (_, l) =>
+    `<text x="520" y="${300 + l * 36}" font-family="DejaVu Sans, sans-serif" font-size="28" fill="#464646">The quick brown fox jumps over</text>`).join("");
+  return sharp(Buffer.from(`<svg width="1000" height="700" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1000" height="700" fill="#1a1814"/>
+    <text x="80" y="360" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="300" fill="#464646">II</text>${body}
+  </svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 13. round-12 checks (F14 more failing text must not silence the warning) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  const d = await call("measure_image", { image_source: toUri(await headingOnly()), mode: "contrast", region });
+  const cD = d.measurements.contrast;
+  const dNamed = cD.mask_reconciliation?.unmasked_failing_colours?.find((x) => x.foreground === "#464646");
+  console.log(`  [D heading only]  colours=${cD.colours.map((x) => x.foreground).join(",") || "none"} recon=${cD.mask_reconciliation ? "FIRES" : "none"}`);
+  console.log(`  [D heading only]  #464646 disclosed: ${dNamed ? `${dNamed.contrast_ratio}:1` : "MISSING"}  -> ${dNamed ? "YES" : "NO"}`);
+
+  const e = await call("measure_image", { image_source: toUri(await headingPlusBody()), mode: "contrast", region });
+  const cE = e.measurements.contrast;
+  const eNamed = cE.mask_reconciliation?.unmasked_failing_colours?.find((x) => x.foreground === "#464646");
+  console.log(`  [E heading+body]  colours=${cE.colours.map((x) => x.foreground).join(",") || "none"} recon=${cE.mask_reconciliation ? "FIRES" : "none"}`);
+  console.log(`  [E heading+body]  #464646 disclosed: ${eNamed ? `${eNamed.contrast_ratio}:1 comps=${eNamed.component_count}` : "MISSING"}  -> ${eNamed ? "YES" : "NO"}  (F14: more text must NOT silence)`);
+
+  // F11 is now DELIBERATELY disclosed (precision traded for no silent omission).
+  const bars = await call("measure_image", { image_source: toUri(await decorativeBars()), mode: "contrast", region });
+  const cBars = bars.measurements.contrast;
+  console.log(`  [F11 reversed]    decorative bars recon=${cBars.mask_reconciliation ? "FIRES (intended)" : "none"} all_meet_aa=${cBars.all_meet_aa}`);
 }
 
 await client.close();

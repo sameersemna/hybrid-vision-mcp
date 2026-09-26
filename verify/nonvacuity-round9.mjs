@@ -13,22 +13,23 @@ const TESTFILE = path.join(ROOT, "test", "background.test.js");
 
 const cases = [
   {
-    id: "F11 reconciliation is gated (decoration excluded)",
-    test: "does not fire on decorative bars",
+    id: "F11 decorative bars now DISCLOSE (behaviour REVERSED in round 12)",
+    test: "decorative bars now DISCLOSE",
     file: "lib/measure.js",
-    // Anchor updated in round 11, when the gate became a UNION and moved inside a
-    // filter closure. The ninth-audit rule that decoration is excluded still holds
-    // (F11's bars fall below BOTH clauses), so reverting the gate to "disclose
-    // every removed failing colour" must still make the F11 test fail.
-    from: "        return isDisclosableDroppedColour(c, regionArea, largestShareOf(c.foreground));",
-    to: "        return true; // REVERTED: disclose every dropped failing colour",
+    // ANCHOR REPOINTED (twelfth audit). The ninth-audit rule (bars stay quiet) was
+    // DELIBERATELY reversed: F14 showed the size gate was anti-correlated with the
+    // evidence, so precision was traded for never hiding failing text. The guard
+    // now proves the reversal is real: reverting the predicate to "never disclose"
+    // must make the F11-discloses test fail.
+    from: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return true;\n}",
+    to: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return false; // REVERTED: nothing is disclosable\n}",
   },
   {
-    id: "F11 second decorative fixture stays quiet",
-    test: "second decorative fixture",
+    id: "F11 second decorative fixture also DISCLOSES (reversed in round 12)",
+    test: "second decorative fixture also discloses",
     file: "lib/measure.js",
-    from: "        return isDisclosableDroppedColour(c, regionArea, largestShareOf(c.foreground));",
-    to: "        return true; // REVERTED: disclose every dropped failing colour",
+    from: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return true;\n}",
+    to: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return false; // REVERTED: nothing is disclosable\n}",
   },
   {
     id: "F11 shape still distinguishes panel from text in the WORDING",

@@ -585,6 +585,79 @@ export const PANEL_FRAGMENTS = {
   text: "#464646",
   ratio: 1.88,
 };
+
+/**
+ * A 300px solid bold "II" heading in a failing colour, and nothing else — the
+ * twelfth-audit F14 control D.
+ *
+ * The heading glyph blobs land at largest-blob 1.74% of the region (< the mask's
+ * path-A floor of 2%) with only two components, so clause 2 (the mean) is the only
+ * channel: mean 1.78% and it DISCLOSES.
+ */
+export async function buildHeadingOnlyFixture({
+  fill = "#464646", background = "#1a1814", w = 1000, h = 700,
+} = {}) {
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>` +
+    `<text x="80" y="360" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="300" fill="${fill}">II</text>` +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+/**
+ * The same 300px heading PLUS six 28px body lines in the SAME failing colour —
+ * the twelfth-audit F14 fixture E.
+ *
+ * This is the inversion: the colour's `pixel_count` and `component_count` rise
+ * together (24,966px/2 → 44,226px/164), so the mean COLLAPSES from 1.78% to 0.04%
+ * and the largest blob is unchanged at 1.74%. Adding more failing text therefore
+ * made the warning DISAPPEAR under any mean-based gate — the seam was
+ * anti-correlated with the evidence, not merely ambiguous. Now disclosed.
+ */
+export async function buildHeadingPlusBodyFixture({
+  fill = "#464646", background = "#1a1814", w = 1000, h = 700, lines = 6,
+} = {}) {
+  const body = Array.from({ length: lines }, (_, l) =>
+    `<text x="520" y="${300 + l * 36}" font-family="DejaVu Sans, sans-serif" font-size="28" fill="${fill}">The quick brown fox jumps over</text>`).join("");
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>` +
+    `<text x="80" y="360" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="300" fill="${fill}">II</text>` +
+    body +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+/**
+ * Five solid rectangles at 0.446% each (path B sums to 2.26%, so they mask) plus
+ * twenty small fragments, ALL one failing colour — the twelfth-audit F14
+ * solid-block form, with no text at all.
+ *
+ * The masked result is EMPTY (`colours: []`, `measurable: false`) and the largest
+ * blob is 0.45% / mean 0.11%, so both the old clauses were false: the seam with the
+ * F13(b) omission but no glyphs involved.
+ */
+export async function buildResidualSolidTiledFixture({
+  fill = "#464646", background = "#1a1814", w = 1000, h = 700, blocks = 5, fragments = 20,
+} = {}) {
+  const big = Array.from({ length: blocks }, (_, i) =>
+    `<rect x="${60 + i * 180}" y="80" width="52" height="60" fill="${fill}"/>`).join("");
+  const small = Array.from({ length: fragments }, (_, i) =>
+    `<rect x="${40 + (i % 10) * 95}" y="${420 + Math.floor(i / 10) * 40}" width="14" height="10" fill="${fill}"/>`).join("");
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>${big}${small}</svg>`,
+  )).png().toBuffer();
+}
+
+export const HEADING_ONLY = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  text: "#464646",
+  ratio: 1.88,
+};
+export const HEADING_PLUS_BODY = { ...HEADING_ONLY };
+export const RESIDUAL_SOLID_TILED = { ...HEADING_ONLY };
 /**
  * A dashboard with a small SOLID decorative accent block — the ninth-audit §3
  * observation. Deliberately retained as a KNOWN, DECLINED false positive: see

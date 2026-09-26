@@ -13,57 +13,48 @@ import { spawnSync } from "node:child_process";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const TESTFILE = path.join(ROOT, "test", "background.test.js");
 
-const UNION = "  return largestShare >= PLATEAU_MIN_SHARE || mean / regionArea >= PLATEAU_MIN_BLOB_SHARE;";
+const PREDICATE = "export function isDisclosableDroppedColour(colour, regionArea) {\n  return true;\n}";
 
 const cases = [
   {
     id: "F13(a) a drop-cap plus small glyphs of ONE failing colour is disclosed",
     test: "F13\\(a\\): a drop-cap plus small glyphs",
     file: "lib/measure.js",
-    // Revert to the round-10 mean-only predicate — the exact gate that hid the
-    // F13(a) drop-cap colour (masked by a 2% blob, mean dragged to 0.29%).
-    from: UNION,
-    to: "  return mean / regionArea >= PLATEAU_MIN_BLOB_SHARE; // REVERTED: the round-10 mean-only gate (the F13 gap)",
+    // ANCHOR REPOINTED (twelfth audit). The union was replaced by an unconditional
+    // predicate; reverting it to "never disclose" reproduces the omission F13(a)
+    // guards against (in the round-10/11 form the mean clause hid the drop-cap).
+    from: PREDICATE,
+    to: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return false; // REVERTED: the F13 omission\n}",
   },
   {
     id: "F13(b) an empty masked result still discloses",
     test: "F13\\(b\\): a solid panel plus fragments",
     file: "lib/measure.js",
-    from: UNION,
-    to: "  return mean / regionArea >= PLATEAU_MIN_BLOB_SHARE; // REVERTED: the round-10 mean-only gate (the F13 gap)",
+    from: PREDICATE,
+    to: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return false; // REVERTED: the F13 omission\n}",
   },
   {
-    id: "F13 the round-10 guarantee is retracted (largestShare argument is honoured)",
+    id: "F13 the round-10 guarantee is retracted (no size gate at all)",
     test: "the round-10 guarantee is RETRACTED",
     file: "lib/measure.js",
-    from: UNION,
-    to: "  return mean / regionArea >= PLATEAU_MIN_BLOB_SHARE; // REVERTED: ignores largestShare (the retracted predicate)",
-  },
-  {
-    id: "F13 the gate is a UNION — the mean clause (path-B floor) is retained",
-    test: "the gate is a UNION of the mask",
-    file: "lib/measure.js",
-    // Drop clause 2, leaving only the path-A clause: the tiled F12 band (one or
-    // more blobs below 2% by mean) would go silent.
-    from: UNION,
-    to: "  return largestShare >= PLATEAU_MIN_SHARE; // REVERTED: no mean clause (path-B band silenced)",
+    // Reintroduce the retracted mean-only gate: it must make the retraction test
+    // fail, proving the test pins the REMOVAL rather than merely re-asserting it.
+    from: PREDICATE,
+    to: "export function isDisclosableDroppedColour(colour, regionArea) {\n  const mean = colour.component_count ? colour.pixel_count / colour.component_count : colour.pixel_count;\n  return mean / regionArea >= PLATEAU_MIN_BLOB_SHARE; // REVERTED: the retracted mean-only gate\n}",
   },
   {
     id: "F13 the disclosed entry says WHY the mask reached the colour",
-    test: "F13\\(a\\): a drop-cap plus small glyphs",
+    test: "carries the plateau EVIDENCE",
     file: "lib/measure.js",
-    from:
-      "              detected_plateau: detected.some(\n" +
-      "                (p) => rgbDistance(p.rgb, parseColor(c.foreground)) <= PLATEAU_MERGE_DIST,\n" +
-      "              ),",
+    from: "              detected_plateau: matched !== null,",
     to: "              detected_plateau: false, // REVERTED: does not say the colour was a plateau",
   },
   {
     id: "F13 the disclosed entry carries the largest-blob share",
-    test: "the disclosed entry carries the numbers",
+    test: "carries the plateau EVIDENCE",
     file: "lib/measure.js",
-    from: "              largest_component_share: Math.round(largestShareOf(c.foreground) * 10000) / 10000,",
-    to: "              largest_component_share: undefined, // REVERTED: omits the decisive number",
+    from: "              largest_component_share: matched ? matched.largest_component_share ?? null : null,",
+    to: "              largest_component_share: null, // REVERTED: omits the decisive number",
   },
 ];
 

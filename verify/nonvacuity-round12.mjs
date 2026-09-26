@@ -1,6 +1,7 @@
-// Non-vacuity verification for the TENTH-audit tests (F12: a colour masked
-// between the tiling floor and the disclosure gate is masked AND undisclosed).
-// Reverts each round-10 guard, confirms the matching test FAILS, then restores.
+// Non-vacuity verification for the TWELFTH-audit tests (F14: the disclosure gate
+// was ANTI-CORRELATED with the evidence — adding failing text of the same colour
+// made the warning disappear). Reverts each round-12 guard, confirms the matching
+// test FAILS, then restores.
 //
 // SAFETY: mutates source under lib/ temporarily. Kept OUT of test/ so
 // `node --test` can never discover and run it.
@@ -11,29 +12,35 @@ import { spawnSync } from "node:child_process";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const TESTFILE = path.join(ROOT, "test", "background.test.js");
 
+const PREDICATE = "export function isDisclosableDroppedColour(colour, regionArea) {\n  return true;\n}";
+const MEAN_GATE =
+  "export function isDisclosableDroppedColour(colour, regionArea) {\n" +
+  "  const mean = colour.component_count ? colour.pixel_count / colour.component_count : colour.pixel_count;\n" +
+  "  return mean / regionArea >= PLATEAU_MIN_BLOB_SHARE; // REVERTED: the retracted mean-only gate (silences F14 E)\n" +
+  "}";
+
 const cases = [
   {
-    id: "F12 the disclosure predicate is UNCONDITIONAL (no silent band)",
-    test: "every size in the masked band still SURFACES",
+    id: "F14 adding body text of the SAME colour must not silence the warning",
+    test: "adding body text of the SAME failing colour",
     file: "lib/measure.js",
-    // ANCHOR REPOINTED (twelfth audit). The tenth audit's "superset" claim was
-    // retracted (eleventh) and its successor union was removed (twelfth), so the
-    // predicate is now unconditional. Reverting it to "never disclose" reproduces
-    // the round-9 gap this guard has always protected.
-    from: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return true;\n}",
-    to: "export function isDisclosableDroppedColour(colour, regionArea) {\n  return false; // REVERTED: no colour is disclosable (round-9 gap)\n}",
+    // The twelfth-audit defect itself: the mean-only gate hid E (mean 0.03%).
+    from: PREDICATE,
+    to: MEAN_GATE,
   },
-  // NOTE (round 12): the former "gate is not stricter than the mask (mean clause)"
-  // case was REMOVED as obsolete rather than left vacuous. There is no mean clause
-  // any more, so it cannot be reverted. The F12 band coverage it protected is now
-  // guarded by the unconditional-predicate case above and by
-  // verify/nonvacuity-round12.mjs (the F14 E fixture).
   {
-    id: "F12 shape chooses the wording, not whether to disclose",
-    test: "shape now chooses the WORDING",
+    id: "F14 the solid-block form (no text) is disclosed",
+    test: "the solid-block form",
     file: "lib/measure.js",
-    from: "              shape: panelShaped ? \"panel-shaped\" : \"text-sized\",",
-    to: "              shape: \"panel-shaped\", // REVERTED: no shape distinction",
+    from: PREDICATE,
+    to: MEAN_GATE,
+  },
+  {
+    id: "F14 the disclosed entry carries the plateau evidence (wording, not suppression)",
+    test: "carries the plateau EVIDENCE",
+    file: "lib/measure.js",
+    from: "              detected_plateau: matched !== null,",
+    to: "              detected_plateau: false, // REVERTED: no plateau evidence",
   },
 ];
 
@@ -73,7 +80,7 @@ for (const c of cases) {
   });
 }
 
-console.log("\n=== ROUND-10 NON-VACUITY REPORT ===");
+console.log("\n=== ROUND-12 NON-VACUITY REPORT ===");
 let allGood = true;
 for (const r of results) {
   if (r.error) { console.log(`ERR            ${r.id}: ${r.error}`); allGood = false; continue; }
@@ -83,5 +90,5 @@ for (const r of results) {
       `(pass-with-fix=${r.passesWithFix}, fail-without-fix=${r.failsWithoutFix})`,
   );
 }
-console.log(allGood ? "\nAll round-10 guards confirmed non-vacuous." : "\nSOME GUARDS ARE VACUOUS — investigate.");
+console.log(allGood ? "\nAll round-12 guards confirmed non-vacuous." : "\nSOME GUARDS ARE VACUOUS — investigate.");
 process.exitCode = allGood ? 0 : 1;
