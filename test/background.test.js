@@ -1877,3 +1877,65 @@ test("F31: dense small text on cards does not accumulate AA fringes into a false
   assert.ok(outlined.colours.some((c) => c.foreground === OUTLINED_TEXT.fill && !c.wcag_aa));
 });
 
+test("F32: a fill that lies ON the reference→stroke line is not discarded as a fringe", async () => {
+  // Round 23 widened the second-ink AA window to the FULL segment (0,1), so ANY colour on the
+  // reference→extremal line was rejected. But real ink can sit on that line too: a mid-tone
+  // fill under a lighter stroke. The rejection must require the colour to be a blend AND SMALL
+  // (a fringe is a thin halo; real ink is large).
+  const region = OUTLINED_TEXT.region;
+  const bg = "#1a1814";
+  const stroke = "#ffffff";
+  const hex = (t) => {
+    const b = [0x1a, 0x18, 0x14], w = [0xff, 0xff, 0xff];
+    return "#" + b.map((c, i) => Math.round(c + (w[i] - c) * t).toString(16).padStart(2, "0")).join("");
+  };
+
+  // The defect band: t in {0.05, 0.10, 0.15, 0.20} on the bg→stroke line. Each must be
+  // REPORTED (and fail AA) on the second-ink path, exactly as it is on the primary path.
+  for (const t of [0.05, 0.1, 0.15, 0.2]) {
+    const fill = hex(t);
+    const outlined = contrastInRegion(
+      await loadPixels(await buildOutlinedTextFixture({ fill, stroke, strokeWidth: 3, fontSize: 180 })),
+      region,
+    );
+    const f = outlined.colours.find((c) => c.foreground === fill);
+    assert.ok(f, `t=${t} (${fill}): the on-line fill must be reported, not discarded as a fringe`);
+    assert.equal(f.wcag_aa, false, `t=${t} (${fill}): the fill fails AA`);
+    assert.equal(outlined.all_meet_aa, false, `t=${t}: the verdict must not read clean`);
+
+    // PAIR: the SAME fill with NO stroke (the primary path) must agree.
+    const plain = contrastInRegion(
+      await loadPixels(await buildOutlinedTextFixture({ fill, stroke: fill, strokeWidth: 3, fontSize: 180 })),
+      region,
+    );
+    assert.ok(plain.colours.some((c) => c.foreground === fill && !c.wcag_aa), `t=${t}: the primary path also reports it (pair invariant)`);
+  }
+
+  // The census that makes it a REAL defect: #312f2c fill (17,291px) is 6.6x the white stroke
+  // (2,617px), so hiding it is not "the smaller of two inks".
+  const census = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ fill: "#312f2c", stroke: "#ffffff", strokeWidth: 3, fontSize: 180 })),
+    region,
+  );
+  const fillC = census.colours.find((c) => c.foreground === "#312f2c");
+  const strokeC = census.colours.find((c) => c.foreground === "#ffffff");
+  assert.ok(fillC && strokeC, "both inks are reported");
+  assert.ok(fillC.pixel_count > strokeC.pixel_count, "the failing fill is the LARGER ink");
+
+  // CONTROL: a genuine fringe must STILL be rejected — the dense small-cards dashboard stays
+  // clean (F31 is not re-opened by relaxing the AA rule).
+  const dense = contrastInRegion(await loadPixels(await buildDenseSmallCardsFixture()), DENSE_SMALL_CARDS.region);
+  assert.equal(dense.all_meet_aa, true, "F31 must remain fixed");
+  assert.equal(dense.failing_count, 0);
+});
+
+test("F33 (pre-existing, named): the second-ink mean-area gate is not unified to the primary floor", async () => {
+  // The second-ink path carries a mean-area gate (20) that the primary path does not. This is
+  // a KNOWN, PRE-EXISTING asymmetry (identical at rounds 21/22/23), recorded rather than
+  // silently ignored. It must NOT be closed by unifying the floor to 8: measured, that
+  // re-admits the dense-flat card strokes (#355540@2.26, 14292px) and fails 4 tests.
+  const denseFlat = contrastInRegion(await loadPixels(await buildDenseFlatFixture()), { left: 0, top: 0, width: 1400, height: 900 });
+  assert.equal(denseFlat.failing_count, 0, "the structural gate must still reject the dense-flat card strokes");
+  assert.equal(denseFlat.all_meet_aa, true, "the dense-flat page is not reported as failing");
+});
+

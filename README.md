@@ -800,10 +800,12 @@ one.
 > (a text-free gradient reported as failing text; the darker of two colours in outlined text
 > silently absorbed), §5x for the follow-up (F29): the outlined-text pixel floor was
 > applied **per component**, so small glyphs lost their failing fill as it split across
-> components — it is now applied to the colour's **total** across the scan; and §5y for the
+> components — it is now applied to the colour's **total** across the scan; §5y for the
 > next round (F30/F31): the second-ink path had its **own** 28×-larger floor, which hid
 > failing ink and admitted accumulated card/text anti-aliasing fringes — it now uses the
-> primary path's reporting floor and gates.
+> primary path's reporting floor and gates; and §5z (F32): a further divergence on the
+> **colour-proximity** axis let a real fill that lies on the reference→stroke line be
+> discarded as a fringe — the AA test now rejects a blend only when it is **small**.
 
 ---
 

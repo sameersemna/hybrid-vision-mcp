@@ -712,4 +712,34 @@ console.log("\n=== 19. round-23 checks (F30 unified floor; F31 dense small cards
   console.log(`  [F31] colours=${dc.colours.length} all_meet_aa=${dc.all_meet_aa} failing=${dc.failing_count}  -> F31 fixed: ${dc.all_meet_aa === true && dc.failing_count === 0 ? "YES" : "NO"}`);
 }
 
+// Round-24 checks (twenty-fourth audit F32): a fill that lies ON the reference->stroke line
+// must not be discarded as a fringe.
+async function onLineFill(t) {
+  const w = 1000, h = 700;
+  const b = [0x1a, 0x18, 0x14], wh = [0xff, 0xff, 0xff];
+  const fill = "#" + b.map((c, i) => Math.round(c + (wh[i] - c) * t).toString(16).padStart(2, "0")).join("");
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="#1a1814"/>` +
+    `<text x="60" y="240" font-family="DejaVu Sans, sans-serif" font-weight="bold" font-size="180" ` +
+    `fill="${fill}" stroke="#ffffff" stroke-width="3">AB</text></svg>`;
+  return { fill, buf: await sharp(Buffer.from(svg)).png().toBuffer() };
+}
+
+console.log("\n=== 20. round-24 checks (F32 on-line fill is not discarded as a fringe) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  let allOk = true;
+  for (const t of [0.05, 0.1, 0.15, 0.2]) {
+    const { fill, buf } = await onLineFill(t);
+    const r = await call("measure_image", { image_source: toUri(buf), mode: "contrast", region });
+    const c = r.measurements.contrast;
+    const f = c.colours.find((x) => x.foreground === fill);
+    const ok = f && !f.wcag_aa && c.all_meet_aa === false;
+    if (!ok) allOk = false;
+    console.log(`  [F32 t=${t}] ${fill} ${f ? `px=${f.pixel_count} reported` : "** ABSENT **"} all_meet_aa=${c.all_meet_aa}  -> ${ok ? "ok" : "DISCARDED"}`);
+  }
+  console.log(`  [F32] every on-line fill reported: ${allOk ? "YES" : "NO"}`);
+}
+
 await client.close();

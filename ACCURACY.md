@@ -2907,6 +2907,128 @@ floor, and the separation is done by the gates.
 - **Frequency unmeasured.** Small outlined text at label sizes is plausible but I did not count
   occurrences; this is a control-backed verdict error, not a prevalence claim.
 
+## 5z. Twenty-fourth audit: the second-ink path diverged on a third axis — colour proximity
+
+Round 23 (§5y) aligned the second-ink path with the primary path on **size** (unified floor)
+and **accumulation grain** (per-total), but widened the AA test to the **full segment**
+`{0, 1}`. That closed F31 and opened **F32**: a real fill that lies **on** the
+reference→stroke line is now discarded by construction — the **third** consecutive round in
+which the second-ink path diverged from the primary path, and each divergence produced a false
+pass.
+
+### F32 — a fill on the reference→stroke line is discarded
+
+**Repro** (1000×700, background `#1a1814`, fill a colour *on* the `#1a1814`→`#ffffff` ramp,
+3px white stroke). The `t`-sweep, now vs round 22:
+
+| t | fill | contrast vs bg | round 22 (`11e6757`) | round 23 (`c91554c`) |
+|---|---|---|---|---|
+| 0.05 | `#252420` | 1.14 FAIL | **reported** | **ABSENT** |
+| 0.10 | `#312f2c` | 1.33 FAIL | **reported** | **ABSENT** |
+| 0.15 | `#3c3b37` | 1.58 FAIL | **reported** | **ABSENT** |
+| 0.20 | `#484643` | 1.88 FAIL | **reported** | **ABSENT** |
+| 0.25 | `#53524f` | 2.27 | absent | absent |
+
+**Independent census** (`#312f2c`, tolerance 2): fill **17,291px**, white stroke **2,617px** —
+the failing fill is **6.6×** the stroke. **No channel carries it** at round 23:
+`all_meet_aa=true, failing_count=0, measurable=true; colours: [#ffffff@17.73]` — and the string
+`#312f2c` appears **nowhere** in the response. The **primary path** reports the same colour at
+the same ratio (`all_meet_aa=false, #312f2c@1.33`). It is the F30/F31 shape again, now on the
+**colour** axis.
+
+### The audit's proposed fix (#1) does not work — measured
+
+The audit proposed a **residual-only** criterion, reasoning that "the measured discriminator is
+residual (fringes ≤ 0.5 on the line; real ink 3.45–7.4 off it)". That is true for the F28/F29
+fills — but **false for F32**: the `#312f2c` fill sits at **t=0.10, residual 0.4** — geometrically
+**identical to a fringe**. So there is **no colour-space test** that keeps an on-line fill while
+rejecting an on-line fringe; colour proximity cannot separate them. The discriminator is
+**structure / size**.
+
+### The fix — the AA test rejects a blend only when it is SMALL
+
+```
+blend = isAntiAliasingBlend(rgb2, rgb, compRef, {minT:0, maxT:1})
+     || isAntiAliasingBlend(rgb, rgb2, compRef, {minT:0, maxT:1});
+if (blend && count2 < MULTICOLOUR_AA_MIN_PIXELS) continue;   // MULTICOLOUR_AA_MIN_PIXELS = 500
+```
+
+A **fringe is a thin halo** (small per-component count); **real ink is large**. Measured
+per-component `count2` of on-line blends: F32's fill reaches **9,306px**; the F31 fringes are
+already removed by the plateau-adjacency gate before this point, and the dense-flat card strokes
+by the mean-area gate. Grid over `MULTICOLOUR_AA_MIN_PIXELS ∈ {200, 300, 500, 800, 1000}`: suite
+green, F32 reported, F31/dense-flat/tiled/F29 all correct.
+
+### F33 — a pre-existing asymmetry, recorded not fixed
+
+The audit also raised **F33**: the second-ink path carries a **mean-area** gate (20) that the
+primary path does not — a second scalar for the same concept, at 2.5× instead of 28×. Two
+measured findings:
+
+- **It is pre-existing, not a round-23 regression.** The F33 table (small single-glyph ink
+  reported on the primary path, absent on the second-ink path) is **identical at rounds 21
+  (`a304c0e`), 22 (`11e6757`) and 23 (`c91554c`)** — verified by `git checkout`, not by reading
+  the diff.
+- **The audit's own table is indicative, not matched** (they flagged it as such), and its census
+  does not reproduce: the true `#464646` fill at A@{10, 14, 16}px is **0px** (tolerance 2), not
+  7–11px; at A@20px it is 8px, A@24px 32px, A@30px 105px. At 10–20px the fill is **not even a
+  candidate component**.
+
+**It must NOT be closed by unifying the floor to 8.** Measured: that re-admits the dense-flat
+card strokes (`#355540@2.26`, 14,292px) and fails 4 tests. The mean-area scalar stays, with its
+measured basis (decoration ≤ 12 vs real ink ≥ 22), and F33 is a **named, pre-existing** limitation.
+
+### Alternatives measured and rejected
+
+| candidate | measured outcome |
+|---|---|
+| residual-only AA (no t-window) | **would reject the F32 fill too** (residual 0.4) — does not work |
+| largest-component floor (instead of mean) | breaks **F28-reversed** (the stroke fragments into small pieces) |
+| "fragmented AND weak" gate (`comps ≥ 3 && mean < 100`, the primary constants) | fails F28/F29/F31 |
+| mean-area floor 8 / 12 / 16 with the AA size-guard | 4 / 3 / 1 failures; **20** is the first green value |
+
+### The three axes of divergence, and the lesson
+
+The second-ink path has now diverged from the primary path on **three axes**, and **each
+divergence produced a false pass**:
+
+| round | axis | divergence | defect |
+|---|---|---|---|
+| 23 | size | its own floor (224 vs 8) | **F30** — 30px fill hidden |
+| 23 | accumulation grain | per-component vs per-total | **F29** — split fill hidden |
+| 24 | **colour proximity** | its own AA rule (reject any on-line colour) | **F32** — on-line fill discarded |
+
+Each fix moved the divergence one axis over. The lesson, now written into the code: **the
+second-ink path must not carry its own criterion for a quantity the primary path already
+decides** — it shares the primary floor, the primary accumulation grain, and (from this round)
+it no longer rejects by colour alone.
+
+### Acceptance evidence
+
+| case | before (round 23) | after |
+|---|---|---|
+| F32 `#312f2c` fill + white stroke | **ABSENT**, `all_meet_aa:true` | `#312f2c px=17226`, `false` |
+| F32 t-sweep {0.05,0.10,0.15,0.20} | all ABSENT | **all reported**, each paired with the primary path |
+| F31 dense_small_cards | clean | **clean** |
+| F28 dark/light outlined | `#464646@1.88` reported | reported (unchanged) |
+| acceptance fixture | worst `#1e1c18@1.04` | unchanged |
+| `npm test` | 123 | **125** (F32 t-sweep pair, F33 named) |
+| non-vacuity | 104 guards | **108** (+4 round-24) |
+| live MCP (scratch 11498) | — | §20: every on-line fill reported |
+
+### What this audit has NOT proven
+
+- The `maxT = 1` (near-extremal) end. The t-sweep covered 0.05–0.30; the upper end is
+  unmeasured, and an on-line colour near the **stroke** end could still be affected.
+- How often a real screenshot contains a fill on the reference→stroke line (mid-tone grey on
+  dark with a light outline — disabled buttons, placeholder text). Reachability and a
+  control-backed verdict error are claimed; **prevalence is not**.
+- F33 as a clean matched pair (the two renderings do not produce identical ink totals at a given
+  size), and whether the mean is the right quantity — only that unifying to 8 re-admits the
+  dense-flat strokes.
+- Whether `MULTICOLOUR_AA_MIN_PIXELS = 500` is the correct value; it sits in a measured gap
+  (F32 fill 9,306 vs fringes already gated earlier) and the grid is green from 200–1000.
+
 ## 9. New module map
 
 | File | Responsibility |

@@ -1,5 +1,65 @@
 # Changelog
 
+## Twenty-fourth-audit follow-up: the third axis of divergence (F32) — 2026-09-27
+
+Round 23 aligned the second-ink path with the primary path on **size** and **accumulation
+grain**, but widened the AA test to the full segment `{0, 1}`, which **discarded real ink that
+lies on the reference→stroke line** (F32) — the **third** consecutive round the second-ink path
+diverged from the primary path, each divergence producing a false pass. See `ACCURACY.md` §5z.
+
+### Fixed
+
+- **F32 — a fill on the reference→stroke line was discarded.** A `#312f2c` fill (true
+  **17,291px**, 6.6× the **2,617px** white stroke, contrast **1.33 FAIL**) was **reported** on
+  the primary path but **absent from every channel** on the second-ink path at round 23 (the
+  `t`-sweep 0.05–0.20 was reported at round 22, absent at round 23). The AA test now rejects a
+  blend **only when it is SMALL**: `if (blend && count2 < MULTICOLOUR_AA_MIN_PIXELS) continue;`
+  (`MULTICOLOUR_AA_MIN_PIXELS = 500`). A fringe is a thin halo; real ink is large.
+
+### The audit's proposed fix did not work — measured
+
+The audit proposed a **residual-only** criterion. **Rejected by measurement**: the `#312f2c`
+fill sits at **t=0.10, residual 0.4** — geometrically **identical to a fringe**. No colour-space
+test can keep an on-line fill while rejecting an on-line fringe. The discriminator is
+structure/size, which is what the size qualifier uses.
+
+### F33 — recorded, not fixed (and pre-existing)
+
+- **Pre-existing**, not a round-23 regression: the F33 table is **identical at rounds 21/22/23**
+  (verified by `git checkout`). Its census does **not** reproduce — the true fill at A@{10,14,16}px
+  is **0px**, not 7–11px; the fill is not even a candidate component at those sizes.
+- **Must not be closed by unifying the floor to 8**: measured, that re-admits the dense-flat card
+  strokes (`#355540@2.26`, 14,292px) and fails 4 tests. The mean-area scalar stays, with its
+  measured basis. F33 is a **named, pre-existing** limitation.
+
+### Alternatives measured and rejected
+
+| candidate | outcome |
+|---|---|
+| residual-only AA | would reject the F32 fill too (residual 0.4) |
+| largest-component floor | breaks F28-reversed (stroke fragments) |
+| "fragmented AND weak" (primary constants) | fails F28/F29/F31 |
+| mean-area floor 8/12/16 | 4/3/1 failures; **20** is the first green value |
+
+### The three axes of divergence
+
+| round | axis | divergence | defect |
+|---|---|---|---|
+| 23 | size | own floor (224 vs 8) | F30 |
+| 23 | accumulation grain | per-component vs per-total | F29 |
+| 24 | **colour proximity** | own AA rule | **F32** |
+
+The second-ink path must not carry its own criterion for a quantity the primary path decides.
+
+### Acceptance evidence
+
+- `npm test`: **125** (was 123); F32 is a `t`-sweep of on-line fills, each paired with the
+  primary path; F33 asserts the dense-flat control stays clean.
+- non-vacuity: **108** guards (was 104); `verify/nonvacuity-round24.mjs`.
+- live MCP (scratch 11498): §20 — every on-line fill reported.
+- Controls unchanged: F31 dense small cards, F28 outlined, tiled cards, dense-flat, acceptance
+  fixture (worst `#1e1c18@1.04`).
+
 ## Twenty-third-audit follow-up: the second-ink path had its own scalar (F30, F31) — 2026-09-27
 
 Round 22 fixed F29 by aggregating the pixel floor across components, but kept a **separate,
