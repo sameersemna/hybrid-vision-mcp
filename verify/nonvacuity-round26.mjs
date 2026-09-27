@@ -45,6 +45,20 @@ const cases = [
     from: "      candidateExtras.push({ key: k2, rgb: rgb2, count: count2, dist: rgbDistance(rgb2, compRef), blend });",
     to: "      if (blend && count2 < MULTICOLOUR_AA_MIN_PIXELS) continue;\n      candidateExtras.push({ key: k2, rgb: rgb2, count: count2, dist: rgbDistance(rgb2, compRef), blend });",
   },
+  {
+    id: "COUNT-INVARIANCE second-ink part (a) covers the AA qualifier (F34 defect -> the sweep fails)",
+    test: "COUNT-INVARIANCE",
+    file: MEASURE,
+    from: "      candidateExtras.push({ key: k2, rgb: rgb2, count: count2, dist: rgbDistance(rgb2, compRef), blend });",
+    to: "      if (blend && count2 < MULTICOLOUR_AA_MIN_PIXELS) continue;\n      candidateExtras.push({ key: k2, rgb: rgb2, count: count2, dist: rgbDistance(rgb2, compRef), blend });",
+  },
+  {
+    id: "COUNT-INVARIANCE covers the primary path (F35 mean-only defect -> the sweep fails)",
+    test: "COUNT-INVARIANCE",
+    file: MEASURE,
+    from: "  return lowContrast && (meanIsRegionSized || (totalIsRegionSized && solid));",
+    to: "  return lowContrast && meanIsRegionSized;",
+  },
 ];
 
 function runTest(pattern) {

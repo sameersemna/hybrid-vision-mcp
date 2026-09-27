@@ -813,7 +813,8 @@ one.
 > large-background-region gate (a split decoration was reported as failing text); the gate now
 > requires the **total** *and* **solidity**, keeping the original mean test for the textured-page
 > backstop. A standing **count-invariance** test (fixed total, varying piece count) now covers
-> this class.
+> this class; its **coverage is measured** (§5ac) — it catches F32/F34/F35, and the cases it does
+> *not* cover are stated rather than assumed.
 
 ---
 

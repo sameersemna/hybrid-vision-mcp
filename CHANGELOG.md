@@ -1,5 +1,64 @@
 # Changelog
 
+## Twenty-seventh-audit verification round: the standing test half-covered its claim — 2026-09-27
+
+The verification round requested after adopting the stopping criteria. **F35 is verified fixed**
+and both clauses are load-bearing (re-derived by perturbation, not by reading). One item was
+found, and it is the **same family** as the F16/F19/F26 findings: a claim no test verifies. See
+`ACCURACY.md` §5ac.
+
+### Fixed — the count-invariance test now covers the path its comment claims
+
+The `COUNT-INVARIANCE` comment claimed it *"would have caught F29, F30, F31, F32, F34 and F35."*
+Measured by re-introducing each defect and running **that test**: it caught only **F35**.
+
+**Why:** part (a) drew the stroke and fill as **separate elements**, so the fill became its own
+component — a **primary** colour with **`extras = 0`** — and the second-ink path was never
+entered. It therefore tested the primary path's size handling.
+
+**Remedy (calibrated):** put the fill and its outline in **ONE element** (`<rect fill stroke>`),
+fixed total 2000px, 1..16 pieces — measured as genuine second-ink at every count (extras
+1/2/4/8/16, max piece **1681 → 49**, spanning the per-component qualifier). With that
+construction the sweep **catches F34** (n=4/8/16 vanish under the per-component AA qualifier) and
+**F32** (n=1 under the reject-any-blend rule). Part (b) keeps the primary path, explicitly
+labelled.
+
+### The claim is now measured, and narrowed
+
+```
+F32 (reject any blend)            -> caught (second-ink, n=1)
+F34 (per-component AA qualifier)  -> caught (second-ink, n=4/8/16)
+F35 (mean-only region rule)       -> caught (decoration, n=16/36)
+F29 / F30 / F31                   -> NOT caught here; each has its own test
+```
+
+The last line was **measured** — re-introducing F29/F30/F31 leaves this test green. Asserting
+they were covered would have been the very defect class this round is about.
+
+### F35 verification (four perturbation results)
+
+| perturbation | result |
+|---|---|
+| pre-F35 mean-only rule | 126/128 — `COUNT-INVARIANCE` **and** `F35` fail |
+| `LARGE_REGION_SOLID_FILL 0.9 → 0.2` | fails (filters solid on-line ink) |
+| mean clause dropped (total+solid only) | fails (F7 textured-page backstop) |
+| restore | 128/128 |
+
+The **mean clause protects the F7 backstop**; the **total+solid clause protects F35** — genuinely
+independent, which is why the OR is the right shape.
+
+### Acceptance evidence
+
+- `npm test`: **128** (unchanged count; the standing test now covers more).
+- non-vacuity: **118** guards (+2 coverage cases proving the new part (a) reacts to F34/F35).
+- Deploy: `lib/measure.js` unchanged from HEAD; 11402 already runs round 26.
+
+### The loop is closed
+
+This round found **one** item, a **test-coverage/scope** gap — not a new engine defect class. Per
+the criteria adopted in §5ab, reopen only for a **new mechanism** (multi-plateau × solidity, image
+fills, shadows), not another instance of the per-piece error.
+
 ## Twenty-sixth-audit follow-up: the per-component error, in the other direction (F35) — 2026-09-27
 
 The audit reported **F35** — a decoration whose **total** is region-sized but which is split into

@@ -3270,6 +3270,120 @@ plus a **count-invariance** standing test — is **adopted**:
 - The audit's own framing that this is the fifth **second-ink** instance — corrected above; it is
   the same root cause in the **primary** path.
 
+## 5ac. Twenty-seventh audit: the verification round — the standing test half-covered its own claim
+
+This was the **verification round** the audit asked for after adopting its stopping criteria
+(§5ab). Result: the F35 fix is **correct**, both clauses are **load-bearing**, the subsystem is
+in the right place — and the **standing count-invariance test did not cover the path its comment
+claimed**. That is the same family as the F16/F17/F19/F26 findings: **a claim no test verifies**.
+
+### F35 verified fixed, and the two clauses are independent
+
+| pieces | total | verdict |
+|---|---|---|
+| 1 | 40,000px | filtered |
+| 4 | 40,000px | filtered |
+| 16 | 59,536px | filtered |
+| 36 | 57,600px | filtered |
+
+Reconstructed from the source and re-derived by **perturbation, not by reading**:
+
+| perturbation | result |
+|---|---|
+| revert to the pre-F35 mean-only rule | **126/128** — `COUNT-INVARIANCE` **and** `F35` fail |
+| `LARGE_REGION_SOLID_FILL 0.9 → 0.2` | fails (filters solid on-line ink) |
+| drop the mean clause (total+solid only) | fails (F7 textured-page backstop) |
+
+So the **mean clause protects the F7 backstop** and the **total+solid clause protects F35** — the
+two are genuinely independent, which is why the OR is the right shape. The round-26 attribution
+correction also holds: this is the **primary-path** `isLargeBackgroundRegion`.
+
+### The gap — the count-invariance test's part (a) never entered the second-ink path
+
+The comment claimed the test *"would have caught F29, F30, F31, F32, F34 and F35."* Measured by
+re-introducing each defect and running **this test**:
+
+| defect re-introduced | does `COUNT-INVARIANCE` fail? |
+|---|---|
+| F34 — per-component AA qualifier | **no** (old construction) — only `F34: …` failed |
+| F32 — AA window rejecting all blends | **no** (old construction) |
+| F35 — mean-only region rule | **yes** |
+
+**Why.** Part (a) drew each piece as a **stroke element and a fill element separately**, so the
+fill became its **own** component — a **primary** colour with **`extras = 0`**:
+
+```
+n= 1: reported=YES multi_colour_of=PRIMARY | components=1  extras=0
+n= 4: reported=YES multi_colour_of=PRIMARY | components=4  extras=0
+n=16: reported=YES multi_colour_of=PRIMARY | components=16 extras=0
+```
+
+The second-ink path is never entered, so part (a) exercised the **primary** path's size handling
+(which is why it caught F35's class) but could not see F29/F30/F32/F34.
+
+### The remedy — measured, then applied
+
+Putting the fill and its outline in **ONE element** (`<rect fill=… stroke=…>` or a stroked
+`<text>`) makes the fill a genuine `multi_colour_of` extra. Calibrated at a **fixed total of
+2000px**:
+
+| n | extras | fill total | max piece |
+|---|---|---|---|
+| 1 | 1 | 1681px | 1681 |
+| 2 | 2 | 1568px | 784 |
+| 4 | 4 | 1296px | 324 |
+| 8 | 8 | 1152px | 144 |
+| 16 | 16 | 784px | 49 |
+
+Every count is a genuine **second-ink** case, and the pieces **cross the per-component qualifier**
+(1681 → 49). With that construction the sweep **reacts to the F34 defect**: re-introducing the
+per-component AA qualifier makes n=4/8/16 vanish (`second-ink: … n=4` fails), while the current
+code reports all five.
+
+### The corrected, narrowed claim (now backed by measurement)
+
+Part (a) is now this second-ink construction; part (b) keeps the **primary** path (a bare filled
+rectangle) explicitly labelled; part (c) keeps the decoration sweep. The comment now states the
+**measured** coverage:
+
+```
+F32 (reject any blend)            -> caught (second-ink, n=1)
+F34 (per-component AA qualifier)  -> caught (second-ink, n=4/8/16)
+F35 (mean-only region rule)       -> caught (decoration, n=16/36)
+F29 / F30 / F31                   -> NOT caught here; each has its own test
+```
+
+The last line was **measured**, not assumed: re-introducing the F29 (per-component floor), F30
+(floor 224) and F31 (structure gate removed) defects leaves this test **green**. Claiming they
+were covered would have been the very defect class this round is about.
+
+### Acceptance evidence
+
+| case | before | after |
+|---|---|---|
+| F35 (n=1/4/16/36) | filtered | filtered |
+| count-invariance vs F34 defect | **not caught** | **caught** (`n=4`) |
+| count-invariance vs F32 defect | **not caught** | **caught** (`n=1`) |
+| count-invariance vs F35 defect | caught | caught |
+| count-invariance vs F29/F30/F31 defect | not caught | **not caught — stated** |
+| `npm test` | 128 | 128 |
+| non-vacuity | 116 guards | **118** (+2 coverage cases) |
+
+### The stopping criteria, honoured
+
+This round found **one** item, and it is a **test-coverage/scope** gap — the same family as the
+stale anchor and vacuous-guard findings, not a new engine defect class. Per the criteria adopted
+in §5ab, **the loop is closed here** unless a **new mechanism** appears (multi-plateau ×
+solidity, image fills, shadows) — not another instance of the per-piece error.
+
+### What this audit has NOT proven
+
+- That the calibrated second-ink sweep transfers to other fonts, weights or stroke widths; it was
+  calibrated at one construction (DejaVu Sans bold, 3px stroke, fixed total 2000px).
+- That F29/F30/F31's own tests are individually sufficient — only that this standing test does not
+  cover them, which is now stated.
+- That no other subsystem hides an unverified scope claim; only this test's comment was audited.
+
 ## 9. New module map
 
 | File | Responsibility |
