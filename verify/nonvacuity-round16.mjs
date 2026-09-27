@@ -29,11 +29,9 @@ const cases = [
     // Revert ADJACENCY to a WHOLE-CLAUSE vocabulary test — the round-15 defect, where
     // `amended`/`removed`/`invert`/`coincidence` anywhere in the clause excused a live
     // claim. (Changing only the vocabulary is not enough: E1's "amended" sits AFTER the
-    // verb, so it must be the SCOPE that reverts.)
-    from:
-      "    const excused =\n" +
-      "      NEG_STRONG.test(window) ||\n" +
-      "      NEG_WEAK_IMMEDIATE.test(immediate);",
+    // verb, so it must be the SCOPE that reverts.) ANCHOR REPOINTED (round 18, governed
+    // form).
+    from: "    const excused = strongNegationGoverns(clause, m.index) || NEG_WEAK_IMMEDIATE.test(immediate);",
     to: "    const excused = !/(amend|removed|invert|coincidence|\\bnot\\b|\\bno\\b)/i.test(clause); // REVERTED: clause-wide vocabulary",
   },
   {

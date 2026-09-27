@@ -25,10 +25,19 @@
 //   - exclusions are STRUCTURAL and PER-CELL: a marker waives only the cell it starts;
 //   - the field anchor covers EVERY emitted disclosure key, asserted by a test.
 //
-// HONEST SCOPE (F17/F18/F20): this is a BEST-EFFORT LINT with measured recall, NOT a
-// barrier. The two-tier negation is BOUNDED, not complete (measured: a negation more than
-// 25 chars from the verb is missed — `Not for a moment does plateau_share order ...`
-// escapes). The paraphrase-proof part is the POSITIVE disclaimer assertion (`DISCLAIMER`).
+// HONEST SCOPE (F17-F23) — SIX rounds of one class. Each round narrowed the SCOPE of an
+// exclusion (line -> clause -> 25 chars -> <=6 chars -> governed) and left its KIND:
+// a proximity/vocabulary test on author-controlled prose. A new phrasing has escaped
+// every round. So this rule is a BEST-EFFORT LINT, not a barrier:
+//   * its recall is a MEASURED NUMBER on the fixture set below, not "coverage";
+//   * the PRIMARY, paraphrase-proof check is the POSITIVE disclaimer assertion
+//     (`DISCLAIMER`): the docs must STATE the opposite of the claim. That is the part a
+//     paraphrase cannot defeat.
+//   * the test that matters most is the INVARIANCE PAIR: the same claim with and without
+//     each waiver mechanism must get the SAME verdict.
+// Known residuals: a negation >25 chars from the verb is missed; and governing declines
+// to excuse legitimate retractions with a content word before the verb (`is not able to
+// distinguish`) — an accepted, documented FALSE-POSITIVE cost (escapes are silent).
 
 /** Classification verbs. */
 export const CLAIM_VERB = /(orders|order|distinguishes|distinguish|separates|separate|classifies|classify|tells? (?:apart|what is)|identif(?:y|ies)|filter(?:s)? out|pick(?:s)? out|labels?|sorts?|ranks?|routes?|recommends?)/i;
@@ -47,44 +56,97 @@ export const EMITTED_DISCLOSURE_KEYS = [
 /** Field anchor = every emitted key a claim could name. */
 export const CLAIM_FIELD = new RegExp(`(${EMITTED_DISCLOSURE_KEYS.join("|")})`, "i");
 
-/** Strong negations that unambiguously negate the verb they precede (F20 tier 1). */
-const NEG_STRONG = /(\bnever\b|\bnone of\b|\bneither\b|\bcannot\b|\bcan't\b|\brather than\b|\bdoes ?n[o']?t\b|\bis ?n[o']?t\b|\bare ?n[o']?t\b|\bno longer\b|\binstead of\b|\bwithout \w+ing\b)/i;
+/** Strong negations that unambiguously negate the verb they precede (F20 tier 1).
+ *  NOTE (F22): `without \w+ing` was REMOVED — it is the widest offender (`without
+ *  blinking`, `without pausing` read as emphasis), and dropping it was measured to close
+ *  two escapes at zero added false positives. */
+const NEG_STRONG = /(\bnever\b|\bnone of\b|\bneither\b|\bcannot\b|\bcan't\b|\brather than\b|\bdoes ?n[o']?t\b|\bis ?n[o']?t\b|\bare ?n[o']?t\b|\bno longer\b|\binstead of\b)/i;
 
 /** Ambiguous `not`/`no` count ONLY when immediately before the verb (F20 tier 2). This is
  *  the ONLY weak tier — a deliberate measure: an idiom list (`no doubt`, `instead`, ...)
  *  was tried and then REMOVED, because with the <=6-char immediate test it affected
- *  **0 of 20,526** real clauses (dead code), and vocabulary lists are exactly what caused
- *  F17 -> F18 -> F20. No idiom list means no new vocabulary surface. */
+ *  **0 of 20,526** real clauses (dead code). No idiom list means no new vocabulary surface. */
 const NEG_WEAK_IMMEDIATE = /(?:\bnot\b|\bno\b)\s+$/i;
 
+/** Function words that may stand between a negation and the verb it governs. If a CONTENT
+ *  word intervenes (`never FAILS to order`), the negation does not govern the verb (F22). */
+const FUNCTION_WORDS = /^(?:a|an|the|of|to|in|on|at|by|for|with|from|that|this|these|those|it|its|is|are|was|were|be|been|being|has|have|had|do|does|did|and|or|but|so|as|if|than|then|also|just|even|only|still|yet|not|no|never|none|neither|cannot|can't|rather|instead|without|longer|any|all|some|more|most|very|quite|really|simply|merely)$/i;
+
+/**
+ * Does a STRONG negation GOVERN the verb at `verbIndex`? (F22 governed negation.)
+ * The LAST strong negation before the verb must have only function words between it and
+ * the verb, and be within 30 chars — so `never fails to order` is NOT excused (the content
+ * word `fails` intervenes), while `does NOT distinguish` and `cannot distinguish` are.
+ *
+ * KNOWN COST (measured, not hidden): this also declines to excuse legitimate retractions
+ * that place a content word between the negation and the verb — `is not able to
+ * distinguish`, `cannot be said to separate`, `should not be used to order`. Those become
+ * FALSE POSITIVES (the line is flagged although it retracts). Measured trade on the union
+ * harness: escapes 3 -> 0, false positives 1 -> 5. Escapes are SILENT (the dangerous
+ * direction), so the trade is accepted and recorded in ACCURACY.md §5t.
+ */
+function strongNegationGoverns(clause, verbIndex) {
+  const before = clause.slice(0, verbIndex);
+  const re = new RegExp(NEG_STRONG.source, "ig");
+  let m;
+  let last = null;
+  while ((m = re.exec(before))) last = m;
+  if (!last) return false;
+  const gap = before.slice(last.index + last[0].length);
+  if (gap.length > 30) return false;
+  const words = gap.toLowerCase().match(/[a-z']+/g) || [];
+  return words.every((w) => FUNCTION_WORDS.test(w));
+}
+
 /** Structural exclusion: a marker at the START of a table CELL (or the line). Applied
- *  PER CELL — a marker waives only the cell it starts, not the whole row (F21). */
+ *  PER CELL — a marker waives only the span it precedes, not the whole cell (F21/F23). */
 const MARKER = /^\s*(?:[-*>#]\s*)*(?:\*\*|__|`)*\s*\[(?:REMOVED CLAIM|PARAPHRASE|REMOVED)\]/i;
+
+/** Index of the first sentence end, NOT counting intra-token periods (`lib.measure.js`,
+ *  0.0986) — F17's lesson, which the audit re-derived when a naïve [.!?] split hit
+ *  `lib/measure.js`. Returns -1 when there is no sentence end. */
+function firstSentenceEnd(text) {
+  const re = /[.!?]/g;
+  let m;
+  while ((m = re.exec(text))) {
+    if (m[0] === ".") {
+      const before = text[m.index - 1] || "";
+      const after = text[m.index + 1] || "";
+      if (/[A-Za-z]/.test(before) && /[A-Za-z]/.test(after)) continue; // letter.letter => filename/decimal
+    }
+    return m.index;
+  }
+  return -1;
+}
 
 /**
  * Does a single CLAUSE assert that a field classifies decoration vs text?
  * A clause carrying field+verb+object is a claim UNLESS a negation that genuinely
- * negates the verb precedes it (F20 two-tier rule).
+ * negates the verb precedes it (F20 two-tier + F22 governed).
  */
 export function clauseIsClaim(clause) {
   if (!CLAIM_FIELD.test(clause) || !CLAIM_VERB.test(clause) || !CLAIM_OBJECT.test(clause)) return false;
   const verbRe = new RegExp(CLAIM_VERB.source, "ig");
   let m;
   while ((m = verbRe.exec(clause))) {
-    const window = clause.slice(Math.max(0, m.index - 25), m.index);
     const immediate = clause.slice(Math.max(0, m.index - 6), m.index);
-    const excused =
-      NEG_STRONG.test(window) ||
-      NEG_WEAK_IMMEDIATE.test(immediate);
-    if (!excused) return true; // an un-negated classification verb
+    const excused = strongNegationGoverns(clause, m.index) || NEG_WEAK_IMMEDIATE.test(immediate);
+    if (!excused) return true; // an un-governed classification verb
   }
   return false;
 }
 
-/** Is a single table cell (or line segment) a live claim? A cell that STARTS with a
- *  structural marker is excluded — and only that cell (F21). */
+/** Is a single table cell (or line segment) a live claim?
+ *  A marker waives only the SPAN it precedes (up to the first sentence end) — F21 fixed
+ *  the row-wide waiver, F23 the cell-wide one. The remainder of the cell is still checked. */
 function cellIsClaim(cell) {
-  if (MARKER.test(cell)) return false;
+  const m = cell.match(MARKER);
+  if (m) {
+    const afterMarker = cell.slice(m.index + m[0].length);
+    const end = firstSentenceEnd(afterMarker);
+    const remainder = end >= 0 ? afterMarker.slice(end + 1) : ""; // no sentence end => marker waives the rest
+    return remainder.split(/[;,:]/).some(clauseIsClaim);
+  }
   return cell.split(/[;,:]/).some(clauseIsClaim);
 }
 

@@ -536,6 +536,13 @@ console.log("\n=== 16. round-15/16 checks (F17/F18/F19 the prose guard is struct
   const crossCell = flagsClassificationClaim('| [PARAPHRASE] "quoted" | a live claim: plateau_share orders decoration from a glyph run. |');
   const sameCell = flagsClassificationClaim('| [PARAPHRASE] a live claim: plateau_share orders decoration from a glyph run. |');
   console.log(`  [F21] cross-cell=${crossCell} same-cell=${sameCell} -> ${crossCell && !sameCell ? "cell-scoped (fixed)" : "BAD"}`);
+  // F22: a strong negation must GOVERN the verb, not merely precede it.
+  const neverFails = flagsClassificationClaim("plateau_share never fails to order decoration from a glyph run.");
+  const withoutBlink = flagsClassificationClaim("plateau_share without blinking orders decoration from a glyph run.");
+  console.log(`  [F22] 'never fails to'=${neverFails} 'without blinking'=${withoutBlink} -> ${neverFails && withoutBlink ? "both flagged (fixed)" : "ESCAPES (bad)"}`);
+  // F23: a marker waives only the span it precedes.
+  const spanCell = flagsClassificationClaim("| [PARAPHRASE] old wording. Also plateau_share orders decoration from a glyph run. |");
+  console.log(`  [F23] marker+later-claim same cell=${spanCell} -> ${spanCell ? "flagged (fixed)" : "ESCAPES (bad)"}`);
   // F19: the field anchor must cover every emitted key.
   const { EMITTED_DISCLOSURE_KEYS, CLAIM_FIELD } = await import(pathToFileURL(p.join(root, "test-support", "prose-guard.mjs")).href);
   const uncovered = EMITTED_DISCLOSURE_KEYS.filter((k) => !CLAIM_FIELD.test(k));

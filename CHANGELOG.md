@@ -1,5 +1,60 @@
 # Changelog
 
+## Eighteenth-audit follow-up: governed negation and the span-scoped marker — 2026-09-27
+
+**Sixth round of one class.** Each round narrowed the *scope* of an exclusion (line → clause
+→ 25 chars → ≤6 chars → governed) and left its *kind*: a proximity/vocabulary test on
+author-controlled prose. A new phrasing escaped every round. This round closes the two
+latest openings **and changes the goal**: the positive disclaimer assertion is now the
+primary check, the phrase guard is a best-effort lint with a measured recall, and the
+**invariance pair** is a named acceptance test. See `ACCURACY.md` §5t.
+
+### Fixed
+
+- **F22 — the strong negation must GOVERN the verb.** `NEG_STRONG` was matched against a
+  25-char window, so `never fails to order` (in a quoted example) waived a claim that
+  *asserts* the classification (also `without blinking`, `no longer
+  ambiguous`). Now the last strong negation before the verb must have only **function
+  words** between it and the verb. `without \w+ing` is **removed** (widest offender).
+- **F23 — a marker waives only the SPAN it precedes** (to the first sentence end), not the
+  whole cell, so an unrelated claim later in the cell no longer escapes.
+
+### Accepted cost (documented, asserted)
+
+Governing trades escapes for false positives: legitimate retractions with a **content word**
+between the negation and the verb (`is not able to distinguish`, `cannot be said to
+separate`, `should not be used to order`) are now **flagged although they retract**.
+Measured on the fair union: escapes **3 → 0**, false positives **1 → 5**. Adopted because
+escapes are **silent** while false positives are **loud**; the five are asserted in the test
+suite so the trade cannot silently reverse.
+
+### Withdrawal
+
+The seventeenth audit's **idiom-list recommendation is withdrawn by the audit itself**
+(`idiom-affects=0` across 20,813 clauses — dead code, matching my round-17 measurement).
+
+### Also
+
+- `test-support/prose-guard.mjs` is now in **both** doc-scan file lists.
+- The period-splitting regression the audit met in its own F23 candidate (`lib/measure.js`)
+  is guarded by `\w\.\w` protection plus a test.
+
+## Seventeenth-audit follow-up: the adjacency window and the cell-scoped marker — 2026-09-27
+
+Round 16 scoped the negation to a 25-char window before the verb, but that window contained
+words that are **not negations in ordinary use** (`no`, `instead`), so natural phrasing
+waived a claim; and a structural marker in one table cell waived a claim in **another** cell.
+
+- **F20** — the negation is now **two-tier**: strong negations keep the 25-char window;
+  ambiguous `not`/`no` count **only immediately before the verb** (≤6 chars). The audit's
+  proposed **idiom list was implemented, measured (0 of 20,526 clauses), and REMOVED** as
+  dead code.
+- **F21** — `flagsClassificationClaim` splits on `|` **first** and evaluates each cell, so a
+  marker waives only its own cell; plus a two-directional assertion that every marker-bearing
+  line is un-flagged.
+- End-to-end: appending an `no doubt`-style or `instead`-adverb phrasing of the claim to
+  `README.md` now **fails** the suite (was 110/0).
+
 ## Sixteenth-audit follow-up: the waiver token and the field-anchor gap — 2026-09-26
 
 Round 15 fixed the named P6/P7 cases by adding two **free-text waiver tokens**

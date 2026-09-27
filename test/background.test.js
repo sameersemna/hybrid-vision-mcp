@@ -1146,7 +1146,7 @@ test("F17/F18: the prose guard catches live claims but NOT a trailing waiver tok
   const { readFile } = await import("node:fs/promises");
   const path = await import("node:path");
   const root = path.resolve(import.meta.dirname, "..");
-  const files = ["lib/measure.js", "README.md", "ACCURACY.md", "CHANGELOG.md", "index.js"];
+  const files = ["lib/measure.js", "README.md", "ACCURACY.md", "CHANGELOG.md", "index.js", "test-support/prose-guard.mjs"];
 
   // (a) the docs are clean
   for (const rel of files) {
@@ -1206,6 +1206,89 @@ test("F20/F21: ordinary words must not waive, and a marker waives only its OWN c
     false,
     "H2c: a line-start marker waives",
   );
+});
+
+test("F22: a STRONG negation must GOVERN the verb, not merely precede it", () => {
+  // F22 (eighteenth audit): the strong tier was still a 25-char PROXIMITY test, so
+  // negations that precede a verb WITHOUT negating it waived a claim — and each of these
+  // ASSERTS the classification, the opposite of a retraction.
+  const mustFlag = [
+    "plateau_share never fails to order decoration from a glyph run.", // A1
+    "plateau_share without blinking orders decoration from a glyph run.", // A3
+    "plateau_share no longer ambiguous orders decoration from a glyph run.", // A8
+    "plateau_share without exception orders decoration from a glyph run.",
+    "plateau_share never mind the noise orders decoration from a glyph run.",
+  ];
+  for (const line of mustFlag) assert.ok(flagsClassificationClaim(line), `must flag: ${line}`);
+
+  // True negations that do NOT govern a following content word are now FLAGGED as claims.
+  // This is a KNOWN, accepted FALSE-POSITIVE cost (escapes are silent) — recorded, not
+  // hidden. It is asserted here so a future change cannot silently reverse the trade.
+  const knownFalsePositives = [
+    "plateau_share is not able to distinguish decoration from text.",
+    "plateau_share cannot be said to separate decoration from text.",
+  ];
+  for (const line of knownFalsePositives) {
+    assert.equal(flagsClassificationClaim(line), true, `documented FP (content word between negation and verb): ${line}`);
+  }
+
+  // Simple governed negations must STILL be allowed.
+  const mustAllow = [
+    "plateau_share does NOT distinguish decoration from text.",
+    "plateau_share cannot distinguish decoration from text.",
+    "plateau_share never distinguishes decoration from text.",
+    "plateau_share does not order decoration from text.",
+    "no scalar separates decoration from text.",
+    "none of these fields distinguishes decoration from text.",
+  ];
+  for (const line of mustAllow) assert.equal(flagsClassificationClaim(line), false, `must allow: ${line}`);
+});
+
+test("F23: a marker waives only the SPAN it precedes, not the whole cell", () => {
+  // F23: the marker waived the entire CELL, so an unrelated claim later in the same cell
+  // escaped. It now waives only up to the first sentence end.
+  assert.ok(
+    flagsClassificationClaim("| [PARAPHRASE] old wording. Also plateau_share orders decoration from a glyph run. |"),
+    "B1: a marker must not waive a later claim in the same cell",
+  );
+  assert.equal(
+    flagsClassificationClaim("| [PARAPHRASE] quoted old wording only |"),
+    false,
+    "B2: a marker legitimately waives its own quoted span",
+  );
+  // The sentence-end finder must NOT split on a period inside a filename or decimal — the
+  // bug F17 fixed and the audit re-derived when a naive [.!?] split hit lib/measure.js.
+  // Direction matters: a marker waives its whole SENTENCE, so a claim inside that sentence
+  // (after a dotted token) must stay waived; without the `\w.\w` protection the split lands
+  // on the filename, leaks the claim into the remainder, and produces a FALSE POSITIVE.
+  assert.equal(
+    flagsClassificationClaim("| [REMOVED] see lib/measure.js: plateau_share orders decoration from a glyph run. |"),
+    false,
+    "a dotted filename must not end the waived span early (would falsely flag quoted history)",
+  );
+  // And a claim in a LATER sentence (past the true sentence end) is still flagged.
+  assert.ok(
+    flagsClassificationClaim("| [REMOVED] see lib/measure.js. plateau_share orders decoration from a glyph run. |"),
+    "a claim in a later sentence must still be flagged",
+  );
+});
+
+test("F22/F23 invariance pair: the SAME claim must get the SAME verdict with or without each waiver", () => {
+  // The test that matters most (audit §5): every waiver mechanism must be INVARIANT —
+  // adding it must not change the verdict on a live claim. It caught F18 and would have
+  // caught F21/F22/F23.
+  const claim = "plateau_share orders decoration from a glyph run.";
+  const wrappers = [
+    (c) => `${c} [PARAPHRASE]`, // trailing structural token (F18)
+    (c) => `| [PARAPHRASE] old wording. ${c} |`, // marker + claim, same cell (F23)
+    (c) => `| [PARAPHRASE] quoted | ${c} |`, // marker in another cell (F21)
+    (c) => `plateau_share never fails to ${c.slice("plateau_share ".length)}`, // un-governing strong negation (F22)
+    (c) => `plateau_share without blinking ${c.slice("plateau_share ".length)}`, // ditto
+  ];
+  assert.equal(flagsClassificationClaim(claim), true, "the bare claim is flagged");
+  for (const wrap of wrappers) {
+    assert.equal(flagsClassificationClaim(wrap(claim)), true, `a waiver must not change the verdict: ${wrap(claim)}`);
+  }
 });
 
 test("F21: a marker must annotate its OWN cell — every marker-bearing line is un-flagged", async () => {

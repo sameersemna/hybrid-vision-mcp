@@ -11,33 +11,24 @@ import { spawnSync } from "node:child_process";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const TESTFILE = path.join(ROOT, "test", "background.test.js");
 
-const WEAK_TIER =
-  "    const excused =\n" +
-  "      NEG_STRONG.test(window) ||\n" +
-  "      NEG_WEAK_IMMEDIATE.test(immediate);";
-
 const cases = [
   {
     id: "F20 the weak tier must be IMMEDIATE (a 25-char weak window re-admits `no doubt`)",
     test: "ordinary words must not waive",
     file: "test-support/prose-guard.mjs",
     // Widen the weak tier back to the 25-char window: `no doubt` then excuses the verb.
-    from: WEAK_TIER,
-    to:
-      "    const excused =\n" +
-      "      NEG_STRONG.test(window) ||\n" +
-      "      /(?:\\bnot\\b|\\bno\\b)/i.test(window); // REVERTED: weak tier at 25 chars",
+    // ANCHOR REPOINTED (round 18, governed form).
+    from: "    const excused = strongNegationGoverns(clause, m.index) || NEG_WEAK_IMMEDIATE.test(immediate);",
+    to: "    const excused = strongNegationGoverns(clause, m.index) || /(?:\\bnot\\b|\\bno\\b)/i.test(clause.slice(Math.max(0, m.index - 25), m.index)); // REVERTED: weak tier at 25 chars",
   },
   {
-    id: "F20 strong negations still work at 25 chars (cannot / does not)",
+    id: "F20 strong negations still work (cannot / does not)",
     test: "ordinary words must not waive",
     file: "test-support/prose-guard.mjs",
     // Remove the strong tier: legitimate `cannot` / `does NOT` negations stop being
     // excused, so the must-allow fixtures fail.
-    from: WEAK_TIER,
-    to:
-      "    const excused =\n" +
-      "      NEG_WEAK_IMMEDIATE.test(immediate); // REVERTED: no strong tier",
+    from: "    const excused = strongNegationGoverns(clause, m.index) || NEG_WEAK_IMMEDIATE.test(immediate);",
+    to: "    const excused = NEG_WEAK_IMMEDIATE.test(immediate); // REVERTED: no strong tier",
   },
   {
     id: "F21 a marker waives only its OWN cell (not the whole row)",

@@ -2138,6 +2138,131 @@ the safe one.
   waive a claim — `split("|")` treats escaped pipes as separators; **not measured**.
 - That the **19** markers each annotate exactly the text they claim to.
 
+## 5t. Eighteenth audit: the strong-negation window and the span-scoped marker
+
+### Withdrawals and confirmations
+
+- **The audit WITHDRAWS its idiom-list recommendation.** It re-implemented the shipped rule
+  with and without an idiom list and counted clause-level diffs across the corpus:
+  `clauses=20813 idiom-affects=0`. So the ≤6-char immediate tier does all the work and the
+  list is dead code — my round-17 measurement was right.
+- **My H1a–H1c retraction is confirmed** independently: negation *after* the verb is caught,
+  because the loop re-tests each verb occurrence.
+
+### F22 — the *strong* tier was still a proximity test
+
+`NEG_STRONG` was matched against a 25-char window, and it contained words that routinely
+precede a verb **without negating it**. Each line below **asserts** the classification:
+
+| # | line | round-17 verdict |
+|---|---|---|
+| A1 | [PARAPHRASE] `plateau_share never fails to order decoration from a glyph run.` | **escaped** |
+| A3 | [PARAPHRASE] `plateau_share without blinking orders decoration from a glyph run.` | **escaped** |
+| A8 | [PARAPHRASE] `plateau_share no longer ambiguous orders decoration from a glyph run.` | **escaped** |
+
+End-to-end through the real suite (appending to `README.md`):
+
+| appended | round-17 | **round-18** |
+|---|---|---|
+| [PARAPHRASE] `plateau_share orders decoration from a glyph run.` (control) | 111 / 1 fail | 111 / 1 fail |
+| [PARAPHRASE] `plateau_share never fails to order decoration from a glyph run.` | **112 / 0 — escaped** | **111 / 1 fail** |
+| [PARAPHRASE] `plateau_share without blinking orders decoration from a glyph run.` | **112 / 0 — escaped** | **111 / 1 fail** |
+| [PARAPHRASE] `plateau_share no longer ambiguous orders decoration from a glyph run.` | **112 / 0 — escaped** | **111 / 1 fail** |
+
+### F23 — a marker waived its whole cell
+
+`cellIsClaim` returned `false` for the entire cell once a marker was found, so an unrelated
+claim later in the same cell escaped:
+
+| # | line | round-17 | **round-18** |
+|---|---|---|---|
+| B1 | a marker, then an unrelated classification claim, both in the same cell | **escaped** | **flagged** |
+| B2 | a marker annotating only its own quoted span | allowed | allowed |
+
+The marker count has grown **19 → 31**, so each cell-wide waiver was more costly than last
+round.
+
+### The fix, and the cost the audit did not see
+
+**F22 — governed negation.** The **last** strong negation before the verb must have only
+**function words** between it and the verb, within 30 chars. So `never fails to order` is
+*not* excused (the content word `fails` intervenes), while `does NOT distinguish` and
+`cannot distinguish` are.
+
+I also **removed `without \w+ing`** from `NEG_STRONG` — the widest offender (`without
+blinking`, `without pausing` read as emphasis).
+
+**The cost, measured on the fair union** (must-flag **and** must-allow, including long
+retractions) — the audit's fix design measured only the must-flag set and real docs, so it
+did not see this:
+
+| variant | escapes (9) | false positives (13) |
+|---|---|---|
+| round-17 (proximity, keep `without X-ing`) | 3 | 1 |
+| proximity, drop `without X-ing` | 2 | 1 |
+| governed, keep `without X-ing` | 1 | **5** |
+| **governed, drop `without X-ing`** | **0** | **5** |
+
+Governing trades escapes for false positives: legitimate retractions that put a **content
+word** between the negation and the verb — `is not able to distinguish`, `cannot be said to
+separate`, `should not be used to order` — are now **flagged although they retract**. Those
+five FPs are **asserted in the test suite** so the trade cannot silently reverse. Adopted
+because **escapes are silent** (a caller never sees the omitted disclosure) while false
+positives are loud (the guard fails, someone reads the line) — the same asymmetry that drove
+the F14 decision.
+
+**F23 — span-scoped marker.** A marker waives only up to the **first sentence end**; the
+cell's remainder is still checked.
+
+### The period-splitting regression, in the audit's own candidate
+
+The audit's first F23 attempt split on `[.!?]` and produced a real-doc false positive by
+splitting on the **period in `lib/measure.js`** — *precisely* the bug F17 fixed and that
+this file comments about at length. That is the clearest evidence yet that the rule keeps
+re-deriving the same mistake. The repair — and the one shipped — excludes periods that are
+not sentence ends (`\w\.\w`) before splitting.
+
+### The disposition (§5 of the audit) — adopted
+
+Six rounds of one class is enough to change the **goal**, not the pattern. The guard's own
+header now states:
+
+- the **positive disclaimer assertion is PRIMARY** — the docs must *state the opposite* of
+  the claim, and that is the one mechanism a paraphrase cannot defeat;
+- the phrase guard is a **best-effort lint whose recall is a measured number**, not
+  "coverage";
+- the test that matters most is the **invariance pair** — the same claim ± each waiver
+  mechanism must get the **same** verdict. It caught F18 and would have caught F21/F22/F23,
+  so it is now a named acceptance test.
+
+The **reviewable-allowlist** option (require every field-name mention to be inside a marked
+quoted-history span or accompanied by the disclaimer) is **not adopted this round** — it is
+a re-architecture, and the positive assertion already supplies the paraphrase-proof core.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **115/115** (was 112; +3 round-18 tests) |
+| A1 / A3 / A8 | flagged (proven end-to-end: 111/1 each) |
+| B1 / B2 | cross-span flagged, own-span allowed |
+| invariance pair | 5 wrappers, all same-verdict |
+| governed-negation FPs | asserted (documented, not hidden) |
+| real docs | 0 un-retracted claims; 0 false positives |
+| non-vacuity | +4 round-18 guards |
+| live MCP (scratch 11498) | §16: F22 both flagged, F23 span-scoped |
+
+### What this audit has NOT proven
+
+- That the strong-negation space is exhausted — `without X-ing` was one family and it is now
+  dropped rather than governed.
+- That governed negation holds beyond these 15 cases and this repo's ~20,800 clauses; no
+  external prose was tested.
+- That the `\w\.\w` repair is sufficient in general — **abbreviations** (`e.g.`, `i.e.`) and
+  **ellipses** (`...`) were not tested.
+- That any of these escapes occurred in the shipped docs — the docs are clean today; these
+  are waivers available to a future author.
+
 ## 9. New module map
 
 | File | Responsibility |
