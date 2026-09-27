@@ -1,5 +1,69 @@
 # Changelog
 
+## Twenty-first-audit follow-up: back to the engine (F27, F28) — 2026-09-27
+
+Round 20's disposition was to **stop extending the documentation guard** and spend the next
+round on the **measurement engine**. The guard is untouched (frozen, recall `18/19`). Both
+defects below share one shape: the engine **had** the evidence that its model was wrong, and
+**still published a verdict**. See `ACCURACY.md` §5w.
+
+### Fixed
+
+- **F27 — a text-free gradient was reported as FAILING text.** A `#101010`→`#606060` gradient
+  with no text reported `all_meet_aa:false, failing:1`, the "failing colour" being `#606060`
+  at 2.98:1 across **659,000px (94% of the region)** — the ramp's own far end. A single global
+  background explains only **8.3%** of the region (`adequate:false`), so the ramp end cleared
+  the ink threshold; but `all_meet_aa`/`failing_count` were computed **before** `background_fit`
+  existed and the `!adequate` branch only added a note. Now, when the global verdict is a
+  **failure** and the model is **inadequate** (not multi-plateau, not explicit background),
+  the region is re-run with the per-tile model: if it finds **no text** the engine **abstains**
+  (`measurable:false`, `all_meet_aa:null`); if it **does** find text the global verdict is kept
+  (F5 contract) and the local failing colours are disclosed in `model_disagreement`. This is the
+  **mirror of the F6 clean-pass guard**. Scoped to `adequate:false` (only the three gradients).
+- **F28 — outlined text: the darker of two colours was discarded and a failure hidden.** Fill
+  `#464646` (**1.88:1 — FAILS**) + 3px stroke `#e8dfd0` (13.42 pass) reported
+  `#e8dfd0@13.42 px=22725, all_meet_aa:true`. Independent census: true stroke **2,617px**,
+  true fill **17,269px (6.6× larger, FAILING)** — in **no channel**. The component colour was
+  its **extremal pixel** (the stroke) and `pixel_count` was the whole component. Each additional
+  colour that clears the gates is now emitted as its **own entry** with `multi_colour_of`; the
+  parent's count is reduced by what was broken out, so the two **sum to the component** and the
+  larger ink has the larger count.
+
+### Measured gates (and two candidates rejected)
+
+| gate | value | measurement |
+|---|---|---|
+| absolute pixel floor | 512 | true ink 2,561–20,706px; AA fragments 68–158px |
+| not an AA blend | — | a fringe blends toward the extremal colour |
+| not background-sized + low-contrast | >2% area **and** <1.5 ratio | dense-flat tones 124k–185kpx at 18–27% |
+| parent box ≤ 50% of region | 0.5 | photo/dense-flat parent = 1.000; real glyph = 0.028 |
+
+- **A *share* floor (≥0.2) was tried and REJECTED:** a share is anti-correlated with size
+  (the F14/F15/F20 trap) and it **failed the reversed direction** (light fill + dark stroke).
+- **A structure gate was measured REDUNDANT and removed:** border edge shades are 68–313px,
+  below the 512px floor; removing it kept **120/120**.
+
+### Both directions in one test
+
+A fix that always kept the extremal colour passes dark-fill and **fails** light-fill; both live
+in ONE acceptance test, plus a fill-only control.
+
+### Acceptance evidence
+
+- `npm test`: **120** (was 118); F27 and F28 tests added.
+- non-vacuity: **95** guards (was 90); `verify/nonvacuity-round21.mjs` perturbs the F27 abstain
+  branch, the F27 local-measurable guard, the F28 emission, the F28 pixel floor, and the F28
+  parent-box gate — all five fail their tests when perturbed, then restore byte-identically.
+- live MCP (scratch 11498): §17 reports F27 fixed and F28 fixed **both directions**.
+- The flat acceptance fixture is **unchanged** (5 colours, worst `#1e1c18@1.04`).
+
+### Open, stated not implied
+
+The photographic fixture shows a **deeper limitation**: a drifting gradient links its tones into
+**one region-spanning blob**, so the pink **text** tone sits inside a blob whose box is the whole
+region. Surfacing it under a single global background is **unproven**; the per-tile model
+resolves it. The parent-box gate exists precisely to reject such blobs.
+
 ## Twentieth-audit follow-up: the disposition was declared, not recorded — 2026-09-27
 
 Round 19's disposition promised the phrase guard's recall would be **a measured number** —

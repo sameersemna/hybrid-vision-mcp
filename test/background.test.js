@@ -63,6 +63,8 @@ import {
   buildFragmentationFixture,
   buildBarsReferenceF16Fixture,
   buildDenseTextIINumbersFixture,
+  buildTextFreeGradientFixture,
+  buildOutlinedTextFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
@@ -82,6 +84,7 @@ import {
   FRAG_SWEEP,
   BARS_REF_F16,
   DENSE_TEXT_F16,
+  OUTLINED_TEXT,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -1673,5 +1676,91 @@ test("F13: the disclosed entry carries the numbers a caller needs to act", async
   assert.equal(typeof named.largest_component_share, "number");
   assert.equal(typeof named.detected_plateau, "boolean");
   assert.ok(named.measured_against, "the reference colour is present");
+});
+
+// ==========================================================================
+// Twenty-first-audit acceptance tests (F27 engine verdict on an unmodellable
+// background; F28 multi-colour absorption). Non-vacuous per
+// verify/nonvacuity-round21.mjs.
+// ==========================================================================
+
+test("F27: a text-free gradient must not be reported as FAILING text", async () => {
+  const pixels = await loadPixels(await buildTextFreeGradientFixture());
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+
+  // The premise: a single global background is a poor model for the ramp.
+  const g = contrastInRegion(pixels, region);
+  assert.equal(g.background_fit.adequate, false, "the ramp is not modelled by one colour");
+  assert.ok(g.background_fit.explained_fraction < 0.5, "the fit is below the adequacy floor");
+
+  // The defect: the ramp's far END cleared the ink threshold and was reported as
+  // a failing text colour (94% of the region — the background itself). A
+  // text-free image has no failing text, so the engine must not assert one.
+  assert.equal(g.measurable, false, "a text-free gradient must abstain, not assert a verdict");
+  assert.equal(g.all_meet_aa, null, "all_meet_aa must be null, not false");
+  assert.equal(g.failing_count, 0);
+  assert.equal(g.colours.length, 0);
+  assert.ok(
+    g.abstained.some((a) => /background/i.test(a.reason)),
+    "the abstention must say WHY (the global model is inadequate and local finds no text)",
+  );
+
+  // CONTROL: a genuinely flat, text-free page is unchanged (also abstains, but
+  // for the ordinary "nothing here" reason, not the ramp reason).
+  const flat = contrastInRegion(await loadPixels(await buildFlatTextFixture({ lines: [] })), FIXTURE.region);
+  assert.equal(flat.measurable, false);
+  assert.equal(flat.all_meet_aa, null);
+
+  // CONTROL: the same gradient WITH real dark text keeps a failure — the fix
+  // abstains only when there is no text at all, it never hides real text.
+  const withText = contrastInRegion(await loadPixels(await buildTextFreeGradientFixture()), region);
+  assert.equal(withText.measurable, false, "still no text in this fixture");
+  const texted = contrastInRegion(
+    await loadPixels(await buildGradientTextFixture()),
+    { left: 0, top: 0, width: 900, height: 420 },
+  );
+  assert.equal(texted.measurable, true, "a gradient WITH text stays measurable");
+  assert.equal(texted.all_meet_aa, false, "and its real failure is still reported");
+});
+
+test("F28: outlined text reports BOTH colours, and a failure cannot hide", async () => {
+  const pixels = await loadPixels(await buildOutlinedTextFixture());
+  const r = contrastInRegion(pixels, OUTLINED_TEXT.region);
+
+  // The defect: the EXTREMAL colour (the light stroke) took the whole component,
+  // so the darker interior — the larger, lower-contrast ink — appeared in NO
+  // channel and the verdict read `all_meet_aa: true`.
+  const fill = r.colours.find((c) => c.foreground === OUTLINED_TEXT.fill);
+  assert.ok(fill, `the outlined fill ${OUTLINED_TEXT.fill} must be reported`);
+  assert.equal(fill.wcag_aa, false, "and it must be measured as FAILING");
+  assert.equal(r.all_meet_aa, false, "so the verdict can no longer read clean");
+  assert.equal(r.failing_count, 1);
+
+  // The stroke is still reported, with its OWN (small) pixel count — not the
+  // whole component's. The independent census is stroke ~2543px, fill ~17226px.
+  const stroke = r.colours.find((c) => c.foreground === OUTLINED_TEXT.stroke);
+  assert.ok(stroke, "the stroke colour is still reported");
+  assert.equal(stroke.wcag_aa, true);
+  assert.ok(fill.pixel_count > stroke.pixel_count, "the fill is the larger ink");
+
+  // REVERSED direction: a LIGHT fill with a DARK stroke. A fix that always kept
+  // the extremal colour would pass the case above and fail this one, so both
+  // directions live in ONE test.
+  const rev = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ fill: "#e8dfd0", stroke: "#464646" })),
+    OUTLINED_TEXT.region,
+  );
+  const revDark = rev.colours.find((c) => c.foreground === OUTLINED_TEXT.fill);
+  assert.ok(revDark, "the darker of TWO colours must survive in either direction");
+  assert.equal(revDark.wcag_aa, false);
+  assert.equal(rev.all_meet_aa, false);
+
+  // CONTROL: fill only (no stroke) is unchanged — same failing colour, same ratio.
+  const only = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ stroke: "#464646" })),
+    OUTLINED_TEXT.region,
+  );
+  assert.equal(only.failing_count, 1);
+  assert.equal(only.colours.find((c) => c.foreground === OUTLINED_TEXT.fill).contrast_ratio, OUTLINED_TEXT.fillRatio);
 });
 

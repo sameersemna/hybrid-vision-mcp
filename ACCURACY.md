@@ -2481,6 +2481,172 @@ these two spots.
   escape cases, so 18/19 is a **regression score for known cases**, not an estimate over
   unseen prose.
 
+## 5w. Twenty-first audit: back to the engine — two measured verdict defects
+
+Round 20 ended with a disposition: **stop extending the documentation guard** and spend the
+next round on the **measurement engine**, where the defects are real and findable by fixture
+ground truth. This round does that. The guard is untouched (frozen, recall still `18/19`).
+
+Both defects share a shape this project keeps meeting: **a tool that sounds certain about
+something it did not measure.** In each case the engine already *had* the evidence that its
+model was wrong (an inadequate background fit; a component that is visibly two colours) and
+**still published a verdict**.
+
+### F27 — a text-free gradient was reported as FAILING text
+
+**Reproduction.** A 1000×700 linear gradient `#101010` → `#606060` with **no text at all**.
+Reported:
+
+```
+measurable=true  all_meet_aa=false  failing=1
+colours: #606060 @ 2.98 px=659000  comps=1
+background_fit: explained_fraction=0.083  adequate=false
+```
+
+The "failing colour" is `#606060` across **659,000px — 94% of the region**. It is the ramp's
+own far end. A single global background explains only **8.3%** of the region, so the ramp end
+clears the ink threshold *against the modal colour* and becomes "text". **Control:** a flat
+no-text image reports `measurable=false` — the tool is not simply always-failing; the ramp is
+what makes it fire.
+
+The mechanism is a **verdict/evidence inversion**: `all_meet_aa` and `failing_count` are
+computed from the failing list **before** `background_fit` exists, and the `!adequate` branch
+only appends a *note*. So the tool **already knew** the model was poor (`adequate: false`)
+and populated the verdict fields anyway.
+
+**Discriminator, measured** (not tuned): re-running the region with the per-tile (`local`)
+model, which exists precisely for ramps and photographs:
+
+| fixture | global | local |
+|---|---|---|
+| text-free gradient | `#606060@2.98` (ramp end) | **not measurable** |
+| gradient WITH text | `#606060@3.34` (ramp end) | real tones `#080808@1.05`, `#3e3e3e@1.96` |
+| flat (control) | not measurable | not measurable |
+
+`adequate:false` occurs for exactly three fixtures (steep gradient 0.051, gradient text 0.081,
+text-free gradient 0.083) and **never** for a flat page or a photo. So the branch is scoped to
+`adequate:false` and nothing else moves.
+
+**The fix.** When the global verdict is a **failure**, the model is **inadequate**, and the
+region is **not** multi-plateau or explicit-background: re-run local.
+
+- If local finds **nothing assessable** ⇒ **ABSTAIN** (`measurable:false`, `all_meet_aa:null`,
+  `failing_count:0`) and say the enumerated colour is the background ramp. This is the
+  text-free gradient.
+- If local **does** find text ⇒ keep the global verdict — the F5 contract is that a
+  gradient/photo **falls back to the single background and warns** — and disclose the local
+  model's failing colours in `model_disagreement`.
+
+This is the **mirror of the F6 clean-pass guard**: F6 arbitrates a *clean* global verdict
+against local; F27 arbitrates a *failing* global verdict against local when the premise is
+known-bad. It does **not** change the ink threshold, and it does **not** make local the
+default — local over-reports on dense flat panels, which is why it is not the default.
+
+### F28 — outlined text: the darker of two colours was discarded and a failure hidden
+
+**Reproduction.** Fill `#464646` (**1.88:1 — FAILS**) with a 3px stroke `#e8dfd0`
+(13.42:1 — passes). Reported:
+
+```
+colours: #e8dfd0 @ 13.42  px=22725
+all_meet_aa: true
+```
+
+The verdict is **clean**. But an independent pixel census of the same glyph shows:
+
+| colour | true pixels | reported pixels | contrast |
+|---|---|---|---|
+| `#e8dfd0` (stroke) | **2,617** | 22,725 (the whole component) | 13.42 pass |
+| `#464646` (fill) | **17,269** | **— in NO channel —** | **1.88 FAIL** |
+
+The fill is **6.6× larger** than the stroke and is the failing ink; it was attributed to the
+stroke colour and surfaced in no channel.
+
+**Mechanism.** A component's colour has always been its **extremal pixel** (furthest from the
+background). For an outlined glyph the *light stroke* is extremal, so the *darker interior* is
+absorbed; and `pixel_count` was `members.length`, giving the whole component to the stroke.
+`localCounts` held the true split the entire time.
+
+**The fix.** Each additional colour in a component that clears the gates below is emitted as
+its **own entry** with `multi_colour_of` = the parent's hex, inheriting the box but carrying
+its **own** pixel count. The parent's count is then reduced by what was broken out, so the two
+entries **sum to the component** (stroke 5,499 + fill 17,226 = 22,725) and the larger ink is
+the larger count.
+
+**The gates, each measured** (all four were needed; two earlier candidates were measured and
+**rejected**):
+
+| gate | value | measurement that set it |
+|---|---|---|
+| absolute pixel floor | `MULTICOLOUR_MIN_PIXELS = 512` | true second ink **2,561–20,706px**; AA fragments **68–158px**; no fixture between 158 and 2561 |
+| not an AA blend of the extremal colour | — | a fringe is a blend of the colour it merges toward, not a second ink |
+| not background-sized **and** low-contrast | area > 2% **and** ratio < 1.5 | dense-flat page tones: 124,945/181,941/185,191px at 18–27% of the region, ratio 1.04–1.29 |
+| parent box ≤ 50% of the region | `MULTICOLOUR_PARENT_MAX_BOX_FRACTION = 0.5` | a **glyph cannot span the region**: photographic parent = **1.000**, dense-flat = **1.000**, real outlined glyph = **0.028** |
+
+**Rejected candidates (measured, not guessed):**
+
+- **A *share* floor (`count2/component ≥ 0.2`) — REJECTED.** A share is **anti-correlated with
+  size**: a 2px component's single AA pixel is 50% of it, while the outlined fill is only ~10%
+  of *its* component. So a share floor is simultaneously too loose for tiny glyphs and too tight
+  for the real defect, and it **failed the reversed direction** (light fill + dark stroke) outright.
+  This is the same share-vs-size anti-correlation that produced **F14, F15, F20**.
+- **A structure gate (skip decorative borders) — MEASURED REDUNDANT, removed.** Border edge
+  shades measure 68–313px, **below the 512px floor**, so the floor already covers them. Removing
+  it kept **120/120** — no untested predicate is carried.
+
+**Both directions live in ONE test.** A fix that always kept the extremal colour would pass the
+dark-fill case and **fail** the reversed (light-fill + dark-stroke) case:
+
+| fixture | reported | `all_meet_aa` |
+|---|---|---|
+| dark fill `#464646` + light stroke `#e8dfd0` | `#464646@1.88` (17,226px), `#e8dfd0@13.42` (5,499px) | **false** |
+| light fill `#e8dfd0` + dark stroke `#464646` | `#464646@1.88` (2,561px), `#e8dfd0@13.42` (20,096px) | **false** |
+| fill only (control) | `#464646@1.88` (22,657px) | false (unchanged) |
+
+### The relation to §5k, and one deliberate non-goal
+
+§5k's DECLINED trade was about a **different** case — a large content-dense *panel* colour that
+the mask treats as background — and is unaffected by this round.
+
+F28's fix does **not** claim the engine now attributes a multi-colour component perfectly. The
+photographic fixture shows a **deeper, open limitation**: a drifting gradient links its tones
+into **one region-spanning blob**, so the pink **text** tone `#f2b8b8` sits inside a blob whose
+box is the whole region. That is why the parent-box gate must reject such blobs — the "second
+colour" there is field shading, not a glyph's second ink. Surfacing that text tone under a
+single global background remains **unproven**; the per-tile model resolves it, which is what
+`background_mode:"local"` is for. This is stated, not implied.
+
+**What is now guaranteed:** the darker of two inks in a glyph is **no longer silently
+absorbed** — it appears as its own entry (`multi_colour_of` marks it) and the failing one can
+no longer be hidden behind a passing extremal colour.
+
+### Acceptance evidence
+
+| case | before | after |
+|---|---|---|
+| text-free gradient | `all_meet_aa:false failing:1` (`#606060@2.98`) | `measurable:false all_meet_aa:null failing:0` |
+| outlined dark fill + light stroke | `#e8dfd0@13.42 px=22725`, `all_meet_aa:true` | `#464646@1.88 px=17226` surfaced, `all_meet_aa:false` |
+| outlined light fill + dark stroke | dark stroke absorbed | `#464646@1.88` surfaced, `all_meet_aa:false` |
+| acceptance fixture (flat) | 5 colours, worst `#1e1c18@1.04` | **unchanged** |
+| `npm test` | 118 | **120** (F27 + F28 tests) |
+| non-vacuity | 90 guards | **95** (+5 round-21 guards) |
+| live MCP (scratch 11498) | — | §17: F27 fixed, F28 fixed both directions |
+
+### The four gates measured, and the one that was cut
+
+Five guards were carried; a sixth (the structure gate) was **measured redundant** and removed
+rather than kept untested — the project does not carry predicates no test can fail.
+
+### What this audit has NOT proven
+
+- That the engine attributes a multi-colour component **exhaustively** — the photographic
+  region-spanning-blob case above is open, and is named as such.
+- That the 512px floor is universal. It sits in a **measured gap** (158 → 2561) across the
+  standing fixtures; a text colour thinner than ~512px in **both** its inks is outside the
+  evidence.
+- That the local model is **generally** better. It is preferred **only** when the global model
+  is inadequate; on flat panels it over-reports and is not the default.
+
 ## 9. New module map
 
 | File | Responsibility |

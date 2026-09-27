@@ -793,6 +793,12 @@ one.
 > positive assertion**: the docs must **contain** the explicit disclaimer (they do). The
 > acceptance test that matters is the **invariance pair** (a claim must get the same verdict
 > with or without each waiver mechanism). See `ACCURACY.md` §5r–§5v.
+>
+> **The guard is FROZEN (twenty-first audit).** Following the round-19 recommendation, no
+> further effort goes into extending this lint; later rounds spend their substance on the
+> **measurement engine** instead. See `ACCURACY.md` §5w for that round's two engine defects
+> (a text-free gradient reported as failing text; the darker of two colours in outlined text
+> silently absorbed).
 
 ---
 

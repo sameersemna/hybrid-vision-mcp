@@ -239,6 +239,57 @@ export async function buildSteepGradientFixture() {
   return buildShallowGradientFixture({ lo: 20, hi: 220 });
 }
 
+/**
+ * A NOISELESS, TEXT-FREE gradient — the twenty-first-audit F27 reproduction.
+ *
+ * The ramp runs #101010 -> #606060 top to bottom, so its far END clears the ink
+ * threshold against the modal colour. With no text at all, a single global
+ * background is a poor model (adequate:false, fit ~0.08), and the ramp's end was
+ * reported as a failing "text colour" (`#606060` at 2.98:1 across ~659,000px —
+ * 94% of the region). A text-free image has no failing text; the engine must not
+ * assert one.
+ */
+export async function buildTextFreeGradientFixture({ w = 1000, h = 700, lo = "#101010", hi = "#606060" } = {}) {
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0" stop-color="${lo}"/><stop offset="1" stop-color="${hi}"/>` +
+    `</linearGradient></defs><rect width="${w}" height="${h}" fill="url(#g)"/></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+/**
+ * OUTLINED text on a flat dark page — the twenty-first-audit F28 reproduction.
+ *
+ * `fill` is the glyph interior, `stroke` a thin outline of `strokeWidth` px. The
+ * EXTREMAL pixel is whichever colour is further from the background, so with a
+ * LIGHT stroke the darker interior was silently absorbed: the whole component was
+ * attributed to the stroke colour and the fill — the larger, lower-contrast ink —
+ * appeared in NO channel, and the verdict read `all_meet_aa: true`.
+ */
+export async function buildOutlinedTextFixture({
+  w = 1000, h = 700,
+  background = "#1a1814", fill = "#464646", stroke = "#e8dfd0", strokeWidth = 3,
+  text = "AB", fontSize = 180,
+} = {}) {
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>` +
+    `<text x="60" y="${Math.round(h * 0.55)}" font-family="DejaVu Sans, sans-serif" ` +
+    `font-size="${fontSize}" font-weight="bold" fill="${fill}" stroke="${stroke}" ` +
+    `stroke-width="${strokeWidth}">${text}</text></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+/** The F28 fill/stroke colours and their independently measured pixel census. */
+export const OUTLINED_TEXT = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  fill: "#464646",
+  fillRatio: 1.88, // FAILS AA
+  stroke: "#e8dfd0",
+  strokeRatio: 13.42, // passes
+};
+
 /** A plain flat UI with a grid of cards — a legitimate single-background case. */
 export async function buildCardsFlatFixture() {
   const W = 1200, H = 800;

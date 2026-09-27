@@ -565,4 +565,47 @@ console.log("\n=== 16. round-15/16 checks (F17/F18/F19 the prose guard is struct
   console.log(`  [F17] files carrying the explicit disclaimer: ${withDisc.join(", ")} (${withDisc.length}/3)`);
 }
 
+// Round-21 checks (twenty-first audit F27/F28). F27: a text-free gradient was
+// reported as FAILING text (the ramp's own end). F28: outlined text's darker
+// colour was absorbed by the extremal stroke colour.
+async function textFreeGradient() {
+  const w = 1000, h = 700;
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0" stop-color="#101010"/><stop offset="1" stop-color="#606060"/>` +
+    `</linearGradient></defs><rect width="${w}" height="${h}" fill="url(#g)"/></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+async function outlinedText({ fill = "#464646", stroke = "#e8dfd0" } = {}) {
+  const w = 1000, h = 700;
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="#1a1814"/>` +
+    `<text x="60" y="385" font-family="DejaVu Sans, sans-serif" font-size="180" ` +
+    `font-weight="bold" fill="${fill}" stroke="${stroke}" stroke-width="3">AB</text></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+console.log("\n=== 17. round-21 checks (F27 text-free gradient; F28 outlined text) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+
+  // F27: a text-free gradient must abstain, not report the ramp as failing text.
+  const g = await call("measure_image", { image_source: toUri(await textFreeGradient()), mode: "contrast", region });
+  const gc = g.measurements.contrast;
+  console.log(`  [F27] measurable=${gc.measurable} all_meet_aa=${gc.all_meet_aa} failing=${gc.failing_count} fit=${gc.background_fit?.explained_fraction?.toFixed(3)} adequate=${gc.background_fit?.adequate}`);
+  console.log(`  [F27] abstention reason names the background: ${g.measurements.contrast.abstained?.some((a) => /background/i.test(a.reason)) ? "YES" : "NO"}  -> F27 fixed: ${gc.measurable === false && gc.all_meet_aa === null && gc.failing_count === 0 ? "YES" : "NO"}`);
+
+  // F28: outlined text must report BOTH colours, in either direction.
+  for (const [label, opts] of [["dark fill + light stroke", {}], ["light fill + dark stroke", { fill: "#e8dfd0", stroke: "#464646" }]]) {
+    const r = await call("measure_image", { image_source: toUri(await outlinedText(opts)), mode: "contrast", region });
+    const c = r.measurements.contrast;
+    const dark = c.colours.find((x) => x.foreground === "#464646");
+    console.log(`  [F28 ${label}] colours=${c.colours.map((x) => x.foreground + "@" + x.contrast_ratio + "(px=" + x.pixel_count + ")").join(", ")}`);
+    console.log(`  [F28 ${label}] all_meet_aa=${c.all_meet_aa} failing=${c.failing_count} #464646 reported+FAILING=${dark && !dark.wcag_aa}  -> F28 fixed: ${dark && !dark.wcag_aa && c.all_meet_aa === false ? "YES" : "NO"}`);
+  }
+}
+
 await client.close();
