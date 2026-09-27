@@ -26,18 +26,20 @@ const cases = [
     id: "F22 the govern gap must be bounded (a far negation does not govern)",
     test: "STRONG negation must GOVERN the verb",
     file: "test-support/prose-guard.mjs",
-    // Remove the gap cap and the content-word test so ANY preceding negation governs:
-    // then `is not able to distinguish` is allowed, and the documented FP assertion fails.
-    from: "  const words = gap.toLowerCase().match(/[a-z']+/g) || [];\n  return words.every((w) => FUNCTION_WORDS.test(w));",
+    // Remove the gap cap and the content-word test so ANY preceding negation governs,
+    // which allows real claims again (a far negation does not govern). ANCHOR REPOINTED
+    // (round 19, GLUE added).
+    from: "  const words = gap.toLowerCase().match(/[a-z']+/g) || [];\n  return words.every((w) => FUNCTION_WORDS.test(w) || GLUE.test(w));",
     to: "  return true; // REVERTED: any preceding negation governs",
   },
   {
     id: "F23 a marker waives only its SPAN (cell-wide re-admits B1)",
     test: "marker waives only the SPAN",
     file: "test-support/prose-guard.mjs",
-    // Revert to cell-wide: B1 escapes and the invariance pair must fail.
-    from: "    const remainder = end >= 0 ? afterMarker.slice(end + 1) : \"\"; // no sentence end => marker waives the rest\n    return remainder.split(/[;,:]/).some(clauseIsClaim);",
-    to: "    return false; // REVERTED: marker waives the whole cell",
+    // Revert to cell-wide: B1 escapes and the invariance pair must fail. ANCHOR REPOINTED
+    // (round 19) to a robust one-line anchor.
+    from: "  const m = cell.match(MARKER);\n  if (m) {",
+    to: "  const m = cell.match(MARKER);\n  if (m) { return false; // REVERTED: marker waives the whole cell",
   },
   {
     id: "F23 the sentence-end finder must not split a dotted filename",

@@ -25,19 +25,20 @@
 //   - exclusions are STRUCTURAL and PER-CELL: a marker waives only the cell it starts;
 //   - the field anchor covers EVERY emitted disclosure key, asserted by a test.
 //
-// HONEST SCOPE (F17-F23) — SIX rounds of one class. Each round narrowed the SCOPE of an
-// exclusion (line -> clause -> 25 chars -> <=6 chars -> governed) and left its KIND:
-// a proximity/vocabulary test on author-controlled prose. A new phrasing has escaped
-// every round. So this rule is a BEST-EFFORT LINT, not a barrier:
-//   * its recall is a MEASURED NUMBER on the fixture set below, not "coverage";
-//   * the PRIMARY, paraphrase-proof check is the POSITIVE disclaimer assertion
-//     (`DISCLAIMER`): the docs must STATE the opposite of the claim. That is the part a
-//     paraphrase cannot defeat.
+// HONEST SCOPE (F17-F25) — SEVEN rounds of one class. Each round narrowed the SCOPE of an
+// exclusion (line -> clause -> 25 chars -> <=6 chars -> governed -> quote-span) and left
+// its KIND: a proximity/vocabulary test on author-controlled prose. Each fix produced a
+// new escape class. NO MORE SCOPE NARROWINGS — this file is FROZEN as a best-effort lint:
+//   * *PRIMARY gate* is the POSITIVE disclaimer assertion (`DISCLAIMER`): the docs must
+//     STATE the opposite of the claim. It is paraphrase-proof and is a named test.
+//   * this phrase rule is a BEST-EFFORT LINT whose recall is a MEASURED NUMBER on the
+//     fixture set, NOT "coverage". If it misses a paraphrase, the positive assertion holds.
 //   * the test that matters most is the INVARIANCE PAIR: the same claim with and without
 //     each waiver mechanism must get the SAME verdict.
-// Known residuals: a negation >25 chars from the verb is missed; and governing declines
-// to excuse legitimate retractions with a content word before the verb (`is not able to
-// distinguish`) — an accepted, documented FALSE-POSITIVE cost (escapes are silent).
+// F24/F25 note: `GLUE` is vocabulary again and is the last list added. `fail|fails` is
+// deliberately EXCLUDED (it inverts polarity: `never fails to order` ASSERTS the claim).
+// Residuals: a negation >25 chars from the verb is missed; abbreviations (`e.g.`) inside a
+// waived span are unmeasured. Both are documented in ACCURACY.md §5u.
 
 /** Classification verbs. */
 export const CLAIM_VERB = /(orders|order|distinguishes|distinguish|separates|separate|classifies|classify|tells? (?:apart|what is)|identif(?:y|ies)|filter(?:s)? out|pick(?:s)? out|labels?|sorts?|ranks?|routes?|recommends?)/i;
@@ -60,7 +61,7 @@ export const CLAIM_FIELD = new RegExp(`(${EMITTED_DISCLOSURE_KEYS.join("|")})`, 
  *  NOTE (F22): `without \w+ing` was REMOVED — it is the widest offender (`without
  *  blinking`, `without pausing` read as emphasis), and dropping it was measured to close
  *  two escapes at zero added false positives. */
-const NEG_STRONG = /(\bnever\b|\bnone of\b|\bneither\b|\bcannot\b|\bcan't\b|\brather than\b|\bdoes ?n[o']?t\b|\bis ?n[o']?t\b|\bare ?n[o']?t\b|\bno longer\b|\binstead of\b)/i;
+const NEG_STRONG = /(\bnever\b|\bnone of\b|\bneither\b|\bcannot\b|\bcan't\b|\brather than\b|\bdoes ?n[o']?t\b|\bis ?n[o']?t\b|\bare ?n[o']?t\b|\b(?:should|would|could|will|must|may|might|can|shall) ?n[o']?t\b|\bno longer\b|\binstead of\b)/i;
 
 /** Ambiguous `not`/`no` count ONLY when immediately before the verb (F20 tier 2). This is
  *  the ONLY weak tier — a deliberate measure: an idiom list (`no doubt`, `instead`, ...)
@@ -73,17 +74,31 @@ const NEG_WEAK_IMMEDIATE = /(?:\bnot\b|\bno\b)\s+$/i;
 const FUNCTION_WORDS = /^(?:a|an|the|of|to|in|on|at|by|for|with|from|that|this|these|those|it|its|is|are|was|were|be|been|being|has|have|had|do|does|did|and|or|but|so|as|if|than|then|also|just|even|only|still|yet|not|no|never|none|neither|cannot|can't|rather|instead|without|longer|any|all|some|more|most|very|quite|really|simply|merely)$/i;
 
 /**
+ * GLUE words (F25). A retraction often puts a content word between the negation and the
+ * verb — `is not ABLE to distinguish`, `cannot be SAID to separate`, `not INTENDED to
+ * order`. Those content words carry the retraction, so they must still count as governed.
+ *
+ * POLARITY WARNING: `fail|fails` is deliberately ABSENT. `never FAILS to order` is a
+ * DOUBLE NEGATIVE that ASSERTS the classification — adding `fail` here re-opened A1.
+ * Any future glue word must be checked for this: does it make the sentence assert (bad
+ * glue) or retract (good glue)? The glue list is vocabulary again, and rounds 16-19 show
+ * what that costs; it is deliberately short and limited to words that carry retraction.
+ */
+const GLUE = /^(?:able|intended|used|going|supposed|meant|said|claimed|thought|designed|expected|allowed|permitted|attempt|attempts|try|tries|seek|seeks|likely|meant|destined|equipped|built|written)$/i;
+
+/**
  * Does a STRONG negation GOVERN the verb at `verbIndex`? (F22 governed negation.)
  * The LAST strong negation before the verb must have only function words between it and
  * the verb, and be within 30 chars — so `never fails to order` is NOT excused (the content
  * word `fails` intervenes), while `does NOT distinguish` and `cannot distinguish` are.
  *
- * KNOWN COST (measured, not hidden): this also declines to excuse legitimate retractions
- * that place a content word between the negation and the verb — `is not able to
- * distinguish`, `cannot be said to separate`, `should not be used to order`. Those become
- * FALSE POSITIVES (the line is flagged although it retracts). Measured trade on the union
- * harness: escapes 3 -> 0, false positives 1 -> 5. Escapes are SILENT (the dangerous
- * direction), so the trade is accepted and recorded in ACCURACY.md §5t.
+ *  KNOWN COST (measured, not hidden): this declines to excuse legitimate retractions that
+ *  place a content word between the negation and the verb — `is not able to distinguish`,
+ *  `cannot be said to separate`, `should not be used to order`. Those become FALSE
+ *  POSITIVES (flagged although they retract) — which punishes writing the disclaimer.
+ *  The GLUE list (F25) restores them: content words that CARRY retraction count as
+ *  governed, while content words that invert polarity (`fails`) do not. Measured on the
+ *  union harness: escapes 3 -> 0, false positives 5 -> 0.
  */
 function strongNegationGoverns(clause, verbIndex) {
   const before = clause.slice(0, verbIndex);
@@ -95,7 +110,7 @@ function strongNegationGoverns(clause, verbIndex) {
   const gap = before.slice(last.index + last[0].length);
   if (gap.length > 30) return false;
   const words = gap.toLowerCase().match(/[a-z']+/g) || [];
-  return words.every((w) => FUNCTION_WORDS.test(w));
+  return words.every((w) => FUNCTION_WORDS.test(w) || GLUE.test(w));
 }
 
 /** Structural exclusion: a marker at the START of a table CELL (or the line). Applied
@@ -137,14 +152,21 @@ export function clauseIsClaim(clause) {
 }
 
 /** Is a single table cell (or line segment) a live claim?
- *  A marker waives only the SPAN it precedes (up to the first sentence end) — F21 fixed
- *  the row-wide waiver, F23 the cell-wide one. The remainder of the cell is still checked. */
+ *  A marker waives only the SPAN it precedes. F21 fixed the row-wide waiver, F23 the
+ *  cell-wide one, F24 the no-sentence-end case (which waived the ENTIRE remainder — a
+ *  strictly easier escape, needing no period anywhere). The rule is now:
+ *    1. a complete lead clause ending in [.!?] waives that clause; else
+ *    2. a leading QUOTED span (`"..."`, `` `...` ``, "...") waives that span; else
+ *    3. the marker waives nothing and a leading claim is reported.
+ */
 function cellIsClaim(cell) {
   const m = cell.match(MARKER);
   if (m) {
     const afterMarker = cell.slice(m.index + m[0].length);
     const end = firstSentenceEnd(afterMarker);
-    const remainder = end >= 0 ? afterMarker.slice(end + 1) : ""; // no sentence end => marker waives the rest
+    if (end >= 0) return afterMarker.slice(end + 1).split(/[;,:]/).some(clauseIsClaim);
+    const quoted = afterMarker.match(/^\s*[`"'\u201c\u2018]([^`"'\u201d\u2019]*)[`"'\u201d\u2019]/);
+    const remainder = quoted ? afterMarker.slice(quoted[0].length) : afterMarker;
     return remainder.split(/[;,:]/).some(clauseIsClaim);
   }
   return cell.split(/[;,:]/).some(clauseIsClaim);

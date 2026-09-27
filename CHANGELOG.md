@@ -1,5 +1,45 @@
 # Changelog
 
+## Nineteenth-audit follow-up: the no-sentence-end marker and the retraction FPs — 2026-09-27
+
+**Seventh round of one class** — and the last. Two defects fixed cheaply; the guard is now
+**FROZEN as a best-effort lint** and the positive disclaimer assertion is the **primary
+gate**. See `ACCURACY.md` §5u.
+
+### Fixed
+
+- **F24 — a marker with no sentence end waived the entire remainder.** `end >= 0 ? slice :
+  ""` meant a marker whose cell had no sentence-ending period waived everything after it —
+  **strictly easier** than round 18's case, needing no punctuation anywhere. A marker now
+  waives a complete lead clause ending in `[.!?]`, **else** a leading quoted span, **else**
+  nothing.
+- **F25 — legitimate retractions were false positives, and they were latent in the repo.**
+  `is not able to distinguish`, `cannot be said to separate`, `should not be used to order`
+  were **flagged although they retract** — punishing anyone who writes the disclaimer. A
+  `GLUE` list (content words that **carry** retraction) restores them; modal negations
+  (`should not`, `must not`, …) added to `NEG_STRONG`.
+- **POLARITY:** `fail|fails` is **deliberately excluded** from `GLUE` — `never fails to
+  order` is a double negative that **asserts** the claim. It is a permanent must-flag fixture.
+
+### Measured design
+
+| design | escapes | false positives | real-doc flags |
+|---|---|---|---|
+| round-18 | 2–3 | 5 | 0 |
+| marker=**strict** (negative control) | 0 | 5 | **5** |
+| marker=quote alone | 0 | 5 | 0 |
+| **glue(no `fail`) + quote-span** | **0** | **0** | **0** |
+
+`marker=strict` shows the marker list is load-bearing (it re-flags the `[REMOVED CLAIM]`
+history); the adopted design needs no exemption.
+
+### Disposition — stop extending this guard
+
+Seven rounds, **one new escape class per fix**. The positive assertion is now the primary,
+paraphrase-proof gate and a named test; the phrase rule is a best-effort lint whose recall is
+a measured number; the invariance pair remains the acceptance test. Effort should return to
+the **measurement engine** (F1–F14), where the defects were findable by fixture ground truth.
+
 ## Eighteenth-audit follow-up: governed negation and the span-scoped marker — 2026-09-27
 
 **Sixth round of one class.** Each round narrowed the *scope* of an exclusion (line → clause

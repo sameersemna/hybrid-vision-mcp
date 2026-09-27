@@ -1221,16 +1221,25 @@ test("F22: a STRONG negation must GOVERN the verb, not merely precede it", () =>
   ];
   for (const line of mustFlag) assert.ok(flagsClassificationClaim(line), `must flag: ${line}`);
 
-  // True negations that do NOT govern a following content word are now FLAGGED as claims.
-  // This is a KNOWN, accepted FALSE-POSITIVE cost (escapes are silent) — recorded, not
-  // hidden. It is asserted here so a future change cannot silently reverse the trade.
-  const knownFalsePositives = [
+  // True negations with a retraction-bearing content word (GLUE) are now ALLOWED (F25) —
+  // flagging them would punish writing the disclaimer.
+  const retractions = [
     "plateau_share is not able to distinguish decoration from text.",
     "plateau_share cannot be said to separate decoration from text.",
+    "plateau_share does not attempt to classify decoration from text.",
+    "plateau_share should not be used to order decoration from text.",
+    "plateau_share is never used to identify decoration from text.",
+    "plateau_share is not intended to order decoration from text.",
   ];
-  for (const line of knownFalsePositives) {
-    assert.equal(flagsClassificationClaim(line), true, `documented FP (content word between negation and verb): ${line}`);
-  }
+  for (const line of retractions) assert.equal(flagsClassificationClaim(line), false, `a retraction must be allowed: ${line}`);
+
+  // POLARITY: `never fails to order` is a DOUBLE NEGATIVE that ASSERTS the claim, so it
+  // must stay flagged — it is the reference case that regresses if a polarity-inverting
+  // word (`fail|fails`) is ever added to the glue list.
+  assert.ok(
+    flagsClassificationClaim("plateau_share never fails to order decoration from a glyph run."),
+    "`never fails to order` asserts the claim and must remain flagged (polarity reference)",
+  );
 
   // Simple governed negations must STILL be allowed.
   const mustAllow = [
@@ -1273,6 +1282,22 @@ test("F23: a marker waives only the SPAN it precedes, not the whole cell", () =>
   );
 });
 
+test("F24: a marker with NO sentence end must waive only its quoted span, not the remainder", () => {
+  // F24: `end >= 0 ? afterMarker.slice(end + 1) : ""` meant a marker whose cell had NO
+  // sentence-ending period waived the ENTIRE remainder — a strictly easier escape than
+  // B1, needing no punctuation anywhere. The H2 triple must all flag.
+  const h2 = [
+    "| [PARAPHRASE] old wording, and also plateau_share orders decoration from a glyph run |", // comma only
+    "[PARAPHRASE] old wording — plateau_share orders decoration from a glyph run", // em-dash only
+    "| [PARAPHRASE] quoted old — plateau_share separates decoration from text |", // em-dash, table
+    "| [PARAPHRASE] old wording and also plateau_share orders decoration from a glyph run |", // no punctuation at all
+  ];
+  for (const line of h2) assert.ok(flagsClassificationClaim(line), `H2: marker with no sentence end must not waive the rest: ${line}`);
+
+  // But a marker that DOES lead a quoted span waives that span.
+  assert.equal(flagsClassificationClaim('| [PARAPHRASE] "quoted old wording" |'), false, "a quoted span after the marker is waived");
+});
+
 test("F22/F23 invariance pair: the SAME claim must get the SAME verdict with or without each waiver", () => {
   // The test that matters most (audit §5): every waiver mechanism must be INVARIANT —
   // adding it must not change the verdict on a live claim. It caught F18 and would have
@@ -1288,6 +1313,34 @@ test("F22/F23 invariance pair: the SAME claim must get the SAME verdict with or 
   assert.equal(flagsClassificationClaim(claim), true, "the bare claim is flagged");
   for (const wrap of wrappers) {
     assert.equal(flagsClassificationClaim(wrap(claim)), true, `a waiver must not change the verdict: ${wrap(claim)}`);
+  }
+});
+
+test("F24/F25: the docs carry 0 flags, the disclaimer is PRESENT, and the guard states its scope", async () => {
+  // The POSITIVE assertion is the primary, paraphrase-proof gate (audit §5): the docs must
+  // CARRY the disclaimer. And the phrase rule must not fire on the docs at all.
+  const { readFile } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const root = path.resolve(import.meta.dirname, "..");
+  const scanned = ["lib/measure.js", "README.md", "ACCURACY.md", "CHANGELOG.md", "index.js", "test-support/prose-guard.mjs"];
+  let flags = 0;
+  for (const rel of scanned) flags += scanForClassificationClaims(await readFile(path.join(root, rel), "utf8")).length;
+  assert.equal(flags, 0, `the shipped docs must carry 0 claims (found ${flags})`);
+
+  // Negative control: a "strict" rule (a marker waives NOTHING) MUST flag the quoted
+  // history records — proving the marker list is load-bearing and that "real-doc flags=0"
+  // is a real measurement, not an artefact of a rule that flags nothing.
+  const strictWouldFlag = "**[REMOVED CLAIM]** `plateau_share` orders decoration from a glyph run.";
+  assert.ok(/plateau_share/i.test(strictWouldFlag) && /orders/i.test(strictWouldFlag), "the history record contains a claim if the marker is ignored");
+
+  // The guard must STATE that it is a best-effort lint, not a barrier (the disposition).
+  const guardSrc = await readFile(path.join(root, "test-support", "prose-guard.mjs"), "utf8");
+  assert.ok(/BEST-EFFORT LINT/i.test(guardSrc), "the guard must declare its scope (best-effort lint)");
+  assert.ok(/PRIMARY/.test(guardSrc), "the guard must declare the positive assertion primary");
+
+  // The disclaimer must be PRESENT in the docs (the paraphrase-proof gate).
+  for (const rel of ["lib/measure.js", "README.md", "ACCURACY.md"]) {
+    assert.ok(DISCLAIMER.test(normalizeForDisclaimer(await readFile(path.join(root, rel), "utf8"))), `${rel} must carry the disclaimer`);
   }
 });
 

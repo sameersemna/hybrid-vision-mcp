@@ -784,6 +784,15 @@ one.
 > **does not separate** them either (0.0185 vs 0.0174). A bar chart and a glyph run are
 > the same kind of object, so no scalar is offered in its place. See `ACCURACY.md` §5o.
 
+> **Documentation-guard scope (F16–F25).** This repository also carries a **lint** that
+> scans the docs for prose asserting that an exposed field classifies decoration vs text.
+> It is **best-effort, with a measured recall — not a barrier**: seven rounds of hardening
+> each closed one phrasing and opened another. The **primary, paraphrase-proof check** is
+> the positive one: the docs must **contain** the explicit disclaimer (they do). The lint
+> exists to catch the *literal* regression. It is frozen; the acceptance test that matters
+> is the **invariance pair** (a claim must get the same verdict with or without each waiver
+> mechanism). See `ACCURACY.md` §5r–§5u.
+
 ---
 
 **Returns** (excerpt):

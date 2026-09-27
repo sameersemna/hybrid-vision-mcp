@@ -2263,6 +2263,133 @@ a re-architecture, and the positive assertion already supplies the paraphrase-pr
 - That any of these escapes occurred in the shipped docs — the docs are clean today; these
   are waivers available to a future author.
 
+## 5u. Nineteenth audit: the no-sentence-end marker and the retraction false positives
+
+### F24 — a marker with no sentence end waived the entire remainder
+
+```js
+const end = firstSentenceEnd(afterMarker);
+const remainder = end >= 0 ? afterMarker.slice(end + 1) : "";  // "no sentence end => marker waives the rest"
+```
+
+The comment was accurate and the branch was the bug: a marker whose cell had **no
+sentence-ending period** waived everything after it. This is a **strictly easier** escape
+than B1 (F23) — it needs no punctuation anywhere:
+
+| # | line | round-18 | **round-19** |
+|---|---|---|---|
+| H2a | a marker, then a claim, separated by a comma (no sentence end) | **escaped** | **flagged** |
+| H2b | a marker, then a claim, separated by an em-dash | **escaped** | **flagged** |
+| H2c | a marker then a claim in a table cell, em-dash separator | **escaped** | **flagged** |
+| H2d | a marker then a claim with no punctuation at all | — | **flagged** |
+
+End-to-end, appending to `README.md`: the control fails (114/1) while **H2a escaped (115/0)**
+at round 18 and now **fails (113/2)**. F23's fix had made a sentence end a **precondition** for
+the marker to stop waiving, so the marker was strongest exactly where the text was least
+structured.
+
+### F25 — the accepted false positives were retractions, and they were latent in the repo
+
+Round 18 accepted 5 false positives. The audit measured the family as **broader**, and every
+member **retracts** the classification — so flagging them punishes writing the disclaimer:
+
+| # | line | round-18 | **round-19** |
+|---|---|---|---|
+| H1a | `plateau_share is not able to distinguish decoration from text.` | **flagged** | allowed |
+| H1b | `plateau_share does not attempt to classify decoration from text.` | **flagged** | allowed |
+| H1c | `plateau_share cannot be said to separate decoration from text.` | **flagged** | allowed |
+| H1d | `plateau_share should not be used to order decoration from text.` | **flagged** | allowed |
+| H1e | `plateau_share is never used to identify decoration from text.` | **flagged** | allowed |
+| H1f | `plateau_share is not intended to order decoration from text.` | **flagged** | allowed |
+
+**And it was latent in the shipped docs.** `ACCURACY.md`, `CHANGELOG.md`, and
+`prose-guard.mjs` all contain `is not able to distinguish` / `cannot be said to separate` —
+passing only because they are **fragments without a field name**. The same words in a full
+sentence with `plateau_share` **fail the suite** (measured 114/1). So the docs survived on
+phrasing luck, and the next author writing the disclaimer in full sentences would be blocked.
+
+### The fix, and the polarity trap
+
+**GLUE words (F25).** A retraction often puts a content word carrying the retraction between
+the negation and the verb — `is not **able** to distinguish`, `cannot be **said** to
+separate`, `not **intended** to order`. Those now count as governed. Modal negations
+(`should not`, `would not`, `must not`, …) were added to `NEG_STRONG`.
+
+**POLARITY WARNING.** `fail|fails` is **deliberately excluded**: `never **fails** to order`
+is a *double negative that ASSERTS the claim*. Adding `fail` to the glue list re-opened A1 —
+so `never fails to order` is now a permanent must-flag fixture and the reference case for a
+polarity-inverting word.
+
+**Quote-span markers (F24).** The rule is now: a complete lead clause ending in `[.!?]` waives
+that clause; else a leading **quoted span** waives that span; else the marker waives **nothing**
+and a leading claim is reported.
+
+### The four-design measurement
+
+| design | escapes (20 cases) | false positives | real-doc flags |
+|---|---|---|---|
+| round-18 (shipped) | 2–3 (H2a/b) | 5 (H1a–e) | 0 |
+| marker=**strict** (waive nothing) | 0 | 5 | **5** |
+| marker=quote alone | 0 | 5 | 0 |
+| **glue(no `fail`) + quote-span** | **0** | **0** | **0** |
+
+`marker=strict` is the **negative control**: it gives 0 escapes but **5 real-doc flags** — it
+re-flags the `[REMOVED CLAIM]` history records. So the marker must waive *something*; the
+question is only how much. The adopted design needs no exemption anywhere.
+
+### The recommendation, accepted: STOP extending this guard
+
+Seven rounds on one mechanism, and the trajectory is diagnostic:
+
+| round | escapes found | new escapes created by the fix |
+|---|---|---|
+| 15 | 8 of 9 paraphrases | trailing token |
+| 16 | free-text token | — |
+| 17 | ordinary words in window | marker waives the row |
+| 18 | strong-negation proximity | marker waives the cell; 5 new FPs |
+| 19 | marker with no sentence end | — |
+
+The measured exchange rate is **one new escape class per fix**. Accordingly:
+
+1. **The positive assertion is now the PRIMARY gate** — the docs must **contain** the
+   disclaimer. It is paraphrase-proof, it is what a paraphrase cannot defeat, and it is a
+   named test (`F24/F25: the docs carry 0 flags, the disclaimer is PRESENT`).
+2. **The phrase rule is FROZEN as a best-effort lint** with its recall stated as a measured
+   number, not "coverage". Its own header now says so, and the test asserts that the header
+   says so.
+3. **The invariance pair stays** as the acceptance test that matters.
+4. **Effort redirected.** F1–F14 were correctness defects in the *measurement engine*, found
+   by fixtures with known ground truth. F15–F25 are one guard in the docs. The engine is where
+   the value was, and the next round should not be a seventh scope narrowing.
+
+The **reviewable-allowlist** (every field-name mention inside a marked quoted-history span or
+carrying the disclaimer) remains an unimplemented option; the positive gate already supplies
+the paraphrase-proof core, so it is deferred rather than rejected.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **117/117** (was 115; +2 round-19 tests) |
+| H2 triple/d quadruple | all flagged (proven end-to-end: 113/2) |
+| H1a–H1f | all allowed (were flagged) |
+| `never fails to order` | flagged (polarity reference) |
+| real docs | 0 flags, with a **strict negative control** proving the rule is not inert |
+| disclaimer present | 3/3 files; the primary gate is a named test |
+| non-vacuity | +4 round-19 guards |
+| live MCP (scratch 11498) | §16: F24 all flagged, F25 retractions allowed |
+
+### What this audit has NOT proven
+
+- That the **glue** space is exhausted — `able|intended|used|going|supposed|meant|said|
+  attempt|try|seek` was chosen from examples; words that carry retraction in other
+  constructions were not tested. The glue list is vocabulary again.
+- That the design holds on prose beyond this repo's ~20,800 clauses.
+- That the guard **contradicts** the required disclaimer — it does not today; the current
+  disclaimer phrasings pass. What was shown is that full-sentence forms of the same words are
+  flagged, i.e. the docs survive on phrasing luck and are one phrasing from the contradiction.
+- That `firstSentenceEnd` handles **abbreviations** (`e.g.`, `i.e.`) inside a waived span.
+
 ## 9. New module map
 
 | File | Responsibility |
