@@ -1,5 +1,45 @@
 # Changelog
 
+## Twenty-eighth-audit closing verification: one stale item corrected — 2026-09-27
+
+The closing verification round. The auditor independently reproduced the count-invariance
+**six-of-six** coverage claim (including the three **negative** claims), re-ran the
+solidity × multi-plateau interaction (no finding), and confirmed the deploy current and the
+standing regression set unchanged. **All re-derived from the tree and agreed**, with **one
+correction**. See `ACCURACY.md` §5ad.
+
+### Corrected — the "300px single-glyph abstention" is stale, and not silent
+
+The round summary listed it as a live reopen candidate (*"still open, and still hiding a failing
+fill"*). **Measured at HEAD, it is not**, and the round-22 phrasing it quotes was imprecise:
+
+| revision | `W`@300 +3px stroke |
+|---|---|
+| round 21 (`a304c0e`) | `all_meet_aa: null` (abstained) |
+| round 23 (`c91554c`) | **`all_meet_aa: false`** (correct FAIL) |
+| HEAD (`a6cc6d2`) | **`all_meet_aa: false`** |
+
+So **round 23 incidentally fixed the 300px case**. A glyph at `fontSize ≥ ~700` still abstains,
+**but discloses `#464646`** in `plateaus` (28.8%) plus a scope note — it is **not silent**. A
+sweep of **108** large-glyph cases found **no** clean verdict that hides a failing fill; the two
+`II@300` cases that looked clean **name `#464646` in `mask_reconciliation`**.
+
+Disposition: reclassified from **open defect** to **behaviour, disclosed** — **not** a reason to
+reopen.
+
+### Verified independently this round
+
+- `npm test` **128/128**; non-vacuity **27/27** (118 guards); `lib/measure.js` unchanged (empty
+  diff); 11402 functional probe: F34 reported, F35 filtered.
+- Count-invariance coverage re-measured defect-by-defect: F32/F34/F35 caught, F29/F30/F31 not —
+  exactly as the comment claims.
+
+### The loop stays closed
+
+Per the agreed criteria, this round found **nothing new**: the one item was a
+documentation-of-scope correction, not an engine defect. Reopen only for a **new mechanism** —
+three-or-more ink colours in one component, gradient/image fills, or shadows/glows.
+
 ## Twenty-seventh-audit verification round: the standing test half-covered its claim — 2026-09-27
 
 The verification round requested after adopting the stopping criteria. **F35 is verified fixed**

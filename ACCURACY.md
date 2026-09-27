@@ -2778,6 +2778,10 @@ would therefore be asserting something the evidence does not support; the test s
   `all_meet_aa: null` via `abstained: "contrast ratio of text"`). Verified **identical at
   HEAD** (pre-existing, out of scope), but it also hides a failing fill and may merit its own
   round. Named **F30** here so it is not lost.
+  **SUPERSEDED (round 28, §5ad):** the 300px case was **incidentally fixed by round 23** — it now
+  returns a correct `all_meet_aa: false`. A glyph at `fontSize ≥ ~700` still abstains, **but**
+  discloses `#464646` in `plateaus` plus a scope note, so it is **not silent**. This item is
+  therefore **not** an open defect.
 
 ## 5y. Twenty-third audit: the second-ink path had its own scalar, not the primary path's gates
 
@@ -3383,6 +3387,71 @@ solidity, image fills, shadows) — not another instance of the per-piece error.
 - That F29/F30/F31's own tests are individually sufficient — only that this standing test does not
   cover them, which is now stated.
 - That no other subsystem hides an unverified scope claim; only this test's comment was audited.
+
+## 5ad. Twenty-eighth audit: closing verification — one stale item corrected
+
+The closing verification round: the auditor independently reproduced the count-invariance
+**six-of-six** coverage claim (including the three **negative** claims), re-ran the
+solidity × multi-plateau interaction (no finding), and confirmed the deploy current and the
+standing regression set unchanged. I re-derived all of it from the tree and agree, with **one
+correction** to the round's own summary.
+
+### Verified independently
+
+| check | result |
+|---|---|
+| `npm test` | **128/128** |
+| non-vacuity harnesses | **27/27**, 118 guards |
+| `lib/measure.js` vs HEAD | unchanged (empty diff) |
+| 11402 functional probe | F34 16-glyph **reported**; F35 split decoration **filtered** |
+| count-invariance coverage, six defects re-introduced | F32/F34/F35 **caught**; F29/F30/F31 **not caught** — exactly as the comment claims |
+
+The last row is the important one: I re-introduced each of the six historical defects and ran
+**only** the standing test, confirming all **six** claims (three positive, three negative).
+
+### The correction — the "300px single-glyph abstention" is stale
+
+The round-28 summary listed, as a live reopen candidate: *"the pre-existing 300px single-glyph
+abstention (recorded in round 22 as identical at HEAD, still open, and still hiding a failing
+fill)."* **Measured, that is not true at HEAD**, and the round-22 phrasing it quotes was itself
+imprecise about disclosure. A `W` at 300px with a 3px stroke:
+
+| revision | verdict | `#464646` disclosed? |
+|---|---|---|
+| round 21 (`a304c0e`) | `all_meet_aa: null` (abstained) | yes (plateaus + note) |
+| round 23 (`c91554c`) | **`all_meet_aa: false`** (correct FAIL) | yes |
+| HEAD (`a6cc6d2`) | **`all_meet_aa: false`** | yes |
+
+So **round 23 incidentally fixed the 300px case** — it now reports a correct failure. A
+`fontSize ≥ ~700` glyph still abstains — **but** with `#464646` disclosed in `plateaus`
+(28.8%) and the scope note *"No text was found there; that is not a claim that such text passes
+contrast."* So even the surviving abstention **is not silent**: the disclosure invariant holds.
+
+A sweep of **108** large-glyph cases (sizes 120–700, strokes 0/2/3/6, `W`/`OO`/`II`) found
+**no case** where the verdict reads clean while a failing fill goes undisclosed. The two
+`II@300` cases that looked clean (`all_meet_aa: true`) **do name `#464646` at 1.88:1 in
+`mask_reconciliation`** — disclosed, not hidden.
+
+**Disposition:** the item is **reclassified from "open defect" to "behaviour, disclosed"**. It is
+therefore **not** a reason to reopen. The remaining reopen candidates are unchanged: three-or-more
+ink colours in one component, gradient/image fills, and shadows/glows.
+
+### What this correction is (and is not)
+
+It is the **documentation-of-scope** family again — a recorded claim ("still open … still hiding
+a failing fill") that a measurement contradicts. It is **not** an engine defect: no construct
+hides a failing fill at HEAD. Correcting it rather than inheriting it is the same discipline the
+round-27 gap required.
+
+### What this round has NOT proven
+
+- Only the solidity × multi-plateau interaction was probed as a new mechanism; the other
+  candidates (≥3 ink colours, image fills, shadows) remain **untested**.
+- The abstention at `fontSize ≥ ~700` is **not silent**, but I did not establish whether a
+  downstream consumer *acts* on `plateaus`/notes; the API carries the disclosure, which is the
+  contract this project defends.
+- Frequency of any construct remains unmeasured — reachability plus a control-backed verdict
+  error, not prevalence, throughout.
 
 ## 9. New module map
 
