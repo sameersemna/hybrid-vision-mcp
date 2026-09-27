@@ -1,5 +1,65 @@
 # Changelog
 
+## Twenty-second-audit follow-up: F28's own gate reappears one scalar lower (F29) — 2026-09-27
+
+The round-21 fix (§5w) was **correct in direction and incomplete in aggregation**: it applied
+a pixel floor **per component** where the quantity that matters is the colour's **total** —
+the F13/F14 construction. See `ACCURACY.md` §5x.
+
+### Fixed
+
+- **F29 — small outlined text lost its fill as it split across components.**
+  `MULTICOLOUR_MIN_PIXELS` was applied to a single component's count, so as a glyph shrank its
+  fill split (measured: 48px outlined "AB" fill = 400 + 485 = **885px**, both pieces under 512)
+  and no piece cleared the floor — the failing fill appeared in **no channel** and
+  `all_meet_aa: true` was returned. The floor is now applied to the colour's **total across the
+  whole scan** (`extraTotals`), decided once per colour, then emitted in each component that
+  holds it. Fragmentation-invariant.
+- **The floor moved with the granularity: 512 → 224, MEASURED.** Aggregation removes
+  ordinary-text AA fringes entirely (0 candidate extras at every plain-text size 10–96px), so
+  the constraint that set 512 is gone. The binding constraint is structural card shades. Floor
+  sweep (full-suite failures): 0→31, 128→4, 200→2, **224→0**. 224 is just above the measured
+  false positives (card edge shade 204px) and just below the smallest defect case (32px fill
+  252px). This is a different quantity, not a re-tuned 512.
+- **Plateau-adjacency gate ADDED (load-bearing).** Skip an extra within `PLATEAU_MERGE_DIST` of
+  a detected plateau. Turning the floor into a total let dense-flat border tones sum past it
+  (measured `#232931` → 2560px); without the gate the F7 verdict fails. Measured separation:
+  dense-flat card extras 4.1–9.5 from a plateau, the outlined fill 80.9 away.
+- **Structure gate REMOVED (measured redundant).** Needed at a per-component floor in round 21;
+  at the 224px **total** floor it is not — the floor already rejects the tiled card edge
+  (204px). Verified: removing it kept 121/121, so it is not carried.
+
+### Measured and rejected
+
+- **Floor 0 + AA-blend test alone** — disturbs the flat cases (tiled grid, huge glyph,
+  flat/local identity). The AA test alone is not sufficient. Recorded, not recommended.
+- **Lowering the AA blend `minT` to reach 28px** — catches the dense-flat shades but not the
+  tiled card-shade **continuum** (`#413c35@1.34`, `#e6e6e6@1.25`), so no clean gate exists.
+
+### The honest boundary
+
+The fix reaches every case where the defect **applies** (the fill is the larger ink). Measured,
+the fill dominates the stroke down to **32px**; at **28px the fill (158px) is smaller than the
+stroke (216px)**, so the larger ink **is** reported and hiding the smaller one is a
+reporting-floor question, not F28 absorption. The test sweeps 32–180px and asserts the boundary.
+
+### Acceptance evidence
+
+- `npm test`: **121** (was 120); F29 test asserts the defect window, the aggregation
+  non-vacuity case ("ABC" 30px, pieces 221 + 68), the 28px boundary, and the tiled control.
+- non-vacuity: **99** guards (was 95); `verify/nonvacuity-round22.mjs` perturbs aggregation, the
+  emission, the plateau-adjacency gate, and the parent-box gate; round-21 anchors were
+  repointed to the round-22 two-pass code.
+- live MCP (scratch 11498): §18 — every size 32–72px reports the failing fill, aggregation
+  WORKS on the split case, the 28px boundary is honest.
+- Controls stay clean: tiled card grid, dense-flat page, acceptance fixture (worst `#1e1c18@1.04`).
+
+### Named, not fixed
+
+**F30** — large display glyphs (300–700px) return `all_meet_aa: null` via
+`abstained: "contrast ratio of text"`, hiding a failing fill. Verified **identical at HEAD**
+(pre-existing, out of scope here), named so it is not lost.
+
 ## Twenty-first-audit follow-up: back to the engine (F27, F28) — 2026-09-27
 
 Round 20's disposition was to **stop extending the documentation guard** and spend the next

@@ -608,4 +608,46 @@ console.log("\n=== 17. round-21 checks (F27 text-free gradient; F28 outlined tex
   }
 }
 
+// Round-22 checks (twenty-second audit F29): the pixel floor must apply to a colour's
+// TOTAL across the scan, not per component, or a small glyph's fill is lost as it splits.
+async function outlinedSized(size, text = "AB", strokeWidth = 2) {
+  const w = 1000, h = 700;
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="#1a1814"/>` +
+    `<text x="60" y="${Math.round(size * 0.9) + 60}" font-family="DejaVu Sans, sans-serif" ` +
+    `font-size="${size}" font-weight="bold" fill="#464646" stroke="#e8dfd0" stroke-width="${strokeWidth}">${text}</text></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+console.log("\n=== 18. round-22 checks (F29 small outlined text: the floor is a per-colour TOTAL) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+
+  // The defect window: while the fill is the larger ink, hiding it is the F28 defect.
+  let allSizesOk = true;
+  for (const fontSize of [72, 56, 48, 44, 40, 36, 32]) {
+    const r = await call("measure_image", { image_source: toUri(await outlinedSized(fontSize)), mode: "contrast", region });
+    const c = r.measurements.contrast;
+    const fill = c.colours.find((x) => x.foreground === "#464646");
+    const ok = fill && !fill.wcag_aa && c.all_meet_aa === false;
+    if (!ok) allSizesOk = false;
+    console.log(`  [F29 ${String(fontSize).padStart(3)}px] #464646 ${fill ? `px=${fill.pixel_count} FAIL` : "** ABSENT **"}  all_meet_aa=${c.all_meet_aa}  -> ${ok ? "ok" : "LOST"}`);
+  }
+  console.log(`  [F29] every size 32-72px reports the failing fill: ${allSizesOk ? "YES" : "NO"}`);
+
+  // Aggregation non-vacuity: "ABC" at 30px splits the fill into pieces each below the 224px
+  // floor (221 + 68 = 289 total), so only a TOTAL-based floor emits it.
+  const split = await call("measure_image", { image_source: toUri(await outlinedSized(30, "ABC")), mode: "contrast", region });
+  const sc = split.measurements.contrast;
+  const sFill = sc.colours.find((x) => x.foreground === "#464646");
+  console.log(`  [F29 split] "ABC" 30px pieces below floor -> #464646 ${sFill ? `px=${sFill.pixel_count} reported` : "** ABSENT **"}  -> aggregation ${sFill ? "WORKS" : "VACUOUS/BROKEN"}`);
+
+  // Honest boundary: at 28px the fill (158px) is smaller than the stroke, so the larger ink
+  // is reported and the rule correctly stays quiet.
+  const tiny = await call("measure_image", { image_source: toUri(await outlinedSized(28)), mode: "contrast", region });
+  const tc = tiny.measurements.contrast;
+  console.log(`  [F29 28px boundary] larger ink (stroke) reported: ${tc.colours.some((x) => x.foreground === "#e8dfd0") ? "YES" : "NO"} (fill 158px < stroke 216px, so nothing larger is hidden)`);
+}
+
 await client.close();

@@ -1764,3 +1764,58 @@ test("F28: outlined text reports BOTH colours, and a failure cannot hide", async
   assert.equal(only.colours.find((c) => c.foreground === OUTLINED_TEXT.fill).contrast_ratio, OUTLINED_TEXT.fillRatio);
 });
 
+test("F29: small outlined text is not lost when its fill splits across components", async () => {
+  // F28 applied the pixel floor PER COMPONENT. As a glyph shrinks its fill splits across
+  // components, so no single piece clears the floor and the failing fill vanishes again —
+  // F28's own gate reappearing one scalar lower (F29, the F13/F14 construction: a threshold
+  // on a per-PIECE quantity where the TOTAL is what matters). The floor is now applied to the
+  // colour's TOTAL across the scan.
+  const region = OUTLINED_TEXT.region;
+
+  // (1) The defect window. While the fill is the LARGER ink, hiding it is exactly the F28
+  // defect, so it must be reported at every size. Measured: the fill dominates the stroke
+  // down to 32px (252px vs 722px at 32px); at 28px it does not (see (3)).
+  const sizes = [180, 72, 56, 48, 44, 40, 36, 32];
+  for (const fontSize of sizes) {
+    const r = contrastInRegion(
+      await loadPixels(await buildOutlinedTextFixture({ fontSize, strokeWidth: 2 })),
+      region,
+    );
+    const fill = r.colours.find((c) => c.foreground === OUTLINED_TEXT.fill);
+    assert.ok(fill, `${fontSize}px: the failing fill must be reported, not absorbed`);
+    assert.equal(fill.wcag_aa, false, `${fontSize}px: the fill fails AA`);
+    assert.equal(r.all_meet_aa, false, `${fontSize}px: the verdict must not read clean`);
+  }
+
+  // (2) AGGREGATION must be non-vacuous. "ABC" at 30px splits its fill into pieces of
+  // 221 + 68 (total 289): a PER-COMPONENT floor emits NEITHER piece, the TOTAL emits the
+  // colour. Without aggregation this assertion fails — that is the round-21 defect.
+  const split = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ text: "ABC", fontSize: 30, strokeWidth: 2 })),
+    region,
+  );
+  const splitFill = split.colours.find((c) => c.foreground === OUTLINED_TEXT.fill);
+  assert.ok(splitFill, "a fill split across components must still be reported (aggregated total)");
+  assert.equal(splitFill.wcag_aa, false);
+  assert.equal(split.all_meet_aa, false);
+
+  // (3) The honest BOUNDARY, asserted not implied. Below 32px the fill is SMALLER than the
+  // stroke (28px: fill 158px vs stroke 216px), so the larger failing-capable ink IS reported
+  // and hiding the smaller one is a reporting-floor question, not an F28 absorption. The rule
+  // stays quiet there BY DESIGN; the remaining gap is stated in ACCURACY.md §5x.
+  const tiny = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ fontSize: 28, strokeWidth: 2 })),
+    region,
+  );
+  assert.ok(
+    tiny.colours.some((c) => c.foreground === OUTLINED_TEXT.stroke),
+    "at 28px the larger ink (the stroke) is still reported",
+  );
+
+  // (4) Controls that must stay quiet: the tiled card grid and dense-flat page (whose edge
+  // shades the aggregation would otherwise admit) remain clean.
+  const tiled = contrastInRegion(await loadPixels(await buildTiledCardsFixture()), TILED_CARDS.region);
+  assert.equal(tiled.failing_count, 0, "card edge shades must not become failing text under aggregation");
+  assert.equal(tiled.all_meet_aa, true);
+});
+

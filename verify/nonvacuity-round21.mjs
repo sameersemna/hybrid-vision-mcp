@@ -36,18 +36,18 @@ const cases = [
     test: "F28: outlined text reports BOTH colours, and a failure cannot hide",
     file: MEASURE,
     // Emit no extras at all: the dark fill vanishes from every channel and the verdict
-    // reads clean, exactly the F28 defect.
-    from: "    let emittedExtraPixels = 0;\n    for (const extra of parentIsGlyphSized ? extraColours : []) {",
-    to: "    let emittedExtraPixels = 0;\n    for (const extra of []) {",
+    // reads clean, exactly the F28 defect. (Round 22 moved emission to a deferred pass.)
+    from: "    for (const extra of extras) {\n      if ((extraTotals.get(extra.key) || 0) < MULTICOLOUR_MIN_PIXELS) continue;",
+    to: "    for (const extra of []) {\n      if ((extraTotals.get(extra.key) || 0) < MULTICOLOUR_MIN_PIXELS) continue;",
   },
   {
     id: "F28 the absolute pixel floor (removing it lets AA fragments through)",
     test: "F28: outlined text reports BOTH colours, and a failure cannot hide",
     file: MEASURE,
-    // With no floor, the reversed direction gains sub-threshold fragment "colours"; the
-    // test's census assertions (larger ink wins) must fail.
-    from: "      if (count2 < MULTICOLOUR_MIN_PIXELS) continue;\n      const rgb2 = { r: (k2 >> 16) & 0xff",
-    to: "      if (false && count2 < MULTICOLOUR_MIN_PIXELS) continue;\n      const rgb2 = { r: (k2 >> 16) & 0xff",
+    // With no floor, sub-threshold fragment "colours" appear; the test's census
+    // assertions (larger ink wins) must fail. (Round 22 applies the floor to the TOTAL.)
+    from: "      if ((extraTotals.get(extra.key) || 0) < MULTICOLOUR_MIN_PIXELS) continue;",
+    to: "      if (false) continue;",
   },
   {
     id: "F28 the parent-box gate (region-spanning blobs must not spawn second-ink colours)",

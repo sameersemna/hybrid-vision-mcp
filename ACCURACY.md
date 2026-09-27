@@ -2647,6 +2647,138 @@ rather than kept untested — the project does not carry predicates no test can 
 - That the local model is **generally** better. It is preferred **only** when the global model
   is inadequate; on flat panels it over-reports and is not the default.
 
+## 5x. Twenty-second audit: F28's own gate reappears one scalar lower
+
+The twenty-first-audit fix (§5w) was **correct in its direction and incomplete in its
+aggregation**. F28 lowered a threshold that was applied **per component**, where the quantity
+that matters is the colour's **total**. That is the **F13/F14 construction** again: a
+threshold on a **per-piece** quantity, where adding or splitting evidence changes the
+verdict.
+
+### F29 — the pixel floor was per component, so a shrinking glyph lost its fill
+
+§5w justified `MULTICOLOUR_MIN_PIXELS = 512` as *"AA fringes are small; real second ink is
+thousands of pixels."* That is true of a **total**, but the floor was applied to a **single
+component's** `count2`. As outlined text shrinks, its fill **splits across connected
+components**, and no single piece clears 512 — so the failing fill was emitted in **no
+channel** and `all_meet_aa: true` was returned, exactly the defect F28 exists to prevent.
+
+`buildOutlinedTextFixture({ fontSize, strokeWidth: 2 })` sweep (the same builder the F28 test
+uses — the window is inside the current fixture family):
+
+| fontSize | `all_meet_aa` | failing | `#464646` (true ratio 1.88 — FAIL) |
+|---|---|---|---|
+| 56 | false | 1 | reported 1306px |
+| **48** | **true** | **0** | **ABSENT** |
+| **44** | **true** | **0** | **ABSENT** |
+| 40 | false | 1 | reported 530px |
+| **36** | **true** | **0** | **ABSENT** |
+| 28 | **true** | **0** | **ABSENT** |
+
+**Non-monotonic** (56 reports, 48 silent, 40 reports, 36 silent) — the signature of a
+threshold sitting on top of noise, not of a size below which text stops mattering.
+
+### The census and the mechanism
+
+Independently counted (exact colour, tolerance 2) and per component:
+
+| fontSize | true `#e8dfd0` stroke | true `#464646` fill | fill per component |
+|---|---|---|---|
+| 48 | 405 | **885** | 400 + 485 (both < 512) |
+| 44 | 351 | 695 | 323 + 372 (both < 512) |
+| 40 | 311 | 545 | 545 (**≥ 512 → reported**) |
+| 36 | 278 | 380 | 380 (< 512) |
+
+At 48px the fill is a single logical ink of **885px — larger than the 405px stroke and
+failing** — but because it is split across two connected components, no `count2` reached 512
+and it appeared in **no channel**: `colours: 1, excluded: 0, skipped: 0, panel_fills: 0,
+suspected_noise: 0, background_regions: 0, merged_anti_aliasing: 0, mask_reconciliation: null`.
+
+### The fix — aggregate, then decide once per colour
+
+The floor is now applied to the colour's **total across the whole scan** (`extraTotals`),
+decided once per colour, then emitted in each component that holds it. The AA-blend and
+plateau-adjacency gates stay per component (they are structural, and the reference differs per
+component); only the **floor** moved to the total. This is fragmentation-invariant — the same
+repair that closed F13.
+
+### The floor moved with the granularity: 512 → 224, measured
+
+Aggregation changes what the floor must be. Re-measured over plain text (no outline) at every
+size 10–96px and across many small text runs, **ordinary-text AA fringes produce ZERO candidate
+extras** — the AA-blend test already removes them, so the constraint that set 512 is gone once
+the quantity is a total. The binding constraint moved to **structural card shades**. Measured
+floor sweep (full suite failures):
+
+| floor | failures | note |
+|---|---|---|
+| 0 | 31 | everything, incl. real AA fringes (they are removed by aggregation, but other colours leak) |
+| 128 | 4 | tiled card shade families leak: `#413c35@1.34` (356px), `#e6e6e6@1.25` (350px) |
+| 200 | 2 | tiled card edge shade `#4b463e@1.56` (204px) |
+| **224** | **0** | chosen — just above the measured false positives, just below the smallest defect case |
+
+**224 is not a re-tuned 512.** It is a different quantity (a total): the outlined fill
+dominates its stroke down to **32px** (fill 252px vs stroke 722px) and the rule must fire
+there; the next false positive up is a tiled card edge shade at 204–224px.
+
+### Two gates: one restored, one measured redundant and cut
+
+Turning the floor into a total also changed which gates are needed:
+
+- **Plateau-adjacency gate — ADDED, and load-bearing.** Skip an extra whose colour is within
+  `PLATEAU_MERGE_DIST` of a detected plateau. Without it the dense-flat page's border tones sum
+  past the total floor (measured: `#232931` to **2560px**) and the F7 verdict fails. Measured
+  separation: the dense-flat card extras are **4.1–9.5** from a plateau; the outlined fill is
+  **80.9** away. Non-vacuous (`verify/nonvacuity-round22.mjs`).
+- **Structure gate — measured REDUNDANT, removed.** A dedicated `looks_like_structure` skip
+  was needed at a per-component floor in round 21; at the 224px **total** floor it is not —
+  the floor already rejects the tiled card edge (204px). Verified: removing it kept **121/121**,
+  so it is not carried (no untested predicate).
+
+### The measured-and-rejected floor-0 attempt (as the audit asked)
+
+Dropping the floor entirely and relying on the AA-blend test alone was measured: it
+**disturbs the flat cases** (tiled grid, huge glyph, flat/local identity). The AA test alone is
+**not sufficient** at per-component granularity. With **aggregation**, plain-text AA fringes do
+vanish — but other sub-floor colours still leak (31 failures at floor 0). Recorded as
+**measured-and-rejected**, not a recommendation.
+
+### The honest boundary — stated, not implied
+
+The fix reaches every case where the **defect applies**: the fill is the **larger** ink (so
+hiding it is F28 absorption). Measured, the fill dominates the stroke down to **32px**. At
+**28px the fill (158px) is SMALLER than the stroke (216px)**, so the larger failing-capable ink
+**is** reported and hiding the smaller one is a **reporting-floor** question, not the F28
+defect — the rule correctly stays quiet there. A font-size sweep asserting the fill at 28px
+would therefore be asserting something the evidence does not support; the test sweeps
+**32–180px** instead and asserts the boundary explicitly.
+
+### Acceptance evidence
+
+| case | before | after |
+|---|---|---|
+| 48px outlined "AB" | `all_meet_aa:true`, fill **ABSENT** | `#464646 px=870 FAIL`, `all_meet_aa:false` |
+| "ABC" 30px (split 221 + 68) | fill **ABSENT** | `#464646 px=277` (aggregated total 289) |
+| tiled card grid | clean | **clean** (plateau-adjacency gate) |
+| dense-flat page | clean | **clean** (plateau-adjacency gate) |
+| acceptance fixture | worst `#1e1c18@1.04` | unchanged |
+| `npm test` | 120 | **121** (F29 test) |
+| non-vacuity | 95 guards | **99** (+4 round-22; round-21 anchors repointed to the two-pass code) |
+| live MCP (scratch 11498) | — | §18: every size 32–72px reports the fill; aggregation WORKS; 28px boundary honest |
+
+### What this audit has NOT proven
+
+- The split is **instrumented** by me directly (per-component fill counts, tolerance 2), not
+  inferred — but I tested Latin bold glyphs at one stroke width (2px) and one background. Other
+  scripts, weights, stroke widths, or a multi-plateau page could shift where the window sits.
+- **Frequency unmeasured.** Small outlined text is plausible in real screenshots (labels,
+  badges) but I did not count occurrences; this is a control-backed **verdict error**, not a
+  prevalence claim.
+- I did **not** fix the **300px single-glyph abstention** (large display glyphs return
+  `all_meet_aa: null` via `abstained: "contrast ratio of text"`). Verified **identical at
+  HEAD** (pre-existing, out of scope), but it also hides a failing fill and may merit its own
+  round. Named **F30** here so it is not lost.
+
 ## 9. New module map
 
 | File | Responsibility |
