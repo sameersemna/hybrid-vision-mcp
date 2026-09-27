@@ -2032,6 +2032,112 @@ Renaming the guard test left `verify/nonvacuity-round14.mjs` and `-round15.mjs` 
 passed **vacuously**. Both were repointed. This is the same silent-stale-anchor trap noted
 since round 9 — a *pattern* that matches nothing is indistinguishable from a passing guard.
 
+## 5s. Seventeenth audit: the adjacency window and the cell-scoped marker
+
+### F20 — the window admitted ordinary words
+
+Round 16 scoped the negation to a 25-character window before the verb. But `NEG_ADJACENT`
+contained words that are **not negations in ordinary use**, so natural phrasing waived a
+claim:
+
+| # | line | round-16 verdict |
+|---|---|---|
+| H1d | [PARAPHRASE] `There is no doubt plateau_share orders decoration from a glyph run.` | **escaped** — `no doubt` |
+| H1e | [PARAPHRASE] `plateau_share instead orders decoration from a glyph run.` | **escaped** — `instead` as adverb |
+
+End-to-end, appending to `README.md` and running the full suite:
+
+| appended | round-16 | **round-17** |
+|---|---|---|
+| [PARAPHRASE] `plateau_share orders decoration from a glyph run.` (control) | 109 / 1 fail | 111 / 1 fail |
+| [PARAPHRASE] `There is no doubt plateau_share orders decoration from a glyph run.` | **110 / 0 — escaped** | **111 / 1 fail** |
+| [PARAPHRASE] `plateau_share instead orders decoration from a glyph run.` | **110 / 0 — escaped** | **111 / 1 fail** |
+
+This is the **fifth round** of the same class — a vocabulary item applied as a retraction
+scope — and it survived because the fix moved the scope from *"anywhere in the clause"* to
+*"within 25 chars before the verb"*, which excludes ordinary usage of those words but not
+their proximity.
+
+### F21 — a marker in one cell waived a claim in another
+
+`hasStructuralMarker` used `.some()` over cells, then `flagsClassificationClaim` returned
+`false` for the **whole line**. So a marker anywhere in a row waived every claim in that row:
+
+| # | line | round-16 | **round-17** |
+|---|---|---|---|
+| H2a | a marker in cell 1 (annotating a quote) + a live classification claim in cell 2 | **escaped** | **flagged** |
+| H2b | a marker at the start of the claim's own cell | allowed | allowed |
+
+`ACCURACY.md` carries **19** `[PARAPHRASE]` markers, so each was a live row-wide waiver.
+
+### The fix — two-tier negation, and the idiom list measured DEAD
+
+**F20.** The negation is now **two-tier**: strong negations (`cannot`, `does not`, `never`,
+`no longer`, `rather than`, `instead of`, `without …ing`) keep the 25-char window;
+ambiguous `not`/`no` are excused **only when immediately before the verb** (≤6 chars).
+
+The audit proposed an **idiom list** (`no doubt`, `not only`, …) alongside this. I
+implemented it, then **measured whether it is load-bearing** — and it is **not**: with the
+≤6-char immediate tier, the idiom list changed the verdict on **0 of 20,526** real clauses.
+So it was **removed**. That is strictly better than adding it: an idiom list is vocabulary,
+and vocabulary is exactly what produced F17 → F18 → F20. No list, no new surface.
+
+| rule | escapes (18 probes) | false positives (7 legitimate) | real-doc FP |
+|---|---|---|---|
+| round-16 (25-char `not`/`no`) | 4 | 0 | 0 |
+| **round-17 two-tier, no idiom list** | **0** | **0** | **0** |
+
+**F21.** `flagsClassificationClaim` now splits on `|` **first**, then evaluates each cell,
+so a marker waives only the cell it starts. Plus a **structural assertion** that every
+marker-bearing line is un-flagged — checkable, unlike the audit's "annotates its own text".
+
+### The structural read (five rounds, one class)
+
+| round | mechanism changed | the hole that opened |
+|---|---|---|
+| 14 | removed the threshold | the claim lived in the prose |
+| 15 | phrase guard | caught 1/9 paraphrases |
+| 16 | free-text waiver token | trailing token waived any claim |
+| 17 | verb-adjacent negation, structural marker | ordinary words in the window; marker waived the row |
+
+Each fix narrowed the **scope** of an exclusion and left its **kind** alone — an
+author-authored token whose presence suppresses reporting. As long as suppression is
+triggered by text the author controls, a new phrasing will waive a claim. The **positive
+disclaimer assertion** is the only element a paraphrase cannot defeat, so it is the primary
+check and the phrase guard is a **best-effort lint with a measured, documented recall** —
+not a barrier. The guard's own header now says exactly this.
+
+### Corroboration of the audit's retraction
+
+The audit retracted its **own** hypothesis H1a–H1c (that negating *after* the verb escapes).
+I confirm: the loop tests each verb occurrence and the trailing negation falls outside the
+window, so all three are **caught**. The window is one-directional, and that direction is
+the safe one.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **112/112** (was 110; +2 round-17 tests) |
+| H1d / H1e | flagged (proven end-to-end: 111/1) |
+| H2a / H2b | cross-cell flagged, same-cell allowed |
+| idiom set (`no doubt`, `not only`, `no wonder`, `no accident`, …) | all flagged |
+| two-tier measurement | 0/18 escapes, 0/7 false positives; idiom list 0/20,526 → removed |
+| real docs | 0 un-retracted claims; 0 false positives |
+| non-vacuity | +4 round-17 guards (weak-tier scope, strong tier, per-cell marker, marker-bearing-line assertion) |
+| live MCP (scratch 11498) | §16: F20 both flagged, F21 cell-scoped |
+
+### What this audit has NOT proven
+
+- That the phrase space is exhausted. A negation **more than 25 chars from the verb**
+  escapes — measured:
+  [PARAPHRASE] `Not for a moment does plateau_share order decoration from a glyph run.` is **missed** (the negation is 36 chars before the verb). This is a **second,
+  distinct residual** from the idiom case, and it is recorded here rather than hidden.
+- That the two-tier rule holds on a corpus beyond this repo's ~2,000 lines.
+- That a marker whose cell contains unrelated quoting (e.g. pipes inside code spans) cannot
+  waive a claim — `split("|")` treats escaped pipes as separators; **not measured**.
+- That the **19** markers each annotate exactly the text they claim to.
+
 ## 9. New module map
 
 | File | Responsibility |

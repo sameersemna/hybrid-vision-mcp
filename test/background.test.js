@@ -1161,6 +1161,84 @@ test("F17/F18: the prose guard catches live claims but NOT a trailing waiver tok
   }
 });
 
+test("F20/F21: ordinary words must not waive, and a marker waives only its OWN cell", () => {
+  // F20 (fifteenth/sixteenth→seventeenth): the verb-adjacent window admitted ordinary
+  // words — `no doubt`, `instead` as an adverb — so natural phrasing waived a claim.
+  // The negation is now two-tier: strong negations in a 25-char window; ambiguous
+  // `not`/`no` only immediately before the verb and not part of a documented idiom.
+  const mustFlag = [
+    "There is no doubt plateau_share orders decoration from a glyph run.", // H1d
+    "plateau_share instead orders decoration from a glyph run.", // H1e
+    "There is no wonder plateau_share distinguishes decoration from text.",
+    "It is no wonder plateau_share distinguishes decoration from text.",
+    "Not only does plateau_share order decoration from a glyph run, it counts them.",
+    "Not merely does plateau_share order decoration from text, it classifies it.",
+    "It is no accident plateau_share separates decoration from a glyph run.",
+    "There is no denying plateau_share orders decoration from a glyph run.",
+    "plateau_share was amended to order decoration from text", // E1b, before the verb
+  ];
+  for (const line of mustFlag) assert.ok(flagsClassificationClaim(line), `must flag: ${line}`);
+
+  // Legitimate negations still allowed (the two-tier rule must not over-widen).
+  const mustAllow = [
+    "plateau_share does NOT distinguish decoration from text.",
+    "no scalar separates decoration from text.",
+    "none of these fields distinguishes decoration from text.",
+    "plateau_share cannot distinguish decoration from text.",
+    "plateau_share measures coverage rather than distinguish decoration from text.",
+    "plateau_share does not order decoration from text; it is coverage.",
+    "plateau_share instead of separating decoration from text just measures coverage.",
+  ];
+  for (const line of mustAllow) assert.equal(flagsClassificationClaim(line), false, `must allow: ${line}`);
+
+  // F21: a marker in one table cell waives only THAT cell, not the whole row.
+  assert.ok(
+    flagsClassificationClaim('| [PARAPHRASE] "quoted old wording" | a live claim: plateau_share orders decoration from a glyph run. |'),
+    "H2a: a marker in another cell must NOT waive this claim",
+  );
+  assert.equal(
+    flagsClassificationClaim('| [PARAPHRASE] a live claim: plateau_share orders decoration from a glyph run. |'),
+    false,
+    "H2b: a marker at the START of the claim's own cell waives it",
+  );
+  assert.equal(
+    flagsClassificationClaim("[PARAPHRASE] plateau_share orders decoration from a glyph run."),
+    false,
+    "H2c: a line-start marker waives",
+  );
+});
+
+test("F21: a marker must annotate its OWN cell — every marker-bearing line is un-flagged", async () => {
+  // The markers are load-bearing PER CELL. The checkable invariant: a line that contains
+  // a REAL marker (one that waives a cell) must NOT be flagged — i.e. the marker annotates
+  // quoted history in its own cell and no live claim sits in another cell of the same row.
+  // This catches H2a (a marker in one cell granting cover to a claim in another) and a
+  // marker in the wrong cell.
+  //
+  // Fixture rows (escaped pipes `\|`, used to SHOW the H2a/H2b cases) are excluded: they
+  // deliberately contain a marker inside a quoted example, so they are demonstration text,
+  // not live annotations.
+  const { readFile } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const root = path.resolve(import.meta.dirname, "..");
+  const files = ["lib/measure.js", "README.md", "ACCURACY.md", "CHANGELOG.md", "index.js", "test-support/prose-guard.mjs"];
+  const MARKER_ANYWHERE = /\[(?:REMOVED CLAIM|PARAPHRASE|REMOVED)\]/i;
+  let count = 0;
+  for (const rel of files) {
+    const text = await readFile(path.join(root, rel), "utf8");
+    text.split("\n").forEach((line, i) => {
+      if (!MARKER_ANYWHERE.test(line)) return;
+      count++;
+      assert.equal(
+        flagsClassificationClaim(line),
+        false,
+        `${rel}:${i + 1} carries a marker yet is still flagged — the marker does not annotate its own cell (a marker in the wrong position leaves its claim live): ${line.trim().slice(0, 90)}`,
+      );
+    });
+  }
+  assert.ok(count >= 10, `expected the marker corpus to be non-trivial, found ${count}`);
+});
+
 test("F18: a waiver token appended to a LIVE claim must not excuse it (the F18 pair)", () => {
   // The single most valuable test: the SAME claim, with and without a trailing token,
   // must get the SAME verdict. F18 was a free-text token (`[PARAPHRASE]`) matched against

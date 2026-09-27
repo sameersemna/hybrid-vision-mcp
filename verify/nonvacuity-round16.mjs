@@ -31,9 +31,10 @@ const cases = [
     // claim. (Changing only the vocabulary is not enough: E1's "amended" sits AFTER the
     // verb, so it must be the SCOPE that reverts.)
     from:
-      "    const before = clause.slice(Math.max(0, m.index - 25), m.index);\n" +
-      "    if (!NEG_ADJACENT.test(before)) return true; // an un-negated classification verb",
-    to: "    if (!/(amend|removed|invert|coincidence|\\bnot\\b|\\bno\\b)/i.test(clause)) return true; // REVERTED: clause-wide vocabulary",
+      "    const excused =\n" +
+      "      NEG_STRONG.test(window) ||\n" +
+      "      NEG_WEAK_IMMEDIATE.test(immediate);",
+    to: "    const excused = !/(amend|removed|invert|coincidence|\\bnot\\b|\\bno\\b)/i.test(clause); // REVERTED: clause-wide vocabulary",
   },
   {
     id: "F19 the field anchor covers every emitted key",

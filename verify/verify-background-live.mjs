@@ -528,6 +528,14 @@ console.log("\n=== 16. round-15/16 checks (F17/F18/F19 the prose guard is struct
   const bare = flagsClassificationClaim(claim);
   const tokened = flagsClassificationClaim(`${claim} [PARAPHRASE]`);
   console.log(`  [F18] bare=${bare} trailing-token=${tokened} -> ${bare === tokened ? "SAME verdict (fixed)" : "DIFFERENT (bad)"}`);
+  // F20: ordinary words in the window must not waive.
+  const noDoubt = flagsClassificationClaim("There is no doubt plateau_share orders decoration from a glyph run.");
+  const instead = flagsClassificationClaim("plateau_share instead orders decoration from a glyph run.");
+  console.log(`  [F20] 'no doubt'=${noDoubt} 'instead'=${instead} -> ${noDoubt && instead ? "both flagged (fixed)" : "ESCAPES (bad)"}`);
+  // F21: a marker waives only its own cell.
+  const crossCell = flagsClassificationClaim('| [PARAPHRASE] "quoted" | a live claim: plateau_share orders decoration from a glyph run. |');
+  const sameCell = flagsClassificationClaim('| [PARAPHRASE] a live claim: plateau_share orders decoration from a glyph run. |');
+  console.log(`  [F21] cross-cell=${crossCell} same-cell=${sameCell} -> ${crossCell && !sameCell ? "cell-scoped (fixed)" : "BAD"}`);
   // F19: the field anchor must cover every emitted key.
   const { EMITTED_DISCLOSURE_KEYS, CLAIM_FIELD } = await import(pathToFileURL(p.join(root, "test-support", "prose-guard.mjs")).href);
   const uncovered = EMITTED_DISCLOSURE_KEYS.filter((k) => !CLAIM_FIELD.test(k));
