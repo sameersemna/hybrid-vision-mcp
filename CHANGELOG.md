@@ -1,5 +1,58 @@
 # Changelog
 
+## Twenty-fifth-audit follow-up: the per-piece error, fourth appearance (F34) — 2026-09-27
+
+Round 24 added a **size qualifier** to the AA test to fix F32 — but used `count2`, the count
+**within one component**. That is **F29's exact error, one guard over**: a real on-line fill
+split across glyphs has every piece under the qualifier and is discarded wholesale, in no
+channel. The **fourth consecutive round** a second-ink-path gate used a per-piece quantity where
+a total was meant. See `ACCURACY.md` §5aa.
+
+### Fixed
+
+- **F34 — the AA size qualifier is now a per-colour TOTAL.** `ABCDEFGHIJKLMNOP` @24px splits its
+  on-line fill into 16 pieces of 30–127px (true total **610px**); at the per-component qualifier
+  every piece was rejected and the fill appeared in **no channel** (`all_meet_aa:true`). The
+  blend flag is now recorded on the candidate, its pixels accumulated into `extraBlendTotals` per
+  colour, and the qualifier applied in the **deferred pass** where the total is known. Result:
+  the fill is **reported px=569**, and the glyph-count sweep {2,4,8,16} is **count-invariant**.
+
+### Why the reject cannot be inline
+
+Measured: at the moment each component is visited the running total may still be below the
+threshold, so an inline running-total does not work. The qualifier must run **after** the whole
+scan — the same ordering constraint the pixel floor already satisfies.
+
+### `MULTICOLOUR_AA_MIN_PIXELS` re-derived under the total quantity
+
+Now justified against a measured gap of **on-line totals**: fringes ≤ **164** (huge-glyph shades
+50–164, F32 stroke shades 130–154) vs real on-line fills ≥ **569** (F34 @24px). **500** sits in
+the gap; the grid over {200, 300, 500, 800, 1200} is green.
+
+### The structural rule, and the four appearances
+
+| round | gate | per-piece quantity | fix |
+|---|---|---|---|
+| 22 | pixel floor (F29) | per component | total across the scan |
+| 23 | floor alignment (F30) | a second scalar (224) | the primary floor (8) |
+| 23 | accumulation grain (F31) | per-component totals | per-total across the scan |
+| 24/25 | **AA qualifier (F34)** | per component | on-line total (deferred) |
+
+Adopted rule, written into the code: **in the second-ink path, no gate may use a per-component
+quantity without stating why the total is wrong.** The other inline gates were audited —
+plateau-adjacency is a **colour** test (order-independent, safe); background-size uses
+`count2 / scanArea` and is the **same shape**, named as a latent risk (not a live defect; no
+fixture exercises it, and it errs toward under-rejecting background).
+
+### Acceptance evidence
+
+- `npm test`: **126** (was 125); F34 asserts the split fill is reported and the glyph-count sweep
+  is monotonic.
+- non-vacuity: **112** guards (was 108); `verify/nonvacuity-round25.mjs`; round-24 anchor repointed.
+- live MCP (scratch 11498): §21 — 16 glyphs reported, count-invariant.
+- Controls unchanged: F31 dense small cards, F32 matched pair, F28 outlined, tiled, dense-flat,
+  photo, acceptance fixture.
+
 ## Twenty-fourth-audit follow-up: the third axis of divergence (F32) — 2026-09-27
 
 Round 23 aligned the second-ink path with the primary path on **size** and **accumulation

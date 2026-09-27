@@ -3029,6 +3029,125 @@ it no longer rejects by colour alone.
 - Whether `MULTICOLOUR_AA_MIN_PIXELS = 500` is the correct value; it sits in a measured gap
   (F32 fill 9,306 vs fringes already gated earlier) and the grid is green from 200–1000.
 
+## 5aa. Twenty-fifth audit: the per-piece error, fourth appearance — the AA size qualifier
+
+Round 24 (§5z) fixed F32 by adding a **size qualifier** to the AA test. It used `count2` — the
+count **within one component** — which is **F29's exact error, one guard over**. A real on-line
+fill split across glyphs has every piece under the qualifier and is discarded wholesale. This is
+the **fourth consecutive round** in which a second-ink-path gate used a per-piece quantity where
+a total was meant.
+
+### F34 — the AA size qualifier was per-component
+
+**Repro** (`ABCDEFGHIJKLMNOP` @24px, white 2px stroke, fill `#312f2c`). Per-component
+instrumentation:
+
+| component | fill-in-box | on-line? | `< 500`? |
+|---|---|---|---|
+| #ffffff px=859 | 106 | true | **rejected** |
+| #ffffff px=622 | 95 | true | **rejected** |
+| #ffffff px=230 | 30 | true | **rejected** |
+| … 16 glyphs, every piece 30–127px … | | | **all rejected** |
+
+True total on-line fill = **610px**. Verdict at the defective revision: `all_meet_aa=true`,
+`failing_count=0`, `colours=1` — `#312f2c` in **no channel**.
+
+**The glyph-count sweep** (tolerance 2) shows the threshold is a lottery on how the fill
+fragments:
+
+| text @ size | true on-line fill | reported at HEAD |
+|---|---|---|
+| `AB` @180 | 17,291px | yes |
+| `ABCDEFGH` @40 | 2,031px | yes (one piece reached 550px ≥ 500) |
+| **`ABCDEFGHIJKLMNOP` @24** | **610px** | **ABSENT** |
+| `ABCDEFGHIJKLMNOPQRST` @18 | 106px | absent |
+
+### The fix — the qualifier uses the colour's ON-LINE total, decided in the deferred pass
+
+The reject cannot be inline: at the moment each component is visited the running total may still
+be below the threshold. So the **blend flag is recorded** on the candidate, its pixels are
+accumulated into `extraBlendTotals` per colour, and the qualifier is applied in the **deferred
+pass** where `total` is known:
+
+```
+// candidate loop — records, does not reject:
+candidateExtras.push({ key: k2, rgb: rgb2, count: count2, dist: …, blend });
+if (blend) extraBlendTotals.set(k2, (extraBlendTotals.get(k2) || 0) + count2);
+
+// deferred pass — the total is now known:
+const blendTotal = extraBlendTotals.get(extra.key) || 0;
+if (blendTotal > 0 && blendTotal < MULTICOLOUR_AA_MIN_PIXELS) continue;
+```
+
+**Measured result** (all controls unchanged):
+
+| case | before | after |
+|---|---|---|
+| `ABCDEFGHIJKLMNOP` @24 (610px) | **ABSENT** | **reported px=569** |
+| `ABCDEFGH` @40 | reported | reported |
+| F32 `#312f2c` / `#484643` matched pair | reported | reported |
+| F31 dense small cards | `all_meet_aa: true` | `true` |
+| dense-flat / tiled / photo | clean | clean |
+
+### `MULTICOLOUR_AA_MIN_PIXELS` re-derived under the total quantity (500 → 500)
+
+The audit asked whether the value should be re-derived once the criterion is total-based. It now
+sits in a measured gap of **on-line totals**: fringes ≤ **164** (huge-glyph shades 50–164; F32's
+own stroke shades 130–154) vs real on-line fills ≥ **569** (F34 @24px). **500** is inside that
+gap, so the value stands — but it is now **justified against the total**, not the per-component
+count. The grid over `{200, 300, 500, 800, 1200}` is green.
+
+### The structural rule, and the four appearances
+
+| round | gate | per-piece quantity | fix |
+|---|---|---|---|
+| 22 | pixel floor (F29) | `count2` per component | total across the scan |
+| 23 | floor alignment (F30) | a second scalar (224) | the primary floor (8) |
+| 23 | accumulation grain (F31) | per-component totals | per-total across the scan |
+| **24/25** | **AA size qualifier (F34)** | **`count2` per component** | **on-line total in the deferred pass** |
+
+The pattern is now the **dominant failure mode of this subsystem**. The structural rule adopted:
+
+> **In the second-ink path, no gate may use a per-component quantity without stating why the
+> total is wrong.**
+
+This is written into the code at the candidate loop and the deferred pass. The remaining inline
+gates were audited for the same ordering issue:
+
+- **plateau-adjacency** — a **colour** test against a detected plateau (not a count), so it is
+  order-independent; safe.
+- **background-size** — uses `count2 / scanArea` (per-component). A background colour split
+  across components could currently evade it. **Not a live defect** on any fixture (no fixture
+  exercises it), and it is the conservative direction (under-rejects background rather than
+  discarding ink), but it is the same shape and is **named here** as a latent risk.
+- **mean-area** (deferred) — already total-based.
+
+### F33 — one correction to the audit's own reproduction
+
+The audit re-ran the F33 table across rounds and found it *mostly* pre-existing with **one** entry
+that round 23 changed (`A 24px`: absent → reported), which they correctly labelled an
+**improvement**, not a regression. Accepted: the earlier "identical at 21/22/23" was very slightly
+off, in the direction of the fix having helped. F33 remains **indicative only**.
+
+### Acceptance evidence
+
+| case | before | after |
+|---|---|---|
+| F34 16 glyphs @24px | `all_meet_aa:true`, fill in no channel | `#312f2c px=569`, `false` |
+| glyph-count sweep {2,4,8,16} | non-monotonic | once reported, stays reported (count-invariant) |
+| `npm test` | 125 | **126** (F34 count-invariance test) |
+| non-vacuity | 108 guards | **112** (+4 round-25; round-24 anchor repointed) |
+| live MCP (scratch 11498) | — | §21: 16 glyphs reported, count-invariant |
+
+### What this audit has NOT proven
+
+- The fix beyond this repo's fixtures. The 500 qualifier is justified by the on-line total gap
+  (164 → 569) on the standing fixtures; a different font, stroke width, or region size could move
+  it.
+- Whether the **background-size** inline gate is ever reached with a genuinely split background
+  colour — no fixture exercises it; it is named as a latent risk, not a demonstrated defect.
+- F33's status beyond "indicative, mostly pre-existing".
+
 ## 9. New module map
 
 | File | Responsibility |

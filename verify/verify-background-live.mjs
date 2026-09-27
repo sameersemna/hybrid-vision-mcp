@@ -742,4 +742,38 @@ console.log("\n=== 20. round-24 checks (F32 on-line fill is not discarded as a f
   console.log(`  [F32] every on-line fill reported: ${allOk ? "YES" : "NO"}`);
 }
 
+// Round-25 checks (twenty-fifth audit F34): the AA size qualifier must be a per-colour TOTAL,
+// so a real on-line fill split across glyphs is not discarded for being fragmented.
+async function fragmentedOnLine(text, size) {
+  const w = 1000, h = 700;
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="#1a1814"/>` +
+    `<text x="20" y="${Math.round(size * 0.9) + 60}" font-family="DejaVu Sans, sans-serif" ` +
+    `font-weight="bold" font-size="${size}" fill="#312f2c" stroke="#ffffff" stroke-width="2">${text}</text></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+console.log("\n=== 21. round-25 checks (F34 the AA qualifier is a per-colour TOTAL) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  // 16 glyphs at 24px: every fill piece is 30-127px (<500), true total 610px.
+  const many = await call("measure_image", { image_source: toUri(await fragmentedOnLine("ABCDEFGHIJKLMNOP", 24)), mode: "contrast", region });
+  const mc = many.measurements.contrast;
+  const mf = mc.colours.find((x) => x.foreground === "#312f2c");
+  console.log(`  [F34 16 glyphs @24px] #312f2c ${mf ? `px=${mf.pixel_count} reported` : "** ABSENT **"} all_meet_aa=${mc.all_meet_aa}  -> ${mf && !mf.wcag_aa ? "ok" : "DISCARDED"}`);
+
+  // Count-invariance: at a fixed size the fill total rises with glyph count, so once reported
+  // it must stay reported.
+  let seen = false, invariant = true;
+  for (const [text, n] of [["AB", 2], ["ABCD", 4], ["ABCDEFGH", 8], ["ABCDEFGHIJKLMNOP", 16]]) {
+    const r = await call("measure_image", { image_source: toUri(await fragmentedOnLine(text, 24)), mode: "contrast", region });
+    const present = !!r.measurements.contrast.colours.find((x) => x.foreground === "#312f2c");
+    if (present) seen = true;
+    if (seen && !present) invariant = false;
+    console.log(`  [F34 n=${String(n).padStart(2)}] #312f2c ${present ? "reported" : "absent"}`);
+  }
+  console.log(`  [F34] count-invariant: ${invariant && seen ? "YES" : "NO"}`);
+}
+
 await client.close();

@@ -1939,3 +1939,48 @@ test("F33 (pre-existing, named): the second-ink mean-area gate is not unified to
   assert.equal(denseFlat.all_meet_aa, true, "the dense-flat page is not reported as failing");
 });
 
+test("F34: the AA size qualifier is a per-colour TOTAL, not a per-component count", async () => {
+  // Round 24 added the AA size qualifier using `count2` — THIS component's count. A real
+  // on-line fill splits across glyphs as it shrinks, so each piece can fall under the
+  // qualifier and the whole colour is discarded, in no channel (F34 — the same per-piece
+  // error the pixel floor had before F29). The qualifier now uses the colour's accumulated
+  // ON-LINE total, decided in the deferred pass.
+  const region = OUTLINED_TEXT.region;
+  const fill = "#312f2c";
+  const onLine = async (text, size) =>
+    contrastInRegion(
+      await loadPixels(await buildOutlinedTextFixture({ text, fontSize: size, fill, stroke: "#ffffff", strokeWidth: 2 })),
+      region,
+    );
+
+  // The defect: 16 glyphs at 24px — every fill piece is 30-127px (< 500), true total 610px.
+  const many = await onLine("ABCDEFGHIJKLMNOP", 24);
+  const f = many.colours.find((c) => c.foreground === fill);
+  assert.ok(f, "the split on-line fill must be reported (its TOTAL clears the qualifier)");
+  assert.equal(f.wcag_aa, false, "the fill fails AA (1.33:1)");
+  assert.equal(many.all_meet_aa, false, "the verdict must not read clean");
+
+  // COUNT-INVARIANCE (the analogue of round 22's font sweep and round 24's t-sweep): as the
+  // glyph count rises at a fixed size, the fill's total rises, so once it clears the qualifier
+  // it must stay reported — a per-component rule would be non-monotonic.
+  const counts = [2, 4, 8, 16, 20];
+  const words = ["AB", "ABCD", "ABCDEFGH", "ABCDEFGHIJKLMNOP", "ABCDEFGHIJKLMNOPQRST"];
+  let seenReported = false;
+  for (let i = 0; i < counts.length; i++) {
+    const r = await onLine(words[i], 24);
+    const present = !!r.colours.find((c) => c.foreground === fill);
+    if (present) seenReported = true;
+    if (seenReported) {
+      assert.ok(present, `once the fill's total clears the qualifier it must stay reported (n=${counts[i]})`);
+    }
+  }
+  assert.ok(seenReported, "some glyph count reaches a total above the qualifier");
+
+  // CONTROL: F31 (dense small cards) stays clean — the qualifier still rejects real fringes.
+  const dense = contrastInRegion(await loadPixels(await buildDenseSmallCardsFixture()), DENSE_SMALL_CARDS.region);
+  assert.equal(dense.all_meet_aa, true, "F31 must remain fixed");
+  // CONTROL: F32 matched pair still reported (a large single on-line fill).
+  const single = await onLine("AB", 180);
+  assert.ok(single.colours.some((c) => c.foreground === fill && !c.wcag_aa), "the single-glyph on-line fill is still reported");
+});
+

@@ -803,9 +803,13 @@ one.
 > components — it is now applied to the colour's **total** across the scan; §5y for the
 > next round (F30/F31): the second-ink path had its **own** 28×-larger floor, which hid
 > failing ink and admitted accumulated card/text anti-aliasing fringes — it now uses the
-> primary path's reporting floor and gates; and §5z (F32): a further divergence on the
+> primary path's reporting floor and gates; §5z (F32): a further divergence on the
 > **colour-proximity** axis let a real fill that lies on the reference→stroke line be
-> discarded as a fringe — the AA test now rejects a blend only when it is **small**.
+> discarded as a fringe — the AA test now rejects a blend only when it is **small**; and
+> §5aa (F34): that size qualifier was applied **per component**, so a real on-line fill split
+> across glyphs was discarded — it is now applied to the colour's **on-line total** in the
+> deferred pass. In the second-ink path, **no gate may use a per-component quantity without
+> stating why the total is wrong**.
 
 ---
 
