@@ -1,5 +1,62 @@
 # Changelog
 
+## Twenty-sixth-audit follow-up: the per-component error, in the other direction (F35) — 2026-09-27
+
+The audit reported **F35** — a decoration whose **total** is region-sized but which is split into
+small pieces — and diagnosed it as the fifth second-ink gate. **The reproduction stands; the
+attribution and the proposed fix were both wrong**, and both corrections are measured. See
+`ACCURACY.md` §5ab.
+
+### F35 — a split background-sized decoration was reported as failing text
+
+A `#2e2a24` decoration (contrast **1.24**) whose **total** is **2.06–2.10%** of the region but
+split into 16–36 solid pieces was reported as failing text. **Pre-existing since round 21**
+(identical at `a304c0e`, `11e6757`, `dc74fef`).
+
+### Two corrections to the audit's diagnosis
+
+- **The gate is the PRIMARY path's, not the second-ink one.** The colour is emitted as **primary
+  components** (`component_count: 16, multi_colour_of: none`); disabling the second-ink
+  background-size gate changes nothing. The admitting gate is **`isLargeBackgroundRegion`**
+  (`meanArea / regionArea > 0.02`) — the **F14 anti-correlation** in the primary path. So F35 is
+  the same **root cause** in a **different subsystem**, not a fifth second-ink instance.
+- **The proposed mean→total swap would regress real text.** Measured: 15 lines of faint text =
+  **4.29%** of the region, 28 lines = **6.31%**, 28 lines @20px = **9.30%** — all above the 2%
+  fraction, so a total-only gate would **filter real faint text**. That is why the mean was
+  originally chosen.
+
+### The measured fix — total **and** solidity, with the mean test retained
+
+```js
+lowContrast && (meanIsRegionSized                                   // original F7 backstop
+  || (totalIsRegionSized && mean_fill_ratio >= 0.9))                // F35 split decoration
+```
+
+Solidity is the faithful separator: F35's pieces are solid rectangles (`fill_ratio 1.00`), real
+glyph runs are 0.05–0.62. Both clauses are **load-bearing** (non-vacuity): the mean-only form
+re-admits F35; dropping the mean clause filters F32/F34's solid on-line fills; lowering the
+solidity threshold filters them too. The F7 textured page (a single 33%-of-region **non-solid**
+blob) still fires because the **mean clause is retained**.
+
+### The two directions, and the standing test the audit asked for
+
+```
+per-component quantity where a TOTAL was meant
+  ├─ false negative: a real fill SPLIT below a floor          F29, F30, F31, F32, F34
+  └─ false positive: a decoration SPLIT below a background gate   F35
+```
+
+Adopted: a **COUNT-INVARIANCE** standing acceptance test (fixed total, varying piece count — real
+ink 1/2/4/8/16 → reported; decoration 1/4/16/36 → filtered). That single test would have caught
+**all six**. The second-ink **background-size** inline gate is documented as **latent** (same
+shape, not reachable on any fixture, conservative direction).
+
+### Acceptance evidence
+
+- `npm test`: **128** (was 126); F35 + standing count-invariance.
+- non-vacuity: **116** guards (was 112); `verify/nonvacuity-round26.mjs`.
+- live MCP (scratch 11498): §22 — every split decoration filtered; F7/F32/F34 unchanged.
+
 ## Twenty-fifth-audit follow-up: the per-piece error, fourth appearance (F34) — 2026-09-27
 
 Round 24 added a **size qualifier** to the AA test to fix F32 — but used `count2`, the count

@@ -66,6 +66,7 @@ import {
   buildTextFreeGradientFixture,
   buildOutlinedTextFixture,
   buildDenseSmallCardsFixture,
+  buildSplitBackgroundFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
@@ -87,6 +88,7 @@ import {
   DENSE_TEXT_F16,
   OUTLINED_TEXT,
   DENSE_SMALL_CARDS,
+  SPLIT_BACKGROUND,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -1982,5 +1984,55 @@ test("F34: the AA size qualifier is a per-colour TOTAL, not a per-component coun
   // CONTROL: F32 matched pair still reported (a large single on-line fill).
   const single = await onLine("AB", 180);
   assert.ok(single.colours.some((c) => c.foreground === fill && !c.wcag_aa), "the single-glyph on-line fill is still reported");
+});
+
+test("F35: a decoration split below the region gate is not reported as failing text", async () => {
+  // A near-background decoration whose TOTAL is >= 2% of the region but which is split into
+  // many small SOLID pieces. The large-background-region gate used a per-BLOB MEAN, so it
+  // evaded the gate and was reported as failing text (the F14 anti-correlation in the primary
+  // path). It is now filtered on the TOTAL plus SOLIDITY, while the ORIGINAL mean test is
+  // kept so the F7 textured-page backstop still fires.
+  const region = SPLIT_BACKGROUND.region;
+  for (const n of [1, 4, 16, 36]) {
+    const r = contrastInRegion(await loadPixels(await buildSplitBackgroundFixture({ n })), region);
+    assert.ok(
+      !r.colours.some((c) => c.foreground === SPLIT_BACKGROUND.colour),
+      `n=${n}: a split background-sized decoration must not be a text colour`,
+    );
+    assert.equal(r.all_meet_aa, true, `n=${n}: the page is clean`);
+  }
+
+  // CONTROL: the F7 textured page (a single 33%-of-region blob, NOT solid) is still caught by
+  // the region backstop — the mean test is retained alongside the total+solid test.
+  const textured = contrastInRegion(await loadPixels(await buildTexturedPageCardsFixture()), TILED_CARDS.region);
+  assert.ok(textured.background_regions.length >= 1, "the textured page is still a background region");
+});
+
+test("COUNT-INVARIANCE (standing): a fixed colour total must give the SAME verdict at any piece count", async () => {
+  // The single test that would have caught F29, F30, F31, F32, F34 and F35: for a fixed ink
+  // total, changing only how many pieces it is split into must not change the verdict.
+  const region = OUTLINED_TEXT.region;
+
+  // (a) a REAL on-line fill of ~equal total, split 1..16 ways -> reported in every case.
+  const realSides = [[1, 24, 25], [2, 17, 17], [4, 12, 12], [8, 9, 8], [16, 6, 6]];
+  const verdicts = [];
+  for (const [n, pw, ph] of realSides) {
+    const parts = [`<rect width="1000" height="700" fill="#1a1814"/>`];
+    for (let i = 0; i < n; i++) {
+      const x = 40 + (i % 8) * 110;
+      const y = 40 + Math.floor(i / 8) * 110;
+      parts.push(`<rect x="${x - 3}" y="${y - 3}" width="${pw + 6}" height="${ph + 6}" fill="none" stroke="#ffffff" stroke-width="3"/>`);
+      parts.push(`<rect x="${x}" y="${y}" width="${pw}" height="${ph}" fill="#312f2c"/>`);
+    }
+    const r = contrastInRegion(await loadPixels(await sharp(Buffer.from(`<svg width="1000" height="700" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer()), region);
+    verdicts.push(!!r.colours.find((c) => c.foreground === "#312f2c"));
+  }
+  assert.ok(verdicts.every((v) => v), `a real on-line fill must be reported at every piece count (got ${JSON.stringify(verdicts)})`);
+
+  // (b) a DECORATION of comparable total, split 1..36 ways -> filtered in every case.
+  for (const n of [1, 4, 16, 36]) {
+    const r = contrastInRegion(await loadPixels(await buildSplitBackgroundFixture({ n })), SPLIT_BACKGROUND.region);
+    assert.ok(!r.colours.some((c) => c.foreground === SPLIT_BACKGROUND.colour), `decoration n=${n} must stay filtered`);
+  }
 });
 

@@ -332,6 +332,40 @@ export const DENSE_SMALL_CARDS = {
   fringe: "#59534b", // a card->text AA blend, ~1.92:1, must NOT be reported as text
 };
 
+/**
+ * SPLIT background-sized decoration — the twenty-sixth-audit F35 reproduction.
+ *
+ * A near-background colour whose TOTAL is >= 2% of the region (the large-background-region
+ * fraction) but which is split into many small SOLID pieces, so each piece is well below the
+ * fraction. The large-background-region gate used a PER-BLOB MEAN, so it evaded the gate and
+ * the decoration was reported as failing text (measured: 16 pieces of 50x18, total 14,400px =
+ * 2.06%, reported @1.24). Real glyph strokes are not solid (fill_ratio 0.37-0.6), so solidity
+ * is the faithful separator.
+ */
+export async function buildSplitBackgroundFixture({ w = 1000, h = 700, n = 16, total = 14400, colour = "#2e2a24", cols = 6 } = {}) {
+  // Keep the TOTAL ~constant so the fraction is what varies, not the magnitude.
+  const side = Math.max(4, Math.round(Math.sqrt(total / n)));
+  const pw = side, ph = side;
+  const parts = [`<rect width="${w}" height="${h}" fill="#1a1814"/>`];
+  for (let i = 0; i < n; i++) {
+    const x = 30 + (i % cols) * (pw + 10);
+    const y = 30 + Math.floor(i / cols) * (ph + 10);
+    parts.push(`<rect x="${x}" y="${y}" width="${pw}" height="${ph}" fill="${colour}"/>`);
+  }
+  // A real (passing) text run so the region is not trivially text-free.
+  parts.push(`<text x="30" y="660" font-family="DejaVu Sans, sans-serif" font-size="30" fill="#e8dfd0">label</text>`);
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+/** The F35 colour and its measured relationship to the region. */
+export const SPLIT_BACKGROUND = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  colour: "#2e2a24",
+  ratio: 1.24, // near-background, low contrast
+  totalFraction: 0.0206, // the TOTAL clears the 2% region fraction
+  pieceFraction: 0.0013, // each piece does not
+};
+
 /** A plain flat UI with a grid of cards — a legitimate single-background case. */
 export async function buildCardsFlatFixture() {
   const W = 1200, H = 800;

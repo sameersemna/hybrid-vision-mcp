@@ -3148,6 +3148,128 @@ off, in the direction of the fix having helped. F33 remains **indicative only**.
   colour — no fixture exercises it; it is named as a latent risk, not a demonstrated defect.
 - F33's status beyond "indicative, mostly pre-existing".
 
+## 5ab. Twenty-sixth audit: the per-component error produces a FALSE POSITIVE, and the fix was not the one proposed
+
+Round 25 (§5aa) closed F34 by moving the AA size qualifier to the colour total. The audit then
+reported **F35** — a colour whose **total** is region-sized but which is split into small pieces
+— and diagnosed it as the **fifth per-component gate**, naming the **second-ink background-size
+test** (`count2 / scanArea`). **The reproduction stands; the attribution is wrong**, and so is
+the proposed fix. Both corrections are measured below.
+
+### F35 reproduced, and attributed
+
+A near-background decoration (`#2e2a24`, contrast **1.24**) drawn as **solid rectangles** whose
+**total** clears the 2% region fraction but whose **pieces** do not:
+
+| pieces | piece size | total | share of region | verdict |
+|---|---|---|---|---|
+| 1 | 200×75 | 15,000px | 2.14% | filtered |
+| 4 | 100×37 | 14,800px | 2.11% | filtered |
+| **16** | **50×18** | **14,400px** | **2.06%** | **reported @1.24 — false positive** |
+| **36** | **34×12** | **14,688px** | **2.10%** | **reported @1.24 — false positive** |
+
+**Provenance: pre-existing since round 21.** Identical at `a304c0e` (r21), `11e6757` (r22) and
+`dc74fef` (r26) — reachable the whole time, not introduced by any recent round.
+
+### Correction 1 — the admitting gate is the PRIMARY path's, not the second-ink one
+
+The audit named the second-ink background-size gate. **Measured: disabling that gate does not
+change F35 at all.** The colour is emitted as **primary components** (`component_count: 16,
+multi_colour_of: none`) — it never travels the second-ink path, so that gate never sees it. The
+admitting gate is the **primary path's `isLargeBackgroundRegion`**, which used
+`meanArea / regionArea > 0.02` — a **mean per blob**, the **F14 anti-correlation** ("the mean
+falls as N grows") appearing in the primary path.
+
+So F35 is **not** the fifth second-ink instance. It is the **same root cause** ("a per-piece
+quantity where a total was meant") in a **different subsystem** — which strengthens the audit's
+structural point even though its specific attribution was wrong.
+
+### Correction 2 — switching the mean to the total would trade a false positive for a false negative
+
+The audit's fix #1 was "move the background-size gate to the deferred pass on the total". Applied
+to `isLargeBackgroundRegion`, that means replacing the mean by the total fraction. **Measured,
+that regresses real text**:
+
+| case | total % of region | mean-based | **total-based** |
+|---|---|---|---|
+| faint text, 5 lines @18px | 1.41% | keep | keep |
+| **faint text, 15 lines @18px** | **4.29%** | keep | **FILTER (regression)** |
+| **faint text, 28 lines @16px** | **6.31%** | keep | **FILTER (regression)** |
+| **faint text, 28 lines @20px** | **9.30%** | keep | **FILTER (regression)** |
+
+A large run of real faint text has a **total** above the region fraction. That is exactly why the
+original code chose the mean ("real faint text is ~1000× smaller per blob"). The mean is a
+**proxy for solidity** — and its failure mode is that it is also anti-correlated with count.
+
+### The measured fix — total **and** solidity, with the mean test retained
+
+The faithful separator is **solidity**: a panel/region blob is a **solid rectangle** (`fill_ratio`
+≈ 1.0); glyph strokes are not (measured **0.37–0.6**). Measured across F35 and 13 real fixtures:
+
+| class | total % | mean fill_ratio |
+|---|---|---|
+| F35 decoration (16/36 solid rects) | 2.06–2.10% | **1.00** |
+| real glyph runs (acceptance, dropcap, text-heavy, dense-text, tiled, …) | ≤ 0.58% | 0.05–0.62 |
+| faint text worst case (28 lines @16px) | 5.84% | 0.55 |
+
+The gate becomes:
+
+```js
+lowContrast &&
+(meanIsRegionSized                                  // the ORIGINAL F7 backstop (textured page, n=1, 33%)
+ || (totalIsRegionSized && mean_fill_ratio >= 0.9)) // F35: split decoration
+```
+
+Both clauses are **load-bearing** (non-vacuity): reverting to the mean-only form re-admits F35;
+dropping the mean clause filters F32/F34's solid on-line fills; lowering the solidity threshold
+filters them too. `isLargeBackgroundRegion` is unchanged for the F7 textured page (a single
+33%-of-region **non-solid** blob) because the **mean clause is retained**.
+
+### The two directions, and the count-invariance test
+
+The per-component error now demonstrably produces errors in **both** directions:
+
+```
+per-component quantity where a TOTAL was meant
+  ├─ false negative: a real fill SPLIT below a floor      F29, F30, F31, F32, F34
+  └─ false positive: a decoration SPLIT below a background gate   F35
+```
+
+That is the signature of a **design error, not a bug** — five instances, two directions, six
+gates. The audit's recommendation — a single total-based pass rather than gate-by-gate patching,
+plus a **count-invariance** standing test — is **adopted**:
+
+- **COUNT-INVARIANCE is now a standing acceptance test**: for a fixed ink total, the verdict must
+  not change with the piece count (1/2/4/8/16 for real ink → reported; 1/4/16/36 for decoration →
+  filtered). That single test **would have caught all six**.
+- All remaining second-ink gates were already total-based (floor, AA qualifier). The
+  **background-size** inline gate (`count2 / scanArea`) is now **documented as latent** — it is
+  not reachable on any fixture and is the conservative direction, but it is the same shape.
+
+### Acceptance evidence
+
+| case | before | after |
+|---|---|---|
+| F35 split decoration (n=16, n=36) | `#2e2a24@1.24` reported, `all_meet_aa:false` | **filtered**, `all_meet_aa:true` |
+| F7 textured page (n=1, non-solid) | background region | **still a background region** |
+| F32/F34 solid on-line fills | reported | reported |
+| count-invariance (real ink 1→16) | — | reported in **every** case |
+| `npm test` | 126 | **128** (F35 + standing count-invariance) |
+| non-vacuity | 112 guards | **116** (+4 round-26) |
+| live MCP (scratch 11498) | — | §22: every split decoration filtered |
+
+### What this audit has NOT proven
+
+- Whether the **background-size** inline gate is reachable in a real screenshot (no fixture
+  exercises it; named as latent).
+- That the solidity threshold (0.9) is universal — F35's pieces are `fill_ratio 1.0` and real
+  glyph runs 0.05–0.62, so the gap is wide, but a synthetic solid **glyph** (a filled block
+  character) could sit above 0.9; none is in the standing set.
+- Whether **other** subsystems outside the second-ink path carry the same per-piece shape; only
+  `isLargeBackgroundRegion` was audited and fixed here.
+- The audit's own framing that this is the fifth **second-ink** instance — corrected above; it is
+  the same root cause in the **primary** path.
+
 ## 9. New module map
 
 | File | Responsibility |

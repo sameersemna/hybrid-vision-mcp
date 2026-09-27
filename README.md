@@ -805,11 +805,15 @@ one.
 > failing ink and admitted accumulated card/text anti-aliasing fringes — it now uses the
 > primary path's reporting floor and gates; §5z (F32): a further divergence on the
 > **colour-proximity** axis let a real fill that lies on the reference→stroke line be
-> discarded as a fringe — the AA test now rejects a blend only when it is **small**; and
-> §5aa (F34): that size qualifier was applied **per component**, so a real on-line fill split
-> across glyphs was discarded — it is now applied to the colour's **on-line total** in the
-> deferred pass. In the second-ink path, **no gate may use a per-component quantity without
-> stating why the total is wrong**.
+> discarded as a fringe — the AA test now rejects a blend only when it is **small**; §5aa (F34):
+> that size qualifier was applied **per component**, so a real on-line fill split across glyphs
+> was discarded — it is now applied to the colour's **on-line total** in the deferred pass. In
+> the second-ink path, **no gate may use a per-component quantity without stating why the total
+> is wrong**. §5ab (F35): the same per-piece shape appeared in the **primary** path's
+> large-background-region gate (a split decoration was reported as failing text); the gate now
+> requires the **total** *and* **solidity**, keeping the original mean test for the textured-page
+> backstop. A standing **count-invariance** test (fixed total, varying piece count) now covers
+> this class.
 
 ---
 

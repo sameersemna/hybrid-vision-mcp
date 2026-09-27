@@ -776,4 +776,34 @@ console.log("\n=== 21. round-25 checks (F34 the AA qualifier is a per-colour TOT
   console.log(`  [F34] count-invariant: ${invariant && seen ? "YES" : "NO"}`);
 }
 
+// Round-26 checks (twenty-sixth audit F35): a decoration whose TOTAL is region-sized but which
+// is split into small solid pieces must not be reported as failing text — while the F7
+// textured-page backstop (a single non-solid region blob) must still fire.
+async function splitBackground(n, total = 14400) {
+  const w = 1000, h = 700, cols = 6;
+  const side = Math.max(4, Math.round(Math.sqrt(total / n)));
+  const parts = [`<rect width="${w}" height="${h}" fill="#1a1814"/>`];
+  for (let i = 0; i < n; i++) {
+    const x = 30 + (i % cols) * (side + 10);
+    const y = 30 + Math.floor(i / cols) * (side + 10);
+    parts.push(`<rect x="${x}" y="${y}" width="${side}" height="${side}" fill="#2e2a24"/>`);
+  }
+  parts.push(`<text x="30" y="660" font-family="DejaVu Sans, sans-serif" font-size="30" fill="#e8dfd0">label</text>`);
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 22. round-26 checks (F35 split background-sized decoration) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  let allOk = true;
+  for (const n of [1, 4, 16, 36]) {
+    const r = await call("measure_image", { image_source: toUri(await splitBackground(n)), mode: "contrast", region });
+    const c = r.measurements.contrast;
+    const present = c.colours.some((x) => x.foreground === "#2e2a24");
+    if (present) allOk = false;
+    console.log(`  [F35 n=${String(n).padStart(2)}] #2e2a24 ${present ? "** REPORTED (bad) **" : "filtered"}  all_meet_aa=${c.all_meet_aa}`);
+  }
+  console.log(`  [F35] every split decoration filtered: ${allOk ? "YES" : "NO"}`);
+}
+
 await client.close();
