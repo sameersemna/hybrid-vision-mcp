@@ -20,15 +20,15 @@ const cases = [
     file: MEASURE,
     // Apply the floor to the PIECE instead of the TOTAL: the 30px "ABC" fill (pieces 221+68,
     // total 289) then emits neither piece, and the F29 assertion fails.
-    from: "      if ((extraTotals.get(extra.key) || 0) < MULTICOLOUR_MIN_PIXELS) continue;",
-    to: "      if (extra.count < MULTICOLOUR_MIN_PIXELS) continue;",
+    from: "      if (total < multicolourFloor) continue;",
+    to: "      if (extra.count < 512) continue;",
   },
   {
     id: "F29 the extra-colour emission (dropping it re-hides every fill)",
     test: F29,
     file: MEASURE,
-    from: "    for (const extra of extras) {\n      if ((extraTotals.get(extra.key) || 0) < MULTICOLOUR_MIN_PIXELS) continue;",
-    to: "    for (const extra of []) {\n      if ((extraTotals.get(extra.key) || 0) < MULTICOLOUR_MIN_PIXELS) continue;",
+    from: "    for (const extra of extras) {\n      const total = extraTotals.get(extra.key) || 0;\n      if (total < multicolourFloor) continue;",
+    to: "    for (const extra of []) {\n      const total = extraTotals.get(extra.key) || 0;\n      if (total < multicolourFloor) continue;",
   },
   {
     id: "F29 the plateau-adjacency gate (plateau-adjacent shades must not become second ink)",

@@ -2779,6 +2779,134 @@ would therefore be asserting something the evidence does not support; the test s
   HEAD** (pre-existing, out of scope), but it also hides a failing fill and may merit its own
   round. Named **F30** here so it is not lost.
 
+## 5y. Twenty-third audit: the second-ink path had its own scalar, not the primary path's gates
+
+Round 22 fixed F29 by applying the pixel floor to a colour's **total** across the scan. It
+kept a **separate, 28× larger scalar** (224) for the second-ink path. This round shows that
+the scalar was the whole problem, on **both sides at once**: it **hid** failing ink (F30) and
+its companion per-total behaviour **admitted** accumulated decoration (F31). Both were
+reproduced before any change.
+
+### F30 — the second-ink floor was 28× the tool's own primary floor
+
+The primary path reports **every** ink colour above `minColourPixels = 8`. The second-ink path
+required **224**. So the SAME failing ink got opposite verdicts:
+
+| fixture | failing `#464646` | path | floor | verdict |
+|---|---|---|---|---|
+| plain **16px** `"AB"` | 209px | primary | 8 | **reported**, `all_meet_aa:false` |
+| outlined **30px** | 221px | second-ink | 224 | **hidden**, `all_meet_aa:true` |
+
+**Same colour, same ~210px quantity, opposite verdicts.** That is the **F13/F14 seam in its
+original form**: a gate stricter than the mask's own floor, making the same quantity visible
+or invisible depending only on which path it arrived by. Round 21's own acceptance set only
+pinned `fontSize:180`; `buildOutlinedTextFixture` already exposed `fontSize`, so the window was
+inside the current fixture family.
+
+### F31 — the per-total floor admitted accumulated decoration
+
+`dense_small_cards` (a dashboard of small text on cards) **changed verdict** between rounds:
+
+| round | colours | `all_meet_aa` |
+|---|---|---|
+| 21 (`a304c0e`) | 1 | **true** |
+| 23 (`11e6757`) | 2 | **false** — new failing `#443f38@1.4` |
+
+Independent census: true `#443f38` is **663px (0.08%)**, yet reported as **1226px,
+`component_count: 227`**. Mechanism, measured: `isAntiAliasingBlend(#443f38, card=#2d2822 →
+text=#e8dfd0)` is a **true blend at t=0.12** — a card↔text anti-aliasing fringe — appearing
+across 227 components, and the per-`TOTAL` floor aggregated it past the gate. This is the
+**mirror of F29**: per-piece thresholds hid split ink (fix: aggregate); per-total thresholds
+then admit accumulated decoration. The fix for F29 introduced the opposite error one layer out.
+
+**F30 and F31 are one problem: the second-ink path needed the primary path's GATES, not its
+own scalar.**
+
+### The fix, and what each gate is measured to do
+
+| gate | value | measured role |
+|---|---|---|
+| unified floor | the primary `minColourPixels` (8) | same quantity both paths; was 224 (28×) |
+| **AA window** | the **full** `(0, 1)` segment | rejects fringes by **residual**, not by position |
+| **mean-area** | `20` px | rejects off-line decoration fragmented into many tiny pieces |
+| plateau-adjacency | ≤ `PLATEAU_MERGE_DIST` | rejects plateau-adjacent shades (kept) |
+| parent-box | ≤ 50% of region | rejects region-spanning blobs (kept) |
+
+**The AA window is the colour-aware gate.** A candidate is rejected when it lies **on the
+segment** from the component's reference to its extremal colour. Measured along that segment:
+
+| case | t | residual | on the line? |
+|---|---|---|---|
+| dense_small card→text fringes | 0.048–0.994 | **≤ 0.5** | **yes** (fringe) |
+| outlined text fill `#464646` | 0.237 | **7.4** | **no** (real ink) |
+| dense-flat card strokes `#292f37` | 0.221 | **19.8** | no |
+
+So correctness comes from **`maxResidual`**, once the window stops excluding the ends of the
+segment (the general merge path's conservative `(0.25, 0.98)` is kept for the merge step; the
+second-ink test uses the full segment).
+
+**The mean-area gate is the structural gate** — the primary path's own doctrine:
+a colour fragmented into many tiny pieces is decoration, not a text run. Measured pre-gate:
+
+| class | mean area |
+|---|---|
+| real outlined fill `#464646` | **22–9048** |
+| card→text fringes (dense_small, tiled) | **≤ 12** |
+| dense-flat card strokes | 8–316 but ≤10 from a plateau (adjacency gate) |
+
+The measured gap is **12 (decoration) → 22 (real ink)**; **20** sits in it. This is a
+**different quantity** from the primary path's `MIN_TEXT_MEAN_AREA` (100): a fragmented run's
+mean falls as text is **added** (F14), so 100 here hid real ink at mean 75–94 — measured. 20
+keeps **recall 11/11** (AB/ABC/ABCDE at 20–30px all report `#464646@1.88`).
+
+**Both gates are load-bearing** (non-vacuity): reverting the AA window fails 4 tests; removing
+the mean-area gate fails 5. A mean-area-only or AA-only configuration does not work.
+
+### What the suite does and does not assert — the answer to the audit's question
+
+The auditor asked whether the suite asserts `all_meet_aa` for the in-process dense-panel
+fixture, since F31 was invisible to CI. **Answer: the in-process fixture is a different
+family.** `buildDensePanelFixture` is `#666460@2.47` — a **real** failure (the F10 dashboard),
+not the tiled-cards family the auditor snapshotted. The auditor's `dense_small_cards` is the
+`buildTiledCardsFixture` family, whose in-process form does **not** reproduce the regression
+(measured: identical to the snapshot's structure but a different render). So the regression was
+invisible to CI **by construction**, exactly as the auditor suspected.
+
+Fixed by adding **`buildDenseSmallCardsFixture`** (dense small text on 16 cards), which
+reproduces F31 in-process — verified: on the round-22 code it returns `all_meet_aa:false` with
+`#534d45@1.75`, and on this code it is clean. It is now asserted by the F31 test.
+
+### Acceptance evidence
+
+| case | before | after |
+|---|---|---|
+| outlined 30px fill | hidden, `all_meet_aa:true` | `#464646 px=212` reported, `false` |
+| plain 16px (control) | reported | reported (unchanged) — paths agree |
+| dense_small_cards | `all_meet_aa:false`, `#443f38@1.4` | `all_meet_aa:true`, 1 colour |
+| tiled cards / dense flat | clean | **clean** |
+| acceptance fixture | worst `#1e1c18@1.04` | unchanged |
+| `npm test` | 121 | **123** (F30 invariance pair, F31 dense-small-cards) |
+| non-vacuity | 99 guards | **104** (+5 round-23; rounds 21/22 anchors repointed) |
+| live MCP (scratch 11498) | — | §19: F30 paths agree, F31 fixed |
+
+### The floor ratio, before and after
+
+`224 / 8 = 28×` stricter → `8 / 8 = 1×` (unified). The quantity is now the tool's own reporting
+floor, and the separation is done by the gates.
+
+### What this audit has NOT proven
+
+- I did not exhaust F30's band; the sweep covers 20–180px at one stroke width (2px), one
+  background, Latin bold glyphs. Other scripts, weights, or a multi-plateau page could move the
+  mean-area boundary.
+- F31 is judged from the blend relationship and component structure; I reproduce it with a
+  generated fixture, but the auditor's exact snapshot is a different render (its pixels differ).
+- The mean-area constant 20 sits in the measured 12→22 gap with a small margin; sizes 19–22 are
+  all suite-green, 18 fails, so it is a band, not a knife-edge — but a new fixture could narrow
+  it.
+- **Frequency unmeasured.** Small outlined text at label sizes is plausible but I did not count
+  occurrences; this is a control-backed verdict error, not a prevalence claim.
+
 ## 9. New module map
 
 | File | Responsibility |

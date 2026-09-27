@@ -290,6 +290,48 @@ export const OUTLINED_TEXT = {
   strokeRatio: 13.42, // passes
 };
 
+/**
+ * DENSE small text on many cards — the twenty-third-audit F31 reproduction.
+ *
+ * Each card holds several small text lines, so there are MANY card↔text anti-aliasing
+ * edges. Round 22's per-TOTAL floor aggregated those fringe shades across hundreds of
+ * components into a "second colour" (measured on the old code: `#59534b@1.92` at 13px,
+ * ~1300px across ~100 components) and reported it as failing text, flipping a passing
+ * dashboard's verdict to `all_meet_aa: false`. Every fringe is a blend of the card toward
+ * the card's text (residual ≤ 0.5 on that segment), so the colour-aware AA window rejects
+ * them while a real second ink (residual ≫ 3) survives.
+ */
+export async function buildDenseSmallCardsFixture({
+  w = 1000, h = 700, cols = 4, rows = 4,
+  page = "#1a1814", card = "#2d2822", text = "#e8dfd0", fontSize = 13,
+} = {}) {
+  const parts = [`<rect width="${w}" height="${h}" fill="${page}"/>`];
+  const cw = Math.floor((w - 40) / cols);
+  const ch = Math.floor((h - 40) / rows);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = 20 + c * cw;
+      const y = 20 + r * ch;
+      parts.push(`<rect x="${x + 4}" y="${y + 4}" width="${cw - 8}" height="${ch - 8}" fill="${card}"/>`);
+      for (let l = 0; l < 3; l++) {
+        parts.push(
+          `<text x="${x + 12}" y="${y + 22 + l * 16}" font-family="DejaVu Sans" ` +
+            `font-size="${fontSize}" fill="${text}">label ${r}${c}.${l}</text>`,
+        );
+      }
+    }
+  }
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+/** The F31 colours: the dashboard passes, and the fringe shade must NOT appear. */
+export const DENSE_SMALL_CARDS = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  text: "#e8dfd0",
+  textRatio: 11.05,
+  fringe: "#59534b", // a card->text AA blend, ~1.92:1, must NOT be reported as text
+};
+
 /** A plain flat UI with a grid of cards — a legitimate single-background case. */
 export async function buildCardsFlatFixture() {
   const W = 1200, H = 800;

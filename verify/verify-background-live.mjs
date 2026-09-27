@@ -650,4 +650,66 @@ console.log("\n=== 18. round-22 checks (F29 small outlined text: the floor is a 
   console.log(`  [F29 28px boundary] larger ink (stroke) reported: ${tc.colours.some((x) => x.foreground === "#e8dfd0") ? "YES" : "NO"} (fill 158px < stroke 216px, so nothing larger is hidden)`);
 }
 
+// Round-23 checks (twenty-third audit F30/F31): the second-ink floor must be the SAME
+// quantity as the primary floor, and accumulated card/text AA fringes must not become a
+// false failure.
+async function outlinedSizedR23(size, text = "AB") {
+  const w = 1000, h = 700;
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="#1a1814"/>` +
+    `<text x="60" y="${Math.round(size * 0.9) + 60}" font-family="DejaVu Sans, sans-serif" ` +
+    `font-size="${size}" font-weight="bold" fill="#464646" stroke="#e8dfd0" stroke-width="2">${text}</text></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+async function plainSizedR23(size, text = "AB") {
+  const w = 1000, h = 700;
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="#1a1814"/>` +
+    `<text x="60" y="${Math.round(size * 0.9) + 60}" font-family="DejaVu Sans, sans-serif" ` +
+    `font-size="${size}" font-weight="bold" fill="#464646">${text}</text></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+async function denseSmallCardsR23() {
+  const w = 1000, h = 700, cols = 4, rows = 4;
+  const parts = [`<rect width="${w}" height="${h}" fill="#1a1814"/>`];
+  const cw = Math.floor((w - 40) / cols);
+  const ch = Math.floor((h - 40) / rows);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = 20 + c * cw, y = 20 + r * ch;
+      parts.push(`<rect x="${x + 4}" y="${y + 4}" width="${cw - 8}" height="${ch - 8}" fill="#2d2822"/>`);
+      for (let l = 0; l < 3; l++) {
+        parts.push(`<text x="${x + 12}" y="${y + 22 + l * 16}" font-family="DejaVu Sans" font-size="13" fill="#e8dfd0">label ${r}${c}.${l}</text>`);
+      }
+    }
+  }
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+console.log("\n=== 19. round-23 checks (F30 unified floor; F31 dense small cards) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+
+  // F30: the second-ink floor is the primary floor, so a 30px outlined fill (~221px) is
+  // reported just like a plain 16px run (~209px).
+  const outlined = await call("measure_image", { image_source: toUri(await outlinedSizedR23(30)), mode: "contrast", region });
+  const oc = outlined.measurements.contrast;
+  const ofill = oc.colours.find((x) => x.foreground === "#464646");
+  console.log(`  [F30 outlined 30px] #464646 ${ofill ? `px=${ofill.pixel_count} reported` : "** ABSENT **"} all_meet_aa=${oc.all_meet_aa}  -> ${ofill && !ofill.wcag_aa ? "ok" : "LOST"}`);
+  const plain = await call("measure_image", { image_source: toUri(await plainSizedR23(16)), mode: "contrast", region });
+  const pc = plain.measurements.contrast;
+  const pfill = pc.colours.find((x) => x.foreground === "#464646");
+  console.log(`  [F30 plain 16px]    #464646 ${pfill ? `px=${pfill.pixel_count} reported` : "absent"}  -> the two paths agree: ${!!ofill === !!pfill ? "YES" : "NO"}`);
+
+  // F31: a dense small-text dashboard must stay clean (no accumulated fringe failure).
+  const dense = await call("measure_image", { image_source: toUri(await denseSmallCardsR23()), mode: "contrast", region });
+  const dc = dense.measurements.contrast;
+  const fringe = dc.colours.some((x) => !x.wcag_aa);
+  console.log(`  [F31] colours=${dc.colours.length} all_meet_aa=${dc.all_meet_aa} failing=${dc.failing_count}  -> F31 fixed: ${dc.all_meet_aa === true && dc.failing_count === 0 ? "YES" : "NO"}`);
+}
+
 await client.close();

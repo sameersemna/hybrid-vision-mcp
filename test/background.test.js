@@ -65,6 +65,7 @@ import {
   buildDenseTextIINumbersFixture,
   buildTextFreeGradientFixture,
   buildOutlinedTextFixture,
+  buildDenseSmallCardsFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
@@ -85,6 +86,7 @@ import {
   BARS_REF_F16,
   DENSE_TEXT_F16,
   OUTLINED_TEXT,
+  DENSE_SMALL_CARDS,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -1772,10 +1774,9 @@ test("F29: small outlined text is not lost when its fill splits across component
   // colour's TOTAL across the scan.
   const region = OUTLINED_TEXT.region;
 
-  // (1) The defect window. While the fill is the LARGER ink, hiding it is exactly the F28
-  // defect, so it must be reported at every size. Measured: the fill dominates the stroke
-  // down to 32px (252px vs 722px at 32px); at 28px it does not (see (3)).
-  const sizes = [180, 72, 56, 48, 44, 40, 36, 32];
+  // (1) The defect window. Hiding the fill is the F28 defect, so it must be reported at
+  // every size down to where the fill drops below the shared reporting floor.
+  const sizes = [180, 72, 56, 48, 44, 40, 36, 32, 30, 28];
   for (const fontSize of sizes) {
     const r = contrastInRegion(
       await loadPixels(await buildOutlinedTextFixture({ fontSize, strokeWidth: 2 })),
@@ -1799,17 +1800,17 @@ test("F29: small outlined text is not lost when its fill splits across component
   assert.equal(splitFill.wcag_aa, false);
   assert.equal(split.all_meet_aa, false);
 
-  // (3) The honest BOUNDARY, asserted not implied. Below 32px the fill is SMALLER than the
-  // stroke (28px: fill 158px vs stroke 216px), so the larger failing-capable ink IS reported
-  // and hiding the smaller one is a reporting-floor question, not an F28 absorption. The rule
-  // stays quiet there BY DESIGN; the remaining gap is stated in ACCURACY.md §5x.
+  // (3) The honest BOUNDARY, asserted not implied. Below 28px the fill's TOTAL drops under
+  // the shared reporting floor and is no longer an F28 absorption (the larger ink, the
+  // stroke, is still reported). At 24px (true fill 81px) the fill is below the floor; the
+  // colour is still surfaced via the stroke, and the gap is stated in ACCURACY.md §5y.
   const tiny = contrastInRegion(
-    await loadPixels(await buildOutlinedTextFixture({ fontSize: 28, strokeWidth: 2 })),
+    await loadPixels(await buildOutlinedTextFixture({ fontSize: 24, strokeWidth: 2 })),
     region,
   );
   assert.ok(
     tiny.colours.some((c) => c.foreground === OUTLINED_TEXT.stroke),
-    "at 28px the larger ink (the stroke) is still reported",
+    "at 24px the larger ink (the stroke) is still reported",
   );
 
   // (4) Controls that must stay quiet: the tiled card grid and dense-flat page (whose edge
@@ -1817,5 +1818,62 @@ test("F29: small outlined text is not lost when its fill splits across component
   const tiled = contrastInRegion(await loadPixels(await buildTiledCardsFixture()), TILED_CARDS.region);
   assert.equal(tiled.failing_count, 0, "card edge shades must not become failing text under aggregation");
   assert.equal(tiled.all_meet_aa, true);
+});
+
+test("F30: the second-ink floor is the SAME quantity as the primary floor (invariance pair)", async () => {
+  // Round 22 used a second-ink floor of 224 — 28x stricter than the tool's own primary
+  // reporting floor (minColourPixels = 8). So the SAME ~210px of failing #464646 was
+  // reported in one context and hidden in another. This is the F13/F14 seam in its original
+  // form. The pair below must agree.
+  const region = OUTLINED_TEXT.region;
+
+  // PRIMARY path: plain 16px "AB" (stroke === fill, so there is no second colour) — its
+  // #464646 ink measures ~209px and must be reported.
+  const plainText = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ text: "AB", fontSize: 16, fill: "#464646", stroke: "#464646" })),
+    region,
+  );
+  const primaryFill = plainText.colours.find((c) => c.foreground === OUTLINED_TEXT.fill);
+  assert.ok(primaryFill, "primary path: ~209px of #464646 must be reported");
+  assert.equal(primaryFill.wcag_aa, false);
+  assert.equal(plainText.all_meet_aa, false);
+
+  // SECOND-INK path: outlined 30px — its fill is ~212px. Same quantity, same colour.
+  const outlined = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ fontSize: 30, strokeWidth: 2 })),
+    region,
+  );
+  const secondInk = outlined.colours.find((c) => c.foreground === OUTLINED_TEXT.fill);
+  assert.ok(secondInk, "second-ink path: ~212px of #464646 must ALSO be reported");
+  assert.equal(secondInk.wcag_aa, false);
+  assert.equal(outlined.all_meet_aa, false, "the two paths must agree on the verdict");
+});
+
+test("F31: dense small text on cards does not accumulate AA fringes into a false failure", async () => {
+  // Round 22's per-TOTAL floor aggregated card->text anti-aliasing fringes across hundreds of
+  // components into a "second colour" and reported it as failing text, flipping a passing
+  // dashboard to all_meet_aa: false. Each fringe is a blend of the card toward the card's
+  // text (residual <= 0.5 on that segment); the colour-aware AA window rejects them.
+  const r = contrastInRegion(await loadPixels(await buildDenseSmallCardsFixture()), DENSE_SMALL_CARDS.region);
+
+  assert.equal(r.all_meet_aa, true, "a passing dashboard must not be reported as failing");
+  assert.equal(r.failing_count, 0, "no fringe shade may be reported as failing text");
+  assert.ok(
+    !r.colours.some((c) => c.foreground === DENSE_SMALL_CARDS.fringe),
+    `the card->text fringe ${DENSE_SMALL_CARDS.fringe} must NOT be a text colour (got ${r.colours.map((c) => c.foreground).join(", ")})`,
+  );
+  // The real text is still reported (the fix must not silence the dashboard).
+  assert.ok(
+    r.colours.some((c) => c.foreground === DENSE_SMALL_CARDS.text && c.wcag_aa),
+    "the real passing text is still reported",
+  );
+
+  // CONTROL: the same colour as a genuine second ink (outlined, large) IS reported — so the
+  // fix rejects the FRINGE, not the colour.
+  const outlined = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ fontSize: 180, strokeWidth: 3 })),
+    OUTLINED_TEXT.region,
+  );
+  assert.ok(outlined.colours.some((c) => c.foreground === OUTLINED_TEXT.fill && !c.wcag_aa));
 });
 

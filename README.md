@@ -798,9 +798,12 @@ one.
 > further effort goes into extending this lint; later rounds spend their substance on the
 > **measurement engine** instead. See `ACCURACY.md` §5w for that round's two engine defects
 > (a text-free gradient reported as failing text; the darker of two colours in outlined text
-> silently absorbed), and §5x for the follow-up (F29): the outlined-text pixel floor was
+> silently absorbed), §5x for the follow-up (F29): the outlined-text pixel floor was
 > applied **per component**, so small glyphs lost their failing fill as it split across
-> components — it is now applied to the colour's **total** across the scan.
+> components — it is now applied to the colour's **total** across the scan; and §5y for the
+> next round (F30/F31): the second-ink path had its **own** 28×-larger floor, which hid
+> failing ink and admitted accumulated card/text anti-aliasing fringes — it now uses the
+> primary path's reporting floor and gates.
 
 ---
 

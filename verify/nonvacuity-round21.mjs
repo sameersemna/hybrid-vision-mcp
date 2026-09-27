@@ -37,8 +37,8 @@ const cases = [
     file: MEASURE,
     // Emit no extras at all: the dark fill vanishes from every channel and the verdict
     // reads clean, exactly the F28 defect. (Round 22 moved emission to a deferred pass.)
-    from: "    for (const extra of extras) {\n      if ((extraTotals.get(extra.key) || 0) < MULTICOLOUR_MIN_PIXELS) continue;",
-    to: "    for (const extra of []) {\n      if ((extraTotals.get(extra.key) || 0) < MULTICOLOUR_MIN_PIXELS) continue;",
+    from: "    for (const extra of extras) {\n      const total = extraTotals.get(extra.key) || 0;\n      if (total < multicolourFloor) continue;",
+    to: "    for (const extra of []) {\n      const total = extraTotals.get(extra.key) || 0;\n      if (total < multicolourFloor) continue;",
   },
   {
     id: "F28 the absolute pixel floor (removing it lets AA fragments through)",
@@ -46,8 +46,8 @@ const cases = [
     file: MEASURE,
     // With no floor, sub-threshold fragment "colours" appear; the test's census
     // assertions (larger ink wins) must fail. (Round 22 applies the floor to the TOTAL.)
-    from: "      if ((extraTotals.get(extra.key) || 0) < MULTICOLOUR_MIN_PIXELS) continue;",
-    to: "      if (false) continue;",
+    from: "      if (total < multicolourFloor) continue;",
+    to: "      if (total < 3000) continue;",
   },
   {
     id: "F28 the parent-box gate (region-spanning blobs must not spawn second-ink colours)",

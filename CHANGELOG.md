@@ -1,5 +1,53 @@
 # Changelog
 
+## Twenty-third-audit follow-up: the second-ink path had its own scalar (F30, F31) — 2026-09-27
+
+Round 22 fixed F29 by aggregating the pixel floor across components, but kept a **separate,
+28× larger scalar** (224) for the second-ink path. That scalar was the whole problem, on both
+sides at once: it **hid** failing ink (F30) and its companion per-total behaviour **admitted**
+accumulated decoration (F31). See `ACCURACY.md` §5y.
+
+### Fixed
+
+- **F30 — the second-ink floor was 28× the tool's own primary floor.** The primary path
+  reports every ink colour above `minColourPixels = 8`; the second-ink path required 224. So the
+  SAME ~210px of failing `#464646` was **reported** as a plain 16px run and **hidden** as a
+  30px outlined fill — same colour, opposite verdicts (the F13/F14 seam in its original form).
+  The floor is now the **same quantity** (`DEFAULT_MIN_COLOUR_PIXELS = 8`) for both paths.
+- **F31 — the per-total floor admitted accumulated card/text AA fringes.** `dense_small_cards`
+  flipped from `all_meet_aa:true` (round 21) to `false` (round 22) with a new failing
+  `#443f38@1.4` (reported 1226px, 227 components; true 663px). Mechanism: a card↔text
+  anti-aliasing blend at **t=0.12**. Fixed by the colour-aware gates below.
+
+### The gates (all measured; the two new ones are both load-bearing)
+
+- **AA window widened to the full `(0, 1)` segment** for the second-ink test. Rejects by
+  **residual**: fringes sit **on** the ref→extremal line (residual ≤ 0.5), real ink does not
+  (`#464646` residual **7.4**). The general merge path keeps its conservative `(0.25, 0.98)`.
+  Reverting it fails **4** tests.
+- **Mean-area structural gate = 20** (the primary path's own doctrine, but a *different
+  quantity* than `MIN_TEXT_MEAN_AREA = 100` — a fragmented run's mean falls as text is added,
+  F14). Measured gap: decoration ≤ 12, real ink ≥ 22. Removing it fails **5** tests.
+- Plateau-adjacency and parent-box gates kept (load-bearing).
+
+### The answer to the audit's CI question
+
+The suite did **not** assert `all_meet_aa` for the auditor's fixture because the in-process
+`buildDensePanelFixture` is a **different family** (`#666460@2.47`, a real failure) — so the F31
+regression was invisible to CI **by construction**. Fixed by adding
+**`buildDenseSmallCardsFixture`**, which reproduces F31 in-process (on the round-22 code it
+returns `all_meet_aa:false` with `#534d45@1.75`; on this code it is clean).
+
+### Acceptance evidence
+
+- `npm test`: **123** (was 121); F30 is an invariance pair (plain 16px vs outlined 30px must
+  agree), F31 asserts the dashboard stays clean and the fringe colour never appears.
+- Recall **11/11**: AB/ABC/ABCDE at 20–30px all report `#464646@1.88`.
+- non-vacuity: **104** guards (was 99); `verify/nonvacuity-round23.mjs`; rounds 21/22 anchors
+  repointed to the unified floor.
+- live MCP (scratch 11498): §19 — F30 paths agree, F31 fixed.
+- Controls unchanged: tiled cards, dense flat, acceptance fixture (worst `#1e1c18@1.04`).
+
 ## Twenty-second-audit follow-up: F28's own gate reappears one scalar lower (F29) — 2026-09-27
 
 The round-21 fix (§5w) was **correct in direction and incomplete in aggregation**: it applied
