@@ -1,5 +1,41 @@
 # Changelog
 
+## Twentieth-audit follow-up: the disposition was declared, not recorded — 2026-09-27
+
+Round 19's disposition promised the phrase guard's recall would be **a measured number** —
+written in **four places** (`prose-guard.mjs` header, `ACCURACY.md` §5q/§5t, `README.md`)
+and **measured nowhere**. The only figure in the repo was the **stale** round-15 `1/9`. That
+is the **F16 defect one layer up**: a scope claim about the guard that no test could fail.
+See `ACCURACY.md` §5v.
+
+### Fixed
+
+- **F26 — the recall is now measured, printed, and enforced.** The fixture set moved to
+  `test-support/prose-recall-fixtures.mjs` (deliberately **not** scanned — it contains the
+  live claims as fixtures). The test prints
+  `measured recall on the fixture set: 18/19` and **asserts the ratio ≥ 18/19**, so a
+  regression **fails the build** instead of quietly changing the story the docs tell.
+- **F26 — a doc-consistency assertion.** A test requires `README.md`, `ACCURACY.md`, and the
+  guard header to **quote the same figure** the guard measures, and requires the stale `1/9`
+  to be **labelled historical**. This is the invariance pair moved from the guard to its own
+  description.
+- **"Not a barrier" corrected.** Measured: the rule is **assert-only** (22 assertions, no
+  advisory path) and injecting a claim into `README.md` gives **`fail 2`** — so it **is** a
+  barrier. The wording now says the lint **fails the build**; what we no longer rely on is its
+  **completeness**.
+
+### Scope note (stated, not implied)
+
+**18/19 is a regression score over the known escape cases, not an estimate of recall over
+unseen prose.**
+
+### Audit hypotheses retired by measurement
+
+The audit predicted the `GLUE` list would produce escapes (`is said to order`); all twelve
+are **correctly flagged**, because glue is consulted only *after* a negation is found. That is
+the second audit hypothesis falsified by measurement (round 17's "negation after the verb"
+was the first).
+
 ## Nineteenth-audit follow-up: the no-sentence-end marker and the retraction FPs — 2026-09-27
 
 **Seventh round of one class** — and the last. Two defects fixed cheaply; the guard is now

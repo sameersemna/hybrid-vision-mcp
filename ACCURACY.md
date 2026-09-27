@@ -2096,7 +2096,7 @@ marker-bearing line is un-flagged — checkable, unlike the audit's "annotates i
 | round | mechanism changed | the hole that opened |
 |---|---|---|
 | 14 | removed the threshold | the claim lived in the prose |
-| 15 | phrase guard | caught 1/9 paraphrases |
+| 15 (superseded rule) | phrase guard | caught 1/9 paraphrases (SUPERSEDED — the rule has since been hardened; current recall 18/19, §5v) |
 | 16 | free-text waiver token | trailing token waived any claim |
 | 17 | verb-adjacent negation, structural marker | ordinary words in the window; marker waived the row |
 
@@ -2104,8 +2104,10 @@ Each fix narrowed the **scope** of an exclusion and left its **kind** alone — 
 author-authored token whose presence suppresses reporting. As long as suppression is
 triggered by text the author controls, a new phrasing will waive a claim. The **positive
 disclaimer assertion** is the only element a paraphrase cannot defeat, so it is the primary
-check and the phrase guard is a **best-effort lint with a measured, documented recall** —
-not a barrier. The guard's own header now says exactly this.
+check and the phrase guard is a **best-effort lint whose recall is a measured number (18/19 on the
+fixture set, enforced)** — see §5v. What is true of the lint is that it is **frozen** and that we no
+longer rely on its **completeness**; it still fails the build when it fires. The guard's own header
+now says exactly this.
 
 ### Corroboration of the audit's retraction
 
@@ -2229,8 +2231,8 @@ header now states:
 
 - the **positive disclaimer assertion is PRIMARY** — the docs must *state the opposite* of
   the claim, and that is the one mechanism a paraphrase cannot defeat;
-- the phrase guard is a **best-effort lint whose recall is a measured number**, not
-  "coverage";
+- the phrase guard is a **best-effort lint whose recall is a measured number
+  (18/19)**, not "coverage";
 - the test that matters most is the **invariance pair** — the same claim ± each waiver
   mechanism must get the **same** verdict. It caught F18 and would have caught F21/F22/F23,
   so it is now a named acceptance test.
@@ -2389,6 +2391,95 @@ the paraphrase-proof core, so it is deferred rather than rejected.
   disclaimer phrasings pass. What was shown is that full-sentence forms of the same words are
   flagged, i.e. the docs survive on phrasing luck and are one phrasing from the contradiction.
 - That `firstSentenceEnd` handles **abbreviations** (`e.g.`, `i.e.`) inside a waived span.
+
+## 5v. Twentieth audit: the disposition was declared, not recorded
+
+### F26 — "a measured recall" was asserted four times and measured nowhere
+
+Round 19's disposition promised that the phrase guard's recall would be **a measured number**.
+It was written in **four places** — `test-support/prose-guard.mjs` (header), `ACCURACY.md` §5q
+and §5t, and `README.md` — and **no number appeared anywhere**. The only figure in the repo
+was the **stale** round-15 value `caught 1/9 paraphrases`, describing the *broken* rule.
+
+This is the **F16 defect one layer up**. F16 was a classification claim no test could fail;
+F26 is a **scope claim about the guard** that no test could fail either. The disposition was
+the right change of goal, but *stating it in prose* is exactly the move the previous seven
+rounds kept punishing — a claim introduced by the fix for the class of claims.
+
+### The number, now measured and enforced
+
+The fixture set moved to one place, `test-support/prose-recall-fixtures.mjs` (deliberately
+**not** in the guard's scanned file list — it *contains* live claims, they are the fixtures):
+
+```
+measured recall on the fixture set: 18/19 (caught 18/18, known miss still missed: true, false positives: 0)
+```
+
+The test **prints** that line and **asserts the ratio** (≥ 18/19), so a regression that lowers
+recall **fails the build** rather than silently changing the story the docs tell. A sibling
+test asserts the docs **quote the same figure**, and that the stale `1/9` (round-15 rule,
+superseded) is **labelled historical**.
+
+**18/19 is a REGRESSION SCORE over the known escape cases, NOT an estimate of recall over
+unseen prose** — the fixtures are the accumulated findings, so the figure does not predict a
+paraphrase nobody has written yet. Stated in the prose, not just here.
+
+### "Not a barrier" was true of intent and false of mechanism
+
+`README.md` and `ACCURACY.md` both called the lint *"not a barrier"*. Measured:
+
+| check | observed |
+|---|---|
+| mechanism | assert-only — 22 `assert.ok(flagsClassificationClaim(…))` calls |
+| advisory/warning path in `prose-guard.mjs` | **none** |
+| injecting a claim into `README.md` | **`fail 2`** — the build fails |
+
+So it **is** a barrier: any doc edit it dislikes fails the suite (precisely round 16's F18
+situation). The accurate sentence, now used:
+
+> The phrase lint **fails the build** when it sees a claim; what we no longer rely on is its
+> **completeness**. The part we trust is the positive assertion: the docs must **contain** the
+> disclaimer. The lint is frozen and best-effort; its measured recall on the fixture set is
+> **18/19** (P4 is the known miss).
+
+### The audit's falsified GLUE-polarity hypothesis
+
+The audit predicted the new `GLUE` list would produce escapes, on the theory that
+*"is said to order"* is an assertion. It measured all twelve and **all twelve are correctly
+flagged** — because `GLUE` is only consulted *after* a negation is found, so `is said to order`
+(no negation) flags on the un-negated verb. Its hypothesis was wrong.
+
+This is the **second** entry in the record of audit hypotheses that did not survive
+measurement:
+
+| round | hypothesis | measured outcome |
+|---|---|---|
+| 17 | negation *after* the verb escapes | **caught** — the window is one-directional and safe |
+| 20 | `GLUE` words (`said`, `thought`, …) produce escapes | **all 12 flagged** — glue is gated on a prior negation |
+
+Both are worth recording: they show the guard is stronger than the adversarial model of it in
+these two spots.
+
+### Acceptance evidence
+
+| check | result |
+|---|---|
+| `npm test` | **118/118** (was 117; +1 round-20 test) |
+| recall printed + ratio asserted | `18/19`, ≥ 18/19 enforced |
+| doc-consistency assertion | `README` / `ACCURACY` / guard header must quote `18/19` |
+| stale `1/9` | labelled `(superseded rule)` |
+| non-vacuity | +4 round-20 guards (fixture removal, doc figure, historical label, guard header) |
+| live MCP (scratch 11498) | §16 prints `18/19` |
+
+### What this audit has NOT proven
+
+- That the *"not a barrier"* wording **has misled** a contributor — it was shown to describe
+  the **intent** rather than the **mechanism**.
+- Recall on anything beyond the fixture set. **18/19 is on the fixtures**, which is what the
+  text claims; it is **not** extended to real prose.
+- That the 18 must-flag fixtures are a **representative sample** — they are the accumulated
+  escape cases, so 18/19 is a **regression score for known cases**, not an estimate over
+  unseen prose.
 
 ## 9. New module map
 

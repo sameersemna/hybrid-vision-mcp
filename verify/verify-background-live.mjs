@@ -549,6 +549,10 @@ console.log("\n=== 16. round-15/16 checks (F17/F18/F19 the prose guard is struct
   // F25: retractions must be ALLOWED (they were false positives).
   const retraction = flagsClassificationClaim("plateau_share is not able to distinguish decoration from text.");
   console.log(`  [F25] retraction 'is not able to'=${retraction} -> ${retraction ? "FLAGGED (bad)" : "allowed (fixed)"}`);
+  // F26: the measured recall is PRINTED here too, so the number is visible outside the test.
+  const { measureRecall } = await import(pathToFileURL(p.join(root, "test-support", "prose-recall-fixtures.mjs")).href);
+  const rec = measureRecall();
+  console.log(`  [F26] measured recall on the fixture set: ${rec.recall} (caught ${rec.caught}/${rec.mustFlagTotal}, false positives ${rec.falsePositives})`);
   // F19: the field anchor must cover every emitted key.
   const { EMITTED_DISCLOSURE_KEYS, CLAIM_FIELD } = await import(pathToFileURL(p.join(root, "test-support", "prose-guard.mjs")).href);
   const uncovered = EMITTED_DISCLOSURE_KEYS.filter((k) => !CLAIM_FIELD.test(k));

@@ -92,6 +92,7 @@ import {
   DISCLAIMER,
   normalizeForDisclaimer,
 } from "../test-support/prose-guard.mjs";
+import { MUST_FLAG, MUST_ALLOW, KNOWN_MISS, measureRecall } from "../test-support/prose-recall-fixtures.mjs";
 
 // ------------------------------------------------------------ helpers ------
 
@@ -1409,47 +1410,49 @@ test("F19: the field anchor covers EVERY emitted disclosure key", async () => {
 
 test("F17/F18: the guard's recall is measured against paraphrases (fixtures)", () => {
   // A guard tested only against its own target phrase produced F17; one tested against
-  // its own waiver token produced F18. These fixtures are the audit's paraphrases plus
-  // the E/H sets, and they must be measured every run.
-  const mustFlag = [
-    "plateau_share is the field that orders decoration (a wide tiled region) from a glyph run.", // literal
-    "use plateau_share to identify decoration rather than real text.", // P1
-    "plateau_share lets a caller filter out chart furniture instead of copy.", // P2
-    "plateau_share is how you tell what is decoration and what is text.", // P3
-    "a high plateau_share distinguishes decoration from glyphs.", // P5
-    "plateau_share orders decoration from text, which is what makes it not decoration-specific but genuinely useful.", // P6
-    "plateau_share orders decoration from text by size; think of it as large from small coverage.", // P7
-    "plateau_share separates chart furniture from copy.", // P8
-    "decoration is distinguished from text by plateau_share.", // P9
-    "plateau_share orders decoration from a glyph run. [PARAPHRASE]", // H1a
-    "plateau_share orders decoration from a glyph run [paraphrase]", // H1c
-    "contrast_ratio orders decoration from a glyph run.", // H2: previously unlisted key
-    "mean_component_area distinguishes decoration from text.", // H2: previously unlisted key
-    "plateau_share orders decoration from text (wording amended 2026)", // E1
-    "plateau_share orders decoration from text after the old gate was removed", // E2
-    "plateau_share orders decoration from text and is not a classifier of anything else", // E3
-    "plateau_share orders decoration from text although some claim it might invert", // E5
-    "plateau_share orders decoration from text and that is no coincidence", // E6
-  ];
-  for (const line of mustFlag) assert.ok(flagsClassificationClaim(line), `must flag: ${line}`);
+  // its own waiver token produced F18. F26 then found that the disposition PROMISED "a
+  // measured recall" in four places while recording NO number. So this test now PRINTS the
+  // number and ASSERTS the ratio, and a sibling test asserts the docs quote the same figure.
+  const recall = measureRecall();
+  // eslint-disable-next-line no-console
+  console.log(`  [recall] prose guard measured recall on the fixture set: ${recall.recall} (caught ${recall.caught}/${recall.mustFlagTotal}, known miss still missed: ${recall.knownMissStillMissed}, false positives: ${recall.falsePositives})`);
 
-  const mustAllow = [
-    "plateau_share is the plateau's coverage of the region; it does NOT distinguish decoration from text.",
-    "A bar chart and a glyph run are the same kind of object, so no scalar separates decoration from text.",
-    "NONE of these distinguishes decoration from text (F16): plateau_share is coverage",
-    "but it orders large from small, not decoration from text: a dense glyph run can cover MORE",
-    '**[REMOVED CLAIM]** `plateau_share` orders decoration from a glyph run.',
-    "A component that is long and thin is treated as decorative chrome, not text.",
-  ];
-  for (const line of mustAllow) assert.equal(flagsClassificationClaim(line), false, `must allow: ${line}`);
+  for (const line of MUST_FLAG) assert.ok(flagsClassificationClaim(line), `must flag: ${line}`);
+  for (const line of MUST_ALLOW) assert.equal(flagsClassificationClaim(line), false, `must allow: ${line}`);
 
-  // KNOWN MISS (recorded): P4, where a comma splits the field from the verb. Documented
-  // in ACCURACY.md §5q/§5r; the honest claim is "the literal regression is caught".
-  assert.equal(
-    flagsClassificationClaim("plateau_share orders colours into buckets so that, with practice, a caller can reliably separate the wide tiled decorations seen here from a glyph run."),
-    false,
-    "P4 is a KNOWN miss (comma splits field from verb)",
+  // The ratio is ENFORCED: lowering recall fails the build rather than quietly changing
+  // the story the docs tell.
+  assert.equal(recall.knownMissStillMissed, true, "P4 is the recorded known miss");
+  assert.equal(recall.falsePositives, 0, "the fixture set must have no false positives");
+  assert.ok(
+    recall.caught / recall.total >= 18 / 19,
+    `measured recall regressed below 18/19 (caught ${recall.caught}/${recall.total})`,
   );
+
+  // KNOWN MISS (recorded): P4, where a comma splits the field from the verb. Recorded as a
+  // shared fixture so the ratio above includes it.
+  assert.equal(flagsClassificationClaim(KNOWN_MISS), false, "P4 is a KNOWN miss (comma splits field from verb)");
+});
+
+test("F26: the docs must quote the SAME recall figure the guard measures", async () => {
+  // The direct analogue of the invariance pair, moved from the guard to its own
+  // DESCRIPTION (audit §4 fix 1 + §5): if the docs state a recall figure, it must equal the
+  // computed one, so the disposition cannot drift into prose that no test can fail.
+  const { readFile } = await import("node:fs/promises");
+  const path = await import("node:path");
+  const root = path.resolve(import.meta.dirname, "..");
+  const recall = measureRecall();
+  for (const rel of ["README.md", "ACCURACY.md", "test-support/prose-guard.mjs"]) {
+    const text = await readFile(path.join(root, rel), "utf8");
+    assert.ok(text.includes(recall.recall), `${rel} must quote the measured recall "${recall.recall}"`);
+  }
+  // And no doc may still carry the SUPERSEDED round-15 figure unlabelled.
+  const accuracy = await readFile(path.join(root, "ACCURACY.md"), "utf8");
+  for (const line of accuracy.split("\n")) {
+    if (line.includes("1/9") || line.includes("1 / 9")) {
+      assert.ok(/round-1[45]|superseded|historical|round-13|round-15 rule/i.test(line), `a 1/9 figure must be labelled superseded: ${line.trim().slice(0, 90)}`);
+    }
+  }
 });
 
 test("§3 (DECLINED): a solid accent block collides with real solid text", async () => {

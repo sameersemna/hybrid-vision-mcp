@@ -31,8 +31,11 @@
 // new escape class. NO MORE SCOPE NARROWINGS — this file is FROZEN as a best-effort lint:
 //   * *PRIMARY gate* is the POSITIVE disclaimer assertion (`DISCLAIMER`): the docs must
 //     STATE the opposite of the claim. It is paraphrase-proof and is a named test.
-//   * this phrase rule is a BEST-EFFORT LINT whose recall is a MEASURED NUMBER on the
-//     fixture set, NOT "coverage". If it misses a paraphrase, the positive assertion holds.
+//   * this phrase rule is a BEST-EFFORT LINT whose recall is MEASURED AND ENFORCED: the
+//     fixture set in `prose-recall-fixtures.mjs` scores **18/19** and the test PRINTS that
+//     number and FAILS if it drops below 18/19. It is a REGRESSION SCORE over the known
+//     escape cases, NOT an estimate of recall over unseen prose. A doc test asserts the
+//     docs quote the same figure.
 //   * the test that matters most is the INVARIANCE PAIR: the same claim with and without
 //     each waiver mechanism must get the SAME verdict.
 // F24/F25 note: `GLUE` is vocabulary again and is the last list added. `fail|fails` is
