@@ -208,7 +208,11 @@ console.log("\n=== 5. round-5 checks (F6 gradient residual is not silent) ===");
   console.log(`  fit=${c.background_fit?.explained_fraction} adequate=${c.background_fit?.adequate} all_meet_aa=${c.all_meet_aa} colours=${c.colours.length} notes=${r.notes.length}`);
   console.log(`  marginal note: ${r.notes.some((n) => /marginal/i.test(n)) ? "YES" : "NO"}`);
   console.log(`  model_disagreement: ${c.model_disagreement ? JSON.stringify(c.model_disagreement.local_failing_colours.map((x) => x.foreground)) : "none"}`);
-  console.log(`  -> not silent: ${r.notes.length > 0 && c.all_meet_aa === true ? "YES" : "NO"}`);
+  // F38 (round 30) changed the contract here: a clean global verdict the cross-check contradicts
+  // is now ABSTAINED (all_meet_aa: null, verdict: "unverified"), not asserted as `true`. So
+  // "not silent" means: notes present AND the verdict is not a silent clean pass.
+  console.log(`  verdict=${c.verdict} all_meet_aa=${c.all_meet_aa}`);
+  console.log(`  -> disclosed (notes) and not a silent clean pass: ${r.notes.length > 0 && c.all_meet_aa !== true ? "YES" : "NO"}`);
   const l = await call("measure_image", { image_source: grad, mode: "contrast", region, background_mode: "local" });
   const cl = l.measurements.contrast;
   console.log(`  local: colours=${cl.colours.length} #8c8c8c=${cl.colours.find((x) => x.foreground === "#8c8c8c")?.contrast_ratio}:1 failing=${cl.failing_count}`);
