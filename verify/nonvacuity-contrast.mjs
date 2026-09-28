@@ -38,9 +38,10 @@ const cases = [
     test: "enumerates every text colour",
     file: "lib/measure.js",
     // The caller's default threshold is what makes a 1.04:1 string (~7 RGB units
-    // from the background) detectable in the enumeration.
-    from: "  const clusterTolerance = opts.clusterTolerance ?? opts.tolerance ?? 16;\n  const inkThreshold = opts.inkThreshold ?? 4;",
-    to: "  const clusterTolerance = opts.clusterTolerance ?? opts.tolerance ?? 16;\n  const inkThreshold = opts.inkThreshold ?? 24; // REVERTED: original tolerance drops 1.04:1 text",
+    // from the background) detectable in the enumeration. (Anchor updated in round 33 when the
+    // tolerance default became the named DEFAULT_CLUSTER_TOLERANCE constant.)
+    from: "  const clusterTolerance = opts.clusterTolerance ?? opts.tolerance ?? DEFAULT_CLUSTER_TOLERANCE;\n  const inkThreshold = opts.inkThreshold ?? 4;",
+    to: "  const clusterTolerance = opts.clusterTolerance ?? opts.tolerance ?? DEFAULT_CLUSTER_TOLERANCE;\n  const inkThreshold = opts.inkThreshold ?? 24; // REVERTED: original tolerance drops 1.04:1 text",
   },
   {
     id: "T4 no hardcoded failure",

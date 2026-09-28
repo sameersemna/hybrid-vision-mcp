@@ -2334,9 +2334,72 @@ test("F39: the witness filter must not delete low-contrast text (sweep the FILL,
   // so the verdict stays `clean`. This is the case the round-31 guard could not observe once the
   // naming assertion was narrowed; it is the discriminator for the identity test.
   //
-  // OPEN (ACCURACY.md §5ai, cause (b)): at k=10-16 BOTH models lose the fill, so a `clean` verdict
-  // is evidence-based yet wrong; the fix is upstream in the mask/threshold path, not this filter.
+  // Cause (b) (ACCURACY.md §5ai): at k=10-16 BOTH models lose the fill, so `clean` is evidence-based
+  // yet wrong. Round 33 discloses it (see the F40 test) rather than leaving it silent.
   const identity = contrastInRegion(await loadPixels(await head(shift(16))), region);
   assert.equal(identity.verdict, "clean", "a background-identity-only witness must not force an abstention");
+});
+
+test("F40: the service entry point and the library agree, and the tolerance is surfaced", async () => {
+  // Round 33. `measureImage` (the MCP tool) used to default `tolerance` to 24 while the library
+  // defaulted to 16, so every test/guard/harness — which calls `contrastInRegion` directly — ran at
+  // 16 while users got 24. Measured: on the dropcap fixture two failing colours 17.4 apart merged at
+  // 24, the WORST (`#262522@1.62`) disappeared from every channel, and the service reported
+  // `#444443@1.82`. The apparatus was validating a configuration users did not run.
+  //
+  // Two properties: (1) the two entry points agree by default; (2) the effective tolerance is
+  // SURFACED, so a caller can see the parameter that changes `worst`/`failing_count`.
+  const buf = await buildDropcapTextFixture();
+  const region = DROPCAP_TEXT.region;
+
+  const lib = contrastInRegion(await loadPixels(buf), region);
+  const svc = (await measureImage({ imageBuffer: buf, mode: "contrast", region })).measurements.contrast;
+
+  const key = (r) => `${r.worst?.foreground}@${r.worst?.contrast_ratio}|${r.failing_count}|${r.cluster_tolerance}`;
+  assert.equal(key(svc), key(lib), "the service must not carry its own cluster tolerance (F40)");
+  assert.equal(lib.cluster_tolerance, 16, "the library default is surfaced");
+  assert.equal(svc.cluster_tolerance, 16, "the service agrees with the library");
+  // The worst failing colour must be the real one, not a diluted merge.
+  assert.equal(lib.worst.foreground, DROPCAP_TEXT.worst, "the dropcap worst is not diluted by a wider merge");
+
+  // An EXPLICIT tolerance still overrides (the parameter remains usable), and is surfaced.
+  const wide = (await measureImage({ imageBuffer: buf, mode: "contrast", region, tolerance: 24 })).measurements.contrast;
+  assert.equal(wide.cluster_tolerance, 24, "an explicit tolerance is honoured and surfaced");
+  assert.notEqual(key(wide), key(lib), "a wider tolerance genuinely changes the merge (which is why it must be one default)");
+
+  // REC 3 (durable): the standing set is exercised through the REAL entry point, not only the
+  // library. Without this, service-only behaviour is structurally invisible — the shape that hid
+  // F40 (and F32 before it) for many rounds.
+  const standing = [
+    [buildDropcapTextFixture(), DROPCAP_TEXT.region],
+    [buildOutlinedTextFixture(), OUTLINED_TEXT.region],
+    [buildDenseSmallCardsFixture(), DENSE_SMALL_CARDS.region],
+    [buildSplitBackgroundFixture({ n: 16 }), SPLIT_BACKGROUND.region],
+  ];
+  for (const [png, reg] of standing) {
+    const b = await png;
+    const a = contrastInRegion(await loadPixels(b), reg);
+    const c = (await measureImage({ imageBuffer: b, mode: "contrast", region: reg })).measurements.contrast;
+    assert.equal(
+      `${c.worst?.foreground}@${c.worst?.contrast_ratio}|${c.failing_count}|${c.verdict}`,
+      `${a.worst?.foreground}@${a.worst?.contrast_ratio}|${a.failing_count}|${a.verdict}`,
+      "the service and library must agree on every standing fixture",
+    );
+  }
+
+  // Cause-(b) disclosure: an identity-only local witness must leave a NOTE (never a silent clean).
+  const W = 1000, H = 700;
+  const page = "#1a1814";
+  const k16 = "#" + [0x1a + 16, 0x18 + 16, 0x14 + 16].map((v) => v.toString(16).padStart(2, "0")).join("");
+  const png = await sharp(Buffer.from(
+    `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg"><rect width="${W}" height="${H}" fill="${page}"/>` +
+      `<text x="30" y="350" font-family="DejaVu Sans" font-weight="bold" font-size="300" fill="${k16}" stroke="#ffffff" stroke-width="3">AB</text></svg>`,
+  )).png().toBuffer();
+  const r = contrastInRegion(await loadPixels(png), { left: 0, top: 0, width: W, height: H });
+  assert.equal(r.verdict, "clean", "an identity-only witness does not abstain");
+  assert.ok(
+    (r.notes || []).some((n) => /could not be measured independently/.test(n)),
+    "a clean verdict whose cross-check could not separate ink from fill must DISCLOSE it, not be silent",
+  );
 });
 

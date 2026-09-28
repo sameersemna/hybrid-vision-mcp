@@ -753,6 +753,10 @@ export const DROPCAP_TEXT = {
   region: { left: 0, top: 0, width: 1000, height: 700 },
   text: "#464646",
   ratio: 1.88,
+  // F40: the worst failing colour at the library's cluster tolerance (16). At 24 it merges into
+  // #1d1b17@1.82 (17.4 apart) and disappears — which is why the service and library must share a
+  // default.
+  worst: "#262522",
 };
 
 /**
