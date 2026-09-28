@@ -3756,6 +3756,78 @@ they were previously recorded as `all_meet_aa: true`. Stated explicitly here.
 | `verify/nonvacuity-round31.mjs` | 3 perturbation guards + 1 construction-site invariant, all **NON-VACUOUS** |
 | live `verify-background-live.mjs` on 11402 | **no red checks** (the round-5 F6 check was updated to the new contract) |
 
+## 5ai. Thirty-second audit: the witness filter deleted the worst text (F39)
+
+Round 31's G2 filter kept a local witness only when
+`rgbDistance(witness, background) > PLATEAU_MERGE_DIST` (12). `rgbDistance` is **Euclidean**, so
+12 is only ~**6.9 per channel**, and **low-contrast text is by construction the closest to its
+background** (contrast 1.03–1.14 spans distance ~5–21). So the filter deleted the **most** failing
+text and the verdict read `clean` — the **opposite** direction from F38, produced by F38's own
+follow-up. Reproduced (fs=300, fill shifted k/channel from the page):
+
+| k | fill | euclid | round-30 | round-31 (G2) | **round-32** |
+|---|---|---|---|---|---|
+| 3 | `#1d1b17` | 5.2 | unverified | **clean** | **unverified** |
+| 4 | `#1e1c18` | 6.9 | unverified | **clean** | **unverified** |
+| 5 | `#1f1d19` | 8.7 | unverified | **clean** | **unverified** |
+| 6 | `#201e1a` | 10.4 | unverified | **clean** | **unverified** |
+| 7 | `#211f1b` | 12.1 | unverified | unverified | unverified |
+| 10 | `#24221e` | 17.3 | unverified | **clean** | clean (cause b) |
+| 16 | `#2a2824` | 27.7 | unverified | **clean** | clean (cause b) |
+| 24 | `#32302c` | 41.6 | unverified | unverified | unverified |
+| 40 | `#42403c` | 69.3 | failing | failing | failing |
+
+### The fix — separate the DECISION from the NAMING
+
+The two quantities were collapsed and the wider one became the decision. They are now distinct:
+
+- **decisive** — what may force an ABSTENTION: any failing colour **not identical** to the
+  background it was measured against (distance **0**). An identity witness is the local model's
+  documented over-report, never text.
+- **disclosable** — what is safe to **name** in the note: the decisive set minus near-background
+  colours (within `PLATEAU_MERGE_DIST`), falling back to `decisive` when empty.
+
+The distance is now used **only for what is named**; the decision is the identity test alone. This
+restores k=3–8 while preserving G2's visible intent (the 500px identity witness no longer forces an
+abstention).
+
+### Cause (b) — OPEN, upstream
+
+At k=10–16 **both** models lose the fill; the local model's only failing colour is the page
+`#1a1814@1:1` (distance 0). With no non-background evidence the verdict stays `clean` — **evidence-
+based but wrong**. Widening or narrowing this filter cannot fix it: the loss is upstream in the
+global mask/threshold path (rounds 30/31 ruled out the 2%-of-region extras gate, the parent-box
+constant, the adaptive threshold, and the witness filter). Recorded as an open finding; the k=16
+case is asserted in the F39 test as the identity-test discriminator (it must stay `clean`), with the
+open nature stated in the comment.
+
+### Why neither the F38 test nor the round-31 guard saw it
+
+- The **F38 test** sweeps **size** at a fixed `#312f2c` (distance **24** from the page) — always
+  above the filter's 12. The boundary is invisible to it.
+- The **round-31 guard** perturbed the filter's *code text* (deleting it lets the identity witness
+  force an abstention). That property is real, but a guard that perturbs a mechanism is **not a test
+  of its width**. The new **F39** test sweeps the **fill colour** at a fixed large size — now the
+  standing test for this mechanism — and the guard asserts the *narrower* decision property.
+
+### Record corrections (round 32)
+
+- F7's witness numbers differ between the two reports (`30,760px / 390 comps / mean 79px` vs
+  `35,586px / 421 comps / mean 84px`). Same conclusion (fragmented near-background texture tones),
+  different counts — the exact figure is not load-bearing and is left to F7's own round.
+- The round-31 note's witness distances (14, 24) used a **chessboard** metric; the platform's
+  `rgbDistance` is **Euclidean** (37.1 for `#15130f`). The constant `PLATEAU_MERGE_DIST` must be
+  compared in Euclidean terms, which is what this round used.
+
+### Verification
+
+| check | result |
+|---|---|
+| `npm test` | **133/133** |
+| non-vacuity harnesses | **30/30**, **134 guards** |
+| `verify/nonvacuity-round31.mjs` | 4 perturbation guards + 1 construction-site invariant, all **NON-VACUOUS** |
+| F39 colour sweep (fs=300, k=3–8) | every low-contrast fill `unverified`, none `clean` |
+
 ## 9. New module map
 
 | File | Responsibility |

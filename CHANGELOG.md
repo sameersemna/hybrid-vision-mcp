@@ -1,5 +1,40 @@
 # Changelog
 
+## Thirty-second audit: the witness filter deleted the worst text (F39) — 2026-09-28
+
+Round 31's G2 filter kept a witness only when `rgbDistance > PLATEAU_MERGE_DIST` (12). `rgbDistance`
+is **Euclidean** (12 ≈ 6.9/channel) and low-contrast text is closest to its background, so the
+filter deleted the **most** failing text and read `clean` — the opposite direction from F38,
+produced by F38's follow-up. See `ACCURACY.md` §5ai.
+
+### Fix — separate the decision from the naming
+
+The two quantities were collapsed. Now:
+
+- **decisive** (may force an abstention) = any failing colour **not identical** to the background it
+  was measured against (distance **0**);
+- **disclosable** (may be named) = decisive minus near-background colours (within
+  `PLATEAU_MERGE_DIST`), falling back to decisive when empty.
+
+The distance is used only for what is named. Restores k=3–8 (distance 5.2–13.9) to `unverified`
+while preserving G2's intent.
+
+### Cause (b) — recorded open
+
+At k=10–16 **both** models lose the fill (the local model's only failing colour is the page
+`#1a1814@1:1`), so `clean` is evidence-based but wrong. Upstream of this filter; its own round.
+
+### Guards and tests
+
+- New **F39** test sweeps the **fill colour** at fs=300 (the F38 test only sweeps size at
+  `#312f2c`, distance 24 — the boundary was invisible to it).
+- The round-31 G2 guard is rewritten to assert the **narrower** decision property (perturbing a
+  mechanism is not a test of its width).
+
+### Verification
+
+- `npm test` **133/133**; non-vacuity **30/30** (**134 guards**); round-31 guard all **NON-VACUOUS**.
+
 ## Thirty-first audit: the F38 fix's own contradiction, and a background witness — 2026-09-28
 
 F38 verified fixed (band sweep holds; the false-negative attack — turning a `failing` into
