@@ -3828,6 +3828,60 @@ open nature stated in the comment.
 | `verify/nonvacuity-round31.mjs` | 4 perturbation guards + 1 construction-site invariant, all **NON-VACUOUS** |
 | F39 colour sweep (fs=300, k=3–8) | every low-contrast fill `unverified`, none `clean` |
 
+## 5aj. Thirty-third audit: the tested path was not the shipped path (F40)
+
+F39 was verified fixed on the deployed build, and the round-31 guard was checked to have been
+**corrected, not weakened** (its single wide-filter case became two, asserting the rule's *width*
+and the identity test's *existence* separately). This round's finding is that the **verification
+apparatus ran a different configuration from the service**.
+
+### The two-default split
+
+| entry point | clustering tolerance |
+|---|---|
+| `contrastInRegion` (library; every test, guard, harness) | `16` |
+| `measureImage` (`lib/analyze.js`; what users call) | `tolerance = **24**` |
+| tool schema (`index.js`) | documented as *"Default: 24"* |
+
+Bisected: adding `tolerance: 24` to a direct library call is the *only* option that reproduces the
+divergence. **Pre-existing** (identical from round 21 to HEAD). Effect on the dropcap fixture:
+`#262522@1.62` and `#1d1b17@1.82` are **17.4 apart** — inside 24, outside 16 — so at 24 they merged
+and the **worst failing colour disappeared from every channel** (`colours`, `excluded`, `skipped`,
+`suspected_noise`, `background_regions`), leaving `worst = #444443@1.82`. Four of twelve fixture
+families differ, **in both directions** — so "it errs safe" is false, and a caller cannot compensate.
+
+### Fix (recs 1–3)
+
+1. **One default.** `DEFAULT_CLUSTER_TOLERANCE = 16` is now a named export in `lib/measure.js`; the
+   library's fallback uses it, and `measureImage` passes `tolerance = undefined` so it **defers** to
+   the same constant. The schema text is corrected ("Default: 16… shared with the contrast engine").
+2. **Surfaced.** The response now carries `cluster_tolerance` (the effective value), removed from
+   ambiguity with `background_fit.tolerance` (a **different** quantity that scores the background
+   model, not colour merging).
+3. **Tested through the real entry point.** The F40 test runs the dropcap **and** the standing set
+   (outlined, dense small cards, split background) through **both** `contrastInRegion` and
+   `measureImage`, asserting identical `worst`/`failing_count`/`verdict`. This is the durable fix:
+   without it, service-only behaviour is structurally invisible — the shape that hid F40 (and F32).
+
+### Cause (b) — now disclosed (rec 4)
+
+At k=16 both models fail to see the fill; the local model's only witness is the background identity
+(`#1a1814@1:1`). Measured through the deployed tool, this was a **completely silent `clean` pass**
+(`notes: []`, `model_disagreement: null`) over a real 1.205:1 glyph. The response now **discloses**
+it: *"Contrast here could not be measured independently: the local model enumerated N failing
+colour(s), but every one is IDENTICAL to the background…"*. The verdict stays `clean` (no
+non-background evidence), but it is no longer silent about the limitation. The upstream cause remains
+open.
+
+### Verification
+
+| check | result |
+|---|---|
+| `npm test` | **134/134** |
+| non-vacuity harnesses | **31/31**, **140 guards** |
+| `verify/nonvacuity-round33.mjs` | 4 perturbation guards + 2 construction-site invariants, all **NON-VACUOUS** |
+| library vs service, 5 fixtures | **identical** `worst`/`failing_count` |
+
 ## 9. New module map
 
 | File | Responsibility |

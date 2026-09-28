@@ -1,5 +1,28 @@
 # Changelog
 
+## Thirty-third audit: the tested path was not the shipped path (F40) — 2026-09-28
+
+`measureImage` (the MCP tool) defaulted `tolerance` to **24** while the library defaulted to **16**,
+so every test, guard and harness ran at 16 while users got 24. On the dropcap fixture two failing
+colours 17.4 apart merged at 24 and the **worst failing colour disappeared from every channel**,
+leaving a milder `worst`. Pre-existing since round 21; four of twelve fixture families differ, in
+both directions. See `ACCURACY.md` §5aj.
+
+### Fixed
+
+- **One default**: `DEFAULT_CLUSTER_TOLERANCE = 16` is a named export; `measureImage` defers to it
+  (`tolerance = undefined`); the schema text no longer asserts a different number.
+- **Surfaced**: the response carries `cluster_tolerance` (the effective merge distance), distinct
+  from `background_fit.tolerance` (a different quantity).
+- **Tested through the real entry point**: the F40 test runs the dropcap and the standing set
+  through `measureImage` as well as `contrastInRegion`, asserting identical results.
+- **Cause (b) now disclosed**: a clean verdict whose cross-check could not separate ink from fill is
+  no longer silent — it carries a note.
+
+### Verification
+
+- `npm test` **134/134**; non-vacuity **31/31** (**140 guards**); round-33 guard all **NON-VACUOUS**.
+
 ## Thirty-second audit: the witness filter deleted the worst text (F39) — 2026-09-28
 
 Round 31's G2 filter kept a witness only when `rgbDistance > PLATEAU_MERGE_DIST` (12). `rgbDistance`
