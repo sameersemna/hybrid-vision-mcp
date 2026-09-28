@@ -2266,11 +2266,13 @@ test("F38: the note never contradicts the response's own `adequate` field, and `
     if (r.background_fit?.adequate) {
       assert.ok(!/background varies/.test(note), `[fs=${fs}] the note must not say "varies" while adequate=true`);
     }
-    // G2: no witness may be the background it was measured against.
+    // G2/F39: no witness may be the background IDENTITY it was measured against (distance 0).
+    // The DECISION rule is the identity test; the wider PLATEAU_MERGE_DIST applies only to what
+    // is NAMED (and the naming falls back to the decisive set when nothing legible is named).
     for (const c of r.model_disagreement?.local_failing_colours || []) {
       assert.ok(
-        rgbDistance(parseColor(c.foreground), parseColor(c.measured_against)) > PLATEAU_MERGE_DIST,
-        `[fs=${fs}] witness ${c.foreground} is the background (${c.measured_against}), it must be filtered`,
+        rgbDistance(parseColor(c.foreground), parseColor(c.measured_against)) > 0,
+        `[fs=${fs}] witness ${c.foreground} IS the background (${c.measured_against}), it must not be decisive`,
       );
     }
   }
@@ -2283,5 +2285,58 @@ test("F38: the note never contradicts the response's own `adequate` field, and `
     assert.equal(typeof r.verdict, "string", "verdict must be a string on the abstention paths too");
     assert.equal(r.verdict, "unverified");
   }
+});
+
+test("F39: the witness filter must not delete low-contrast text (sweep the FILL, not the size)", async () => {
+  // Round 32. The G2 filter used `rgbDistance(...) > PLATEAU_MERGE_DIST (12)` as the DECISION, and
+  // `rgbDistance` is Euclidean (12 ~= 6.9/channel). Low-contrast text is by construction closest to
+  // its background, so the filter deleted the WORST text and the verdict read `clean` — the opposite
+  // direction from F38, produced by F38's own follow-up. Fixed by making the DECISION the background
+  // identity test (distance 0) and using PLATEAU_MERGE_DIST only for what is NAMED.
+  //
+  // The F38 test fixed the SIZE and swept the size at `#312f2c` (distance 24 from the page); the
+  // filter boundary is invisible to it. This test sweeps the FILL COLOUR at a fixed large size, so a
+  // too-wide filter cannot hide. It is the standing test for this mechanism.
+  const W = 1000, H = 700;
+  const region = { left: 0, top: 0, width: W, height: H };
+  const page = "#1a1814";
+  const shift = (k) => "#" + [0x1a + k, 0x18 + k, 0x14 + k].map((v) => v.toString(16).padStart(2, "0")).join("");
+  const head = (fill) =>
+    sharp(Buffer.from(
+      `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg"><rect width="${W}" height="${H}" fill="${page}"/>` +
+        `<text x="30" y="350" font-family="DejaVu Sans" font-weight="bold" font-size="300" fill="${fill}" stroke="#ffffff" stroke-width="3">AB</text></svg>`,
+    )).png().toBuffer();
+
+  // The defect band: fills at Euclidean distance 5.2-13.9 from the page (below/around the 12 the
+  // filter used). Every one is real, failing text (contrast 1.03-1.09) and must NOT read clean.
+  for (const k of [3, 4, 5, 6, 7, 8]) {
+    const fill = shift(k);
+    const r = contrastInRegion(await loadPixels(await head(fill)), region);
+    assert.notEqual(
+      r.all_meet_aa,
+      true,
+      `k=${k} (${fill}, contrast ${r.worst?.contrast_ratio}): low-contrast text must not read clean`,
+    );
+    assert.equal(r.verdict, "unverified", `k=${k}: the cross-check disagrees, so the verdict abstains`);
+  }
+
+  // CONTROL — a fill far from the background (distance 69) still fails outright, and the fill named
+  // in the disclosure is never the background identity.
+  const far = contrastInRegion(await loadPixels(await head("#42403c")), region);
+  assert.equal(far.all_meet_aa, false, "a clearly-failing fill is still a failure");
+  assert.equal(far.verdict, "failing");
+  for (const c of far.model_disagreement?.local_failing_colours || []) {
+    assert.ok(rgbDistance(parseColor(c.foreground), parseColor(c.measured_against)) > 0, "no witness is the background identity");
+  }
+
+  // G2's property, kept by the identity test: where the local model's ONLY failing colour is the
+  // background itself (k=16; the page `#1a1814`@1:1, distance 0), it may NOT force an abstention —
+  // so the verdict stays `clean`. This is the case the round-31 guard could not observe once the
+  // naming assertion was narrowed; it is the discriminator for the identity test.
+  //
+  // OPEN (ACCURACY.md §5ai, cause (b)): at k=10-16 BOTH models lose the fill, so a `clean` verdict
+  // is evidence-based yet wrong; the fix is upstream in the mask/threshold path, not this filter.
+  const identity = contrastInRegion(await loadPixels(await head(shift(16))), region);
+  assert.equal(identity.verdict, "clean", "a background-identity-only witness must not force an abstention");
 });
 

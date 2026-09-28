@@ -22,16 +22,23 @@ const cases = [
     to: "        const adequateFit = !!(backgroundFit && backgroundFit.applicable && backgroundFit.explained_fraction >= GOOD_FIT_FRACTION);",
   },
   {
-    id: "G2 the background-witness filter (dropping it lets #1a1814@1:1 force an abstention)",
-    test: G_TEST,
+    id: "G2/F39 the DECISION is the background-identity test (widening it to PLATEAU_MERGE_DIST deletes low-contrast text)",
+    test: "the witness filter must not delete low-contrast text",
     file: MEASURE,
-    from:
-      "      const localFailing = local.colours.filter(\n" +
-      "        (c) =>\n" +
-      "          !c.meets_aa &&\n" +
-      "          (!c.measured_against || rgbDistance(c.rgb, parseColor(c.measured_against)) > PLATEAU_MERGE_DIST),\n" +
-      "      );",
-    to: "      const localFailing = local.colours.filter((c) => !c.meets_aa);",
+    // The round-32 regression (F39): using the WIDE distance as the decision turns the most
+    // failing text (distance 5.2-13.9) into a clean pass. This perturbs the decision back to the
+    // wide rule, which the F39 test must catch. (The round-31 form of this case asserted the
+    // wider property; it is corrected here to the narrower one.)
+    from: "      const decisive = raw.filter((c) => dist(c) > 0);",
+    to: "      const decisive = raw.filter((c) => dist(c) > PLATEAU_MERGE_DIST);",
+  },
+  {
+    id: "G2 the background-identity filter (dropping it lets #1a1814@1:1 force an abstention)",
+    test: "the witness filter must not delete low-contrast text",
+    file: MEASURE,
+    // The identity-only case (k=16) lives in the F39 test, so the property is observable there.
+    from: "      const decisive = raw.filter((c) => dist(c) > 0);",
+    to: "      const decisive = raw;",
   },
   {
     id: "G4 the abstention early-return sets `verdict` (removing it makes the field undefined)",
