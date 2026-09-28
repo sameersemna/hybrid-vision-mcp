@@ -3528,7 +3528,8 @@ downward would classify real textured fills as regions (F7's backstop depends on
 ### Measured no-regression (a stable control digest, before vs after)
 
 A 25-case digest (shadow triad + every F28–F35 control + the real regression fixtures + the
-negative direction) diffed byte-for-byte before and after the fix changed **exactly three lines**:
+negative direction) diffed byte-for-byte before and after the changes. **Fix 1 alone** changed
+**exactly three lines**:
 
 | case | before | after |
 |---|---|---|
@@ -3542,35 +3543,70 @@ false positive of the class. Every other case — F28, F32, F34, F35 (n=1/4/16/3
 dense small cards, dense flat, decorative bars, the contrast fixture, plain low-contrast text, a
 solid region block — is **byte-identical**.
 
-### Two things the audit's account did not have
+### F37 — the single-plateau residual, fixed too (its own mechanism)
 
-1. **The single-plateau residual is NOT immune** (contrary to the audit's §3). A shadow plus text
-   on a flat page with **no card** makes ONE component whose extremal colour is the text
-   (`#e8dfd0`, `fill 0.996`, box **0.4867** of the region, `plat=true`), and the shadow's tones
-   become its extras — reported as failing text. Measured `#151413@1.04`, **unchanged by Fix 1 and
-   identical at HEAD** (verified by stashing the patch). It is a different mechanism (a
-   **plateau-sized parent**, not a hollow one) and is recorded, not fixed, here.
-2. **The proposed Fix 1 was verified, not assumed.** The audit labelled its own probe a
-   fixture artefact risk; the same discipline applies to the fix. It was measured against the
-   discriminator (parent holowness) and a 25-case control digest before adoption.
+The audit stated *"single-plateau pages are immune"* (§3). **Measured, that is not complete.** A
+shadow plus text on a flat page with **no card** makes **one** component whose extremal colour is
+the **text** (`#e8dfd0`), so the shadow tone becomes its **extra** and was reported as failing
+text — in **both** modes (`#151413@1.04`, pre-existing at HEAD, verified by stashing the patch):
+
+| fixture | default (global) | local |
+|---|---|---|
+| shadow + text, no card, `σ=14` | **`false`**, `#151413@1.04` | `true` |
+| shadow + text, no card, `σ=4, 8, 20, 30` | `true` | `true` |
+| shadow + text, no card, `fs 34/80` | **`false`** | `true` |
+
+This is a **different mechanism** from F36: the parent is not hollow — it is **near-solid and
+region-spanning** (`box 728×468 = 48.7%` of the region, `fill_ratio 0.996`, ink 41% of the region,
+`plat=true`).
+
+**The existing gate already states the rule.** `MULTICOLOUR_PARENT_MAX_BOX_FRACTION` carries the
+comment *"A GLYPH component cannot SPAN the region: if it does, the 'second colour' is field
+shading, not text"* — the exact F37 principle. Its value was **0.5**, documented as sitting "in the
+measured gap", but that placed it at the gap's **text-facing edge**: F37's parent is **0.4867**, so
+it slipped under. Measured, real second-ink parents are **≤ 0.0386** of the region across every
+outlined-text fixture (F28/F32/F34, sizes 24–600px, 1–16 glyphs) and the count-invariance sweep,
+while decoration parents are ≥ 0.4867. The threshold is now **0.2** — inside the gap with ~5× margin
+on the text side and ~2.4× on the decoration side. No new gate was added; the existing one was
+placed where its own comment said it should be.
+
+**The two fixes are independently necessary** (each measured alone):
+
+| config | small hollow ring (200×150) | F37 single-plateau shadow |
+|---|---|---|
+| Fix 1 (copy flags) + threshold 0.2 | clean | clean |
+| **Fix 1 only** (threshold 0.5) | clean | **reports `#151413@1.04`** |
+| **threshold only** (no Fix 1) | **reports `#2a2824@1.2`** | clean |
+
+The small ring is the discriminator: it is small enough to pass the box gate, so **only** Fix 1 can
+filter its fringe. This is why the F36 test uses a **small** ring — it makes Fix 1 non-vacuous.
+
+### What the audit's account did not have
+
+1. **The single-plateau case is a second, distinct defect (F37), and it is fixed** — not "recorded".
+   The audit's §3 called single-plateau pages immune; measured, they are not.
+2. **The proposed Fix 1 was verified, not assumed** — against the discriminator (parent holowness)
+   and a 25-case control digest before adoption. Two overlapping fixes were also ruled out by
+   measuring each in isolation (the small-ring probe).
 
 ### Verification
 
 | check | result |
 |---|---|
-| `npm test` | **129/129** (128 + the F36 acceptance test) |
-| non-vacuity harnesses | **28/28**, **122 guards** (118 + round-29's 4) |
-| control digest before vs after | 3 lines changed, all improvements; 22 identical |
-| `verify/nonvacuity-round29.mjs` | 2 perturbation guards + 2 construction-site invariants, all **NON-VACUOUS** |
-| COUNT-INVARIANCE coverage of F36 | **not caught** (measured) — recorded in the standing test's comment |
-| live 11402 (pre-deploy) | F34 reported, F35 filtered (deployed build); F36 verified on scratch |
+| `npm test` | **130/130** (128 + the F36 and F37 acceptance tests) |
+| non-vacuity harnesses | **28/28**, **124 guards** (118 + round-29's 6) |
+| control digest before vs after | 5 lines changed, all improvements; 20 identical |
+| `verify/nonvacuity-round29.mjs` | 4 perturbation guards + 2 construction-site invariants, all **NON-VACUOUS** |
+| COUNT-INVARIANCE coverage of F36/F37 | **not caught** (measured) — recorded in the standing test's comment |
+| live 11402 (pre-deploy) | F34 reported, F35 filtered (deployed build); F36/F37 verified on scratch |
 
 ### What this round has NOT proven
 
 - Only the **shadow/glow** candidate was probed as a new mechanism. The others (≥3 ink colours in
   one component, gradient/image fills) remain **untested**.
-- The single-plateau plateau-sized-parent residual (§ above) is **named, pre-existing, and not
-  fixed**.
+- The F37 threshold (0.2) is chosen from a measured gap (text ≤ 3.9%, decoration ≥ 48.7%) with a
+  ~5× text-side and ~2.4× decoration-side margin; a single-ink colour whose parent is a
+  *mid-sized* panel (5–48% of the region) would still emit extras — unmeasured, and not observed.
 - Frequency remains unmeasured — reachability plus a control-backed verdict error, not prevalence.
 
 ## 9. New module map

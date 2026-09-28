@@ -34,32 +34,37 @@ geometry, measured: the shadow's parent is hollow (`0.2214`); a real outlined-te
 
 ### Measured no-regression
 
-A 25-case control digest diffed before vs after changed **exactly three lines**, all improvements:
-the two shadows (now `true`, disclosed) and a **hollow border ring** (its AA fringe toward the page
-was also wrongly reported — now disclosed). Every F28–F35 control, F7 textured page, dense small
-cards, dense flat, decorative bars, the contrast fixture, plain low-contrast text, and a solid
-region block are **byte-identical**.
+A 25-case control digest (shadow triad + every F28–F35 control + the real regression fixtures + the
+negative direction) diffed before vs after changed **exactly five lines**, all improvements: the two
+shadows (now `true`, disclosed), a **hollow border ring** (its AA fringe toward the page was also
+wrongly reported — now disclosed), and the two F37 single-plateau rows. Every F28–F35 control, F7
+textured page, dense small cards, dense flat, decorative bars, the contrast fixture, plain
+low-contrast text, and a solid region block are **byte-identical** (20 of 25 rows).
 
-### Two things added beyond the audit's account
+### F37 — a second, distinct mechanism (fixed too)
 
-- The **single-plateau residual is not immune** (contrary to the audit's §3): a shadow + text on a
-  flat page with no card makes a **plateau-sized** parent whose extras are reported
-  (`#151413@1.04`) — **pre-existing, identical at HEAD, named and not fixed** (a different
-  mechanism).
-- The proposed fix was **verified against the discriminator and a 25-case control digest** before
-  adoption, not assumed.
+The audit stated single-plateau pages are **immune**. Measured, they are not: a shadow + text on a
+flat page with no card makes **one** component whose extremal colour is the **text**, so the shadow
+tone becomes its **extra** and was reported as failing text (`#151413@1.04`, in both modes,
+pre-existing at HEAD). Its parent is not hollow — it is **near-solid and region-spanning** (box 48.7%
+of the region, fill 0.996). The **existing** parent-box gate already carries this rule in its
+comment (*"a GLYPH component cannot SPAN the region"*), but its threshold `0.5` sat at the gap's
+text-facing edge and the parent (0.4867) slipped under. Measured, real second-ink parents are
+**≤ 3.9%** of the region while decoration parents are **≥ 48.7%**; the threshold is now **0.2**,
+inside the gap. The two fixes are **independently necessary** (each measured alone: Fix 1 alone
+leaves F37; the threshold alone leaves a small hollow border's fringe reported).
 
 ### Verification
 
-- `npm test` **129/129**; non-vacuity **28/28** (**122 guards**); `verify/nonvacuity-round29.mjs`
-  all **NON-VACUOUS** (2 perturbation + 2 construction-site invariants).
-- COUNT-INVARIANCE does **not** catch F36 (measured) — recorded in the standing test's comment;
-  F36 has its own test.
+- `npm test` **130/130**; non-vacuity **28/28** (**124 guards**); `verify/nonvacuity-round29.mjs`
+  all **NON-VACUOUS** (4 perturbation + 2 construction-site invariants).
+- COUNT-INVARIANCE does **not** catch F36/F37 (measured) — recorded in the standing test's comment;
+  each has its own test.
 - `git grep REVERTED` clean; 11402 current pre-deploy (F34 reported, F35 filtered).
 
 ### Still untested (reopen candidates unchanged)
 
-≥3 ink colours in one component; gradient/image fills. (Shadows/glows are now the F36 case.)
+≥3 ink colours in one component; gradient/image fills. (Shadows/glows are now the F36/F37 case.)
 
 ## Twenty-eighth-audit closing verification: one stale item corrected — 2026-09-27
 
