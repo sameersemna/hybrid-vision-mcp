@@ -1,5 +1,66 @@
 # Changelog
 
+## Twenty-ninth audit: F36 — a soft shadow reported as failing text (new mechanism) — 2026-09-28
+
+Round 28 closed with a reopening criterion: a **genuinely new mechanism**, not another instance of
+the per-piece class. This round reopens on exactly that. See `ACCURACY.md` §5ae.
+
+### Finding (reproduced, one property different)
+
+A soft drop shadow under a card — pure decoration — was the only failing colour, so it set `worst`
+and `all_meet_aa: false`:
+
+| fixture | `all_meet_aa` | failing |
+|---|---|---|
+| card, no shadow | `true` | 0 |
+| card + soft shadow (`σ=14`) | **`false`** | **`#0c0b09@1.35`** |
+| card + tight shadow (`σ=4`) | **`false`** | **`#0a0a08@1.36`** |
+
+### Mechanism (traced)
+
+On a two-plateau page the shadow is a **second-ink extra** of the shadow component. That parent is
+a large **HOLLOW** ring (`fill_ratio 0.2214`, box 728×468), which the primary path drops as
+decoration — but the emitted extra **hard-coded** `looks_like_hollow_rectangle/straight_segment/
+structure: false` (round 25), so `cl.hollow === 0` for the colour and it bypassed the decorative
+gate. An extra shares the parent's box and `fill_ratio`, so it cannot be less structural than its
+parent.
+
+### Fix (one construction site, faithful not tuned)
+
+The extra now **copies the parent's structural flags**. The discriminator is the parent's own box
+geometry, measured: the shadow's parent is hollow (`0.2214`); a real outlined-text fill's parent
+(its stroke) is not (`0.55–0.73`). The shadow routes into the **existing** decorative gate and is
+**disclosed** in `excluded`, never silently dropped.
+
+### Measured no-regression
+
+A 25-case control digest diffed before vs after changed **exactly three lines**, all improvements:
+the two shadows (now `true`, disclosed) and a **hollow border ring** (its AA fringe toward the page
+was also wrongly reported — now disclosed). Every F28–F35 control, F7 textured page, dense small
+cards, dense flat, decorative bars, the contrast fixture, plain low-contrast text, and a solid
+region block are **byte-identical**.
+
+### Two things added beyond the audit's account
+
+- The **single-plateau residual is not immune** (contrary to the audit's §3): a shadow + text on a
+  flat page with no card makes a **plateau-sized** parent whose extras are reported
+  (`#151413@1.04`) — **pre-existing, identical at HEAD, named and not fixed** (a different
+  mechanism).
+- The proposed fix was **verified against the discriminator and a 25-case control digest** before
+  adoption, not assumed.
+
+### Verification
+
+- `npm test` **129/129**; non-vacuity **28/28** (**122 guards**); `verify/nonvacuity-round29.mjs`
+  all **NON-VACUOUS** (2 perturbation + 2 construction-site invariants).
+- COUNT-INVARIANCE does **not** catch F36 (measured) — recorded in the standing test's comment;
+  F36 has its own test.
+- `git grep REVERTED` clean; 11402 current pre-deploy (F34 reported, F35 filtered).
+
+### Still untested (reopen candidates unchanged)
+
+≥3 ink colours in one component; gradient/image fills. (Shadows/glows are now the F36 case.)
+
 ## Twenty-eighth-audit closing verification: one stale item corrected — 2026-09-27
 
 The closing verification round. The auditor independently reproduced the count-invariance

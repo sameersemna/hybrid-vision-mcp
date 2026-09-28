@@ -3453,6 +3453,126 @@ round-27 gap required.
 - Frequency of any construct remains unmeasured — reachability plus a control-backed verdict
   error, not prevalence, throughout.
 
+## 5ae. Twenty-ninth audit: F36 — a soft shadow is reported as failing text
+
+Round 28 closed with an explicit reopening criterion: a **genuinely new mechanism**, not another
+instance of the per-piece class. This round reopened on exactly that, and the mechanism is real —
+but the audit's *prescribed* fix had to be verified against controls before it was adopted, which
+is what this section records.
+
+### The finding (reproduced, one property different)
+
+A soft drop shadow under a card — pure decoration, no text — was reported as a colour that
+**fails** AA, and it is the only failing colour, so it set `worst` and `all_meet_aa: false`:
+
+| fixture (1000×700) | `all_meet_aa` | failing |
+|---|---|---|
+| card, **no** shadow | `true` | 0 |
+| card, **+ soft shadow** (`σ=14`) | **`false`** | **1 — `#0c0b09@1.35`** |
+| card, **+ tight shadow** (`σ=4`) | **`false`** | **1 — `#0a0a08@1.36`** |
+| shadow alone, no card | `false` (single-plateau residual, below) | 1 — `#0a0a08@1.04` |
+
+`#0c0b09` / `#0a0a08` are the blurred shadow (a page↔card blend). The only difference between rows
+1 and 2 is the shadow.
+
+### The mechanism (traced, then corrected)
+
+On a two-plateau page (page + card) the shadow is emitted as a **second-ink extra** of the shadow
+component. Direct `extractInkComponents` measurement:
+
+```
+parent  #0c0b09  px=40860  fill_ratio=0.2214  box=728x468  hollow=true  struct=true
+extras  #12110e … #0f0d0b (10 of them)  box=728x468  hollow=false struct=false   <-- hard-coded
+```
+
+The parent is a large **HOLLOW ring** (fill 0.2214) — decoration, which the primary path would
+drop via `isDecorative` (`cl.hollow === cl.boxes.length`). But the emitted extra hard-coded
+`looks_like_hollow_rectangle/straight_segment/structure: false` (round 25), so for the extra
+`cl.hollow === 0` and `isDecorative` was **false**. The extra bypassed the decorative gate purely
+because the construction site *asserted* non-structural.
+
+This is the audit's **F36**: *an extra is by construction a sub-colour of the parent component it
+was carved out of — it shares the parent's box and `fill_ratio` — so it cannot be LESS structural
+than its parent.* The hard-coded `false`s are a **construction-site default**, not a per-component
+quantity, so the per-piece rule is not the one violated here.
+
+### The fix (Fix 1) and why it is faithful, not tuned
+
+Copy the parent's own structural flags onto the extra:
+
+```js
+looks_like_hollow_rectangle: parent.looks_like_hollow_rectangle,
+looks_like_straight_segment: parent.looks_like_straight_segment,
+looks_like_structure: parent.looks_like_structure,
+```
+
+The discriminator is the **parent's own box geometry**, measured:
+
+| extra | parent | parent `fill_ratio` | parent hollow/struct |
+|---|---|---|---|
+| shadow `#0c0b09` | `#0c0b09` (primary 40860px, 728×468) | **0.2214** | **true** |
+| F28 `#464646` | `#e8dfd0` (stroke) | 0.5463 | false |
+| F32 `#312f2c` (180px) | `#ffffff` (stroke) | 0.5463 | false |
+| F34 `#312f2c` (24px) | `#ffffff` (stroke) | 0.7304 | false |
+
+A real outlined-text fill's parent (its stroke) is **not** hollow (0.55–0.73); the shadow's parent
+is (0.2214). No threshold is introduced — the fix copies an existing, independently-computed flag.
+The shadow routes into the **existing** decorative gate and is **disclosed** (`excluded`, reason
+*"decorative: thin hollow rectangle geometry (border/rule), not text"*, geometry `all_hollow: true`),
+never silently dropped. `skipped` is empty.
+
+`isLargeBackgroundRegion` **cannot** be the fix, and the audit is right about why: `solid` needs
+`mean_fill_ratio ≥ 0.9`, but the shadow is a hollow ring (`0.221`). Retuning `LARGE_REGION_SOLID_FILL`
+downward would classify real textured fills as regions (F7's backstop depends on that clause).
+
+### Measured no-regression (a stable control digest, before vs after)
+
+A 25-case digest (shadow triad + every F28–F35 control + the real regression fixtures + the
+negative direction) diffed byte-for-byte before and after the fix changed **exactly three lines**:
+
+| case | before | after |
+|---|---|---|
+| shadow soft `σ=14` | `false`, `#0c0b09@1.35` reported | **`true`**, `#0c0b09` **disclosed** |
+| shadow tight `σ=4` | `false`, `#0a0a08@1.36` reported | **`true`**, `#0a0a08` **disclosed** |
+| hollow **border ring** | `false`, `#2a2824@1.2` reported | **`null`**, `#2a2824` **disclosed** |
+
+The third line is a bonus correction in the **same direction**: `#2a2824` is the AA fringe of the
+already-excluded border stroke `#3a3733` — reporting a border's fringe as failing text was itself a
+false positive of the class. Every other case — F28, F32, F34, F35 (n=1/4/16/36), F7 textured page,
+dense small cards, dense flat, decorative bars, the contrast fixture, plain low-contrast text, a
+solid region block — is **byte-identical**.
+
+### Two things the audit's account did not have
+
+1. **The single-plateau residual is NOT immune** (contrary to the audit's §3). A shadow plus text
+   on a flat page with **no card** makes ONE component whose extremal colour is the text
+   (`#e8dfd0`, `fill 0.996`, box **0.4867** of the region, `plat=true`), and the shadow's tones
+   become its extras — reported as failing text. Measured `#151413@1.04`, **unchanged by Fix 1 and
+   identical at HEAD** (verified by stashing the patch). It is a different mechanism (a
+   **plateau-sized parent**, not a hollow one) and is recorded, not fixed, here.
+2. **The proposed Fix 1 was verified, not assumed.** The audit labelled its own probe a
+   fixture artefact risk; the same discipline applies to the fix. It was measured against the
+   discriminator (parent holowness) and a 25-case control digest before adoption.
+
+### Verification
+
+| check | result |
+|---|---|
+| `npm test` | **129/129** (128 + the F36 acceptance test) |
+| non-vacuity harnesses | **28/28**, **122 guards** (118 + round-29's 4) |
+| control digest before vs after | 3 lines changed, all improvements; 22 identical |
+| `verify/nonvacuity-round29.mjs` | 2 perturbation guards + 2 construction-site invariants, all **NON-VACUOUS** |
+| COUNT-INVARIANCE coverage of F36 | **not caught** (measured) — recorded in the standing test's comment |
+| live 11402 (pre-deploy) | F34 reported, F35 filtered (deployed build); F36 verified on scratch |
+
+### What this round has NOT proven
+
+- Only the **shadow/glow** candidate was probed as a new mechanism. The others (≥3 ink colours in
+  one component, gradient/image fills) remain **untested**.
+- The single-plateau plateau-sized-parent residual (§ above) is **named, pre-existing, and not
+  fixed**.
+- Frequency remains unmeasured — reachability plus a control-backed verdict error, not prevalence.
+
 ## 9. New module map
 
 | File | Responsibility |
