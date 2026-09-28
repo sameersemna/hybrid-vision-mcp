@@ -643,7 +643,11 @@ test("F6: local arbitration flags the tone a global background missed", async ()
   const r = contrastInRegion(pixels, SHALLOW_GRADIENT.region);
 
   // Global sees only the bright run; local recovers the failing dark run.
-  assert.equal(r.all_meet_aa, true, "the global verdict is a clean pass");
+  // F38 (round 30): the field must NOT assert a clean verdict that the tool's own cross-check
+  // contradicts. A single global background is a poor model on this varying background, so the
+  // verdict is ABSTAIN (null / "unverified"), while the disagreement names the dark run.
+  assert.equal(r.all_meet_aa, null, "the clean verdict must not be asserted against the cross-check");
+  assert.equal(r.verdict, "unverified", "the verdict names the unverified state");
   assert.ok(r.model_disagreement, "a clean global verdict must be arbitrated against local");
   assert.equal(r.model_disagreement.global_all_meet_aa, true);
   assert.ok(r.model_disagreement.local_failing_count >= 1);
@@ -801,7 +805,10 @@ test("F7: a textured page (no plateau can model it) is caught by the region back
     r.notes.some((n) => /BACKGROUND REGIONS/.test(n)),
     "and disclosed in notes, not dropped silently",
   );
-  assert.equal(r.all_meet_aa, true);
+  // F38 (round 30): the global model found no failing colour on a background it models poorly,
+  // while the per-tile model did. The field must not assert clean — it is UNVERIFIED.
+  assert.equal(r.all_meet_aa, null, "a clean verdict is not asserted when the cross-check disagrees");
+  assert.equal(r.verdict, "unverified");
 
   // The predicate itself: the reported blob is a region, faint TEXT is not.
   assert.equal(isLargeBackgroundRegion({ pixel_count: 316548, component_count: 1, contrast_ratio_raw: 1.21 }, 1200 * 700), true);
@@ -2152,7 +2159,10 @@ test("F37: a second-ink extra of a region-spanning parent is not a text colour",
   // soft shadow merged with its text makes exactly that parent: a near-solid (fill 0.996),
   // region-sized (ink 41% of the region, box 48.7%) blob whose extremal colour is the text run,
   // so the shadow tone becomes its extra and was reported as failing text (measured
-  // `#151413@1.04`, in BOTH background modes). The threshold now sits IN the gap (0.2):
+  // `#151413@1.04` in GLOBAL mode — the mode the fixture is measured in below; local mode was
+  // already clean at the pre-round-29 revisions a6cc6d2/c700845, which an earlier version of
+  // this comment and commit a316f23 got wrong by saying "in BOTH background modes". Corrected
+  // in round 30). The threshold now sits IN the gap (0.2):
   // measured, real second-ink parents are <= 3.9% of the region across every outlined-text
   // fixture and the count-invariance sweep, while decoration parents are >= 48.7%.
   const region = SOFT_SHADOW.region;
@@ -2177,5 +2187,55 @@ test("F37: a second-ink extra of a region-spanning parent is not a text colour",
     OUTLINED_TEXT.region,
   );
   assert.ok(big.colours.some((c) => c.foreground === "#312f2c" && !c.wcag_aa), "a real large-glyph second ink is still reported");
+});
+
+test("F38: the verdict must not contradict the tool's own cross-check", async () => {
+  // A large outlined glyph's failing fill (#312f2c, 1.33:1) leaves the GLOBAL verdict's colours
+  // at >=240px (the global model drops it as a large low-contrast cluster), while the per-tile
+  // (local) model still finds it — so `model_disagreement` names the failing colour while the
+  // global verdict read clean. The response was therefore self-contradictory: `all_meet_aa: true`
+  // and, in the same object, a note naming the failing colour. The invariant: such a response
+  // must NOT assert `all_meet_aa: true`. It ABSTAINS (null / "unverified"). See ACCURACY.md §5ag.
+  const W = 1000, H = 700;
+  const region = { left: 0, top: 0, width: W, height: H };
+  const head = (fs) =>
+    sharp(Buffer.from(
+      `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
+        `<rect width="${W}" height="${H}" fill="#1a1814"/>` +
+        `<text x="30" y="350" font-family="DejaVu Sans" font-weight="bold" font-size="${fs}" ` +
+        `fill="#312f2c" stroke="#ffffff" stroke-width="3">AB</text></svg>`,
+    )).png().toBuffer();
+
+  // The invariant across the whole size band (the defect is a STEP: 230 reports, 240 does not).
+  for (const fs of [200, 220, 230, 240, 300, 400, 500]) {
+    const r = contrastInRegion(await loadPixels(await head(fs)), region);
+    assert.ok(
+      !(r.all_meet_aa === true && r.model_disagreement),
+      `[fs=${fs}] all_meet_aa:true must not co-exist with a model_disagreement`,
+    );
+    if (r.model_disagreement) {
+      assert.equal(r.all_meet_aa, null, `[fs=${fs}] a contradicting cross-check must give an unverified verdict`);
+      assert.equal(r.verdict, "unverified", `[fs=${fs}] the verdict names the unverified state`);
+    }
+  }
+
+  // CONTROL (must still report) — at 220px the global model DOES find the fill: a real failure,
+  // not an abstention, with no disagreement.
+  const small = contrastInRegion(await loadPixels(await head(220)), region);
+  assert.equal(small.all_meet_aa, false, "the sub-step size reports a real failure");
+  assert.equal(small.verdict, "failing");
+  assert.equal(small.failing_count, 1);
+  assert.ok(small.colours.some((c) => c.foreground === "#312f2c" && !c.wcag_aa), "the failing fill is in colours");
+  assert.equal(small.model_disagreement, null, "no disagreement when the global model finds it");
+
+  // CONTROL (must stay clean) — a genuinely clean region (only a passing colour) returns clean
+  // with no disagreement, so the fix cannot make every large glyph abstain.
+  const clean = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ text: "AB", fontSize: 240, strokeWidth: 3, fill: "#e8dfd0", stroke: "#e8dfd0" })),
+    OUTLINED_TEXT.region,
+  );
+  assert.equal(clean.all_meet_aa, true, "a genuinely clean large glyph stays clean");
+  assert.equal(clean.verdict, "clean");
+  assert.equal(clean.model_disagreement, null);
 });
 

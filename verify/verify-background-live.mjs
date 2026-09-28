@@ -866,4 +866,31 @@ console.log("\n=== 24. round-29b checks (F37 region-spanning second-ink parent) 
   }
 }
 
+// Round-30 checks (F38): the verdict field must not contradict the tool's own cross-check. A
+// large outlined glyph's failing fill leaves the global model at >=240px while the per-tile model
+// still finds it, so the response must NOT read `all_meet_aa: true` — it abstains (null).
+async function outlinedHead(fontSize) {
+  const w = 1000, h = 700;
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="#1a1814"/>` +
+    `<text x="30" y="350" font-family="DejaVu Sans" font-weight="bold" font-size="${fontSize}" ` +
+    `fill="#312f2c" stroke="#ffffff" stroke-width="3">AB</text></svg>`,
+  )).png().toBuffer();
+}
+
+console.log("\n=== 25. round-30 checks (F38 verdict must not contradict the cross-check) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  let allOk = true;
+  for (const fs of [220, 230, 240, 300, 400, 500]) {
+    const r = await call("measure_image", { image_source: toUri(await outlinedHead(fs)), mode: "contrast", region });
+    const c = r.measurements.contrast;
+    const contradict = c.all_meet_aa === true && !!c.model_disagreement;
+    if (contradict) allOk = false;
+    console.log(`  [F38 fs=${String(fs).padStart(3)}] all_meet_aa=${String(c.all_meet_aa).padEnd(5)} verdict=${c.verdict} disagreement=${c.model_disagreement ? "YES" : "no"}${contradict ? "  ** CONTRADICTION **" : ""}`);
+  }
+  console.log(`  [F38] no all_meet_aa:true with a model_disagreement: ${allOk ? "YES" : "NO"}`);
+}
+
 await client.close();
