@@ -417,11 +417,14 @@ export const SOFT_SHADOW = {
  */
 export async function buildHollowRingFixture({
   w = 1000, h = 700, background = "#1a1814", stroke = "#3a3733", strokeWidth = 3,
+  ringW = 600, ringH = 400,
 } = {}) {
+  const x = Math.round((w - ringW) / 2);
+  const y = Math.round((h - ringH) / 2);
   const svg =
     `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
     `<rect width="${w}" height="${h}" fill="${background}"/>` +
-    `<rect x="200" y="150" width="600" height="400" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"/></svg>`;
+    `<rect x="${x}" y="${y}" width="${ringW}" height="${ringH}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"/></svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 

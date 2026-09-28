@@ -14,6 +14,7 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const TESTFILE = path.join(ROOT, "test", "background.test.js");
 const MEASURE = "lib/measure.js";
 const F36 = "a soft drop shadow";
+const F37 = "a second-ink extra of a region-spanning parent";
 
 // The exact construction-site lines the fix introduced (the durable invariant).
 const COPIED_FLAGS = [
@@ -32,9 +33,8 @@ const cases = [
     id: "F36 the extra copies the parent's structural flags (hard-coding false re-admits the shadow)",
     test: F36,
     file: MEASURE,
-    // Revert to the round-25 construction: hard-coded non-structural flags. The shadow's
-    // hollow parent yields an extra flagged non-structural, so the decorative gate misses it
-    // and it is reported as failing text again.
+    // Revert to the round-25 construction: hard-coded non-structural flags. A small hollow ring
+    // (whose box passes the parent-box gate) then has its fringe reported as failing text.
     from:
       "        looks_like_hollow_rectangle: parent.looks_like_hollow_rectangle,\n" +
       "        looks_like_straight_segment: parent.looks_like_straight_segment,\n" +
@@ -54,6 +54,20 @@ const cases = [
     // constant — the same property the F36 test relies on.
     from: "        looks_like_structure: parent.looks_like_structure,",
     to: "        looks_like_structure: true,",
+  },
+  {
+    id: "F37 the parent-box threshold sits IN the gap (the old 0.5 let the region-spanning parent through)",
+    test: F37,
+    file: MEASURE,
+    from: "const MULTICOLOUR_PARENT_MAX_BOX_FRACTION = 0.2;",
+    to: "const MULTICOLOUR_PARENT_MAX_BOX_FRACTION = 0.5;",
+  },
+  {
+    id: "F37 the parent-box gate must not be dropped (region-spanning blobs spawn second ink)",
+    test: F37,
+    file: MEASURE,
+    from: "    const parentIsGlyphSized =\n      boxW * boxH <= MULTICOLOUR_PARENT_MAX_BOX_FRACTION * scanArea;",
+    to: "    const parentIsGlyphSized = true;",
   },
 ];
 

@@ -841,4 +841,29 @@ console.log("\n=== 23. round-29 checks (F36 soft shadow reported as failing text
   console.log(`  [F36 single-plateau] all_meet_aa=${flat.measurements.contrast.all_meet_aa} (must stay clean)`);
 }
 
+// Round-29b checks (F37): a second-ink extra of a REGION-SPANNING parent is field shading, not
+// text. A soft shadow merged with its text makes a near-solid region-sized parent.
+async function shadowNoCard(stdDeviation = 14) {
+  const w = 1000, h = 700;
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="#1a1814"/>` +
+    `<defs><filter id="sh"><feGaussianBlur stdDeviation="${stdDeviation}"/></filter></defs>` +
+    `<rect x="120" y="120" width="700" height="440" fill="#000" opacity="0.6" filter="url(#sh)"/>` +
+    `<text x="180" y="220" font-family="DejaVu Sans" font-size="34" font-weight="bold" fill="#e8dfd0">Card title</text>` +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+console.log("\n=== 24. round-29b checks (F37 region-spanning second-ink parent) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  for (const mode of ["global", "local"]) {
+    const r = await call("measure_image", { image_source: toUri(await shadowNoCard(14)), mode: "contrast", region, background_mode: mode });
+    const c = r.measurements.contrast;
+    const nearBg = c.colours.filter((x) => x.contrast_ratio < 2).map((x) => `${x.foreground}@${x.contrast_ratio}`);
+    console.log(`  [F37 ${mode}] all_meet_aa=${c.all_meet_aa}  near-background text colours=${nearBg.length ? nearBg.join(", ") : "none (good)"}`);
+  }
+}
+
 await client.close();

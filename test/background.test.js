@@ -2099,15 +2099,9 @@ test("F36: a soft drop shadow (hollow decoration) is not reported as failing tex
   assert.equal(tight.all_meet_aa, true, "a tight shadow is still decoration");
   assert.ok(!tight.colours.some((c) => c.foreground === SOFT_SHADOW.shadowTightColour));
 
-  // (3) MUST NOT CHANGE — a shadow on a single-plateau page (the card colour equals the page,
-  // so there is only one background) is not a second ink, and the page stays clean. The
-  // multi-plateau requirement is what makes the shadow an extra at all.
-  //
-  // KNOWN PRE-EXISTING RESIDUAL (recorded, not fixed here — see ACCURACY.md §5ae): a shadow
-  // plus text on a flat page with NO card makes ONE component (extremal = the text, a
-  // near-solid plateau-sized parent), and the shadow's tones become its extras — reported as
-  // failing text (measured `#151413@1.04`, unchanged by this fix and identical at HEAD). That
-  // is a different mechanism (a plateau-sized PARENT, not a hollow one) and is out of scope.
+  // (3) MUST NOT CHANGE — a shadow on a single-plateau page (page = card colour) is unaffected.
+  // The single-plateau shadow + text case (no card) is a DIFFERENT mechanism (a near-solid
+  // region-sized PARENT) and is covered by its own F37 test below.
   const flat = contrastInRegion(
     await loadPixels(await buildSoftShadowFixture({ stdDeviation: 14, page: "#2d2822" })),
     region,
@@ -2135,9 +2129,10 @@ test("F36: a soft drop shadow (hollow decoration) is not reported as failing tex
   // (6) MUST STILL FILTER — a hollow ring of a stroke COLOUR, and its AA fringe toward the
   // page, are both decorative borders, not text (the negative direction — guards against
   // inverting the rule). The fringe is a blend of a decoration, so it is decoration too.
-  // The fixture is border-only (no text), so the honest verdict is `null` (nothing to assess),
-  // never `false` — it must NOT name either colour as failing text.
-  const ring = contrastInRegion(await loadPixels(await buildHollowRingFixture()), HOLLOW_RING.region);
+  // The ring is deliberately SMALL (200x150) so it passes the parent-box gate: the fix under
+  // test is the ONLY thing that can filter its fringe (verified non-vacuous — with the
+  // hard-coded flags restored, this small ring reports `#2a2824@1.2`).
+  const ring = contrastInRegion(await loadPixels(await buildHollowRingFixture({ ringW: 200, ringH: 150 })), HOLLOW_RING.region);
   assert.notEqual(ring.all_meet_aa, false, "a hollow border ring must not make the verdict fail");
   assert.equal(ring.failing_count, 0, "a hollow border ring is not failing text");
   assert.ok(!ring.colours.some((c) => c.foreground === HOLLOW_RING.stroke), "the border stroke is not a text colour");
@@ -2148,5 +2143,39 @@ test("F36: a soft drop shadow (hollow decoration) is not reported as failing tex
   const dense = contrastInRegion(await loadPixels(await buildDenseSmallCardsFixture()), DENSE_SMALL_CARDS.region);
   assert.equal(dense.all_meet_aa, true, "F31 must remain fixed");
   assert.equal(dense.failing_count, 0);
+});
+
+test("F37: a second-ink extra of a region-spanning parent is not a text colour", async () => {
+  // The parent-box gate already states the rule — "a GLYPH component cannot SPAN the region: if
+  // it does, the 'second colour' is field shading, not text" — but its threshold (0.5) sat at
+  // the text-facing edge of the measured gap, so a parent at box 0.4867 slipped under it. A
+  // soft shadow merged with its text makes exactly that parent: a near-solid (fill 0.996),
+  // region-sized (ink 41% of the region, box 48.7%) blob whose extremal colour is the text run,
+  // so the shadow tone becomes its extra and was reported as failing text (measured
+  // `#151413@1.04`, in BOTH background modes). The threshold now sits IN the gap (0.2):
+  // measured, real second-ink parents are <= 3.9% of the region across every outlined-text
+  // fixture and the count-invariance sweep, while decoration parents are >= 48.7%.
+  const region = SOFT_SHADOW.region;
+
+  for (const mode of ["global", "local"]) {
+    const r = contrastInRegion(
+      await loadPixels(await buildSoftShadowFixture({ stdDeviation: 14, withCard: false })),
+      region,
+      { backgroundMode: mode },
+    );
+    assert.notEqual(r.all_meet_aa, false, `[${mode}] a shadow's field shading must not fail the verdict`);
+    assert.ok(
+      !r.colours.some((c) => c.contrast_ratio < 2),
+      `[${mode}] no near-background colour may be reported as text (got ${r.colours.map((c) => c.foreground).join(", ")})`,
+    );
+  }
+
+  // CONTROL — a genuine LARGE glyph whose fill is a second ink (parent = the stroke, ~2.9% of
+  // the region) is still reported. The threshold must not eat real large text.
+  const big = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ text: "W", fontSize: 180, strokeWidth: 3, fill: "#312f2c", stroke: "#ffffff" })),
+    OUTLINED_TEXT.region,
+  );
+  assert.ok(big.colours.some((c) => c.foreground === "#312f2c" && !c.wcag_aa), "a real large-glyph second ink is still reported");
 });
 
