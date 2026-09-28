@@ -3697,6 +3697,65 @@ Those two tests are updated to the honest contract (`all_meet_aa: null`, `verdic
 - Untested reopen candidates are unchanged: **≥3 ink colours in one component**, **gradient/image
   fills**.
 
+## 5ah. Thirty-first audit: the F38 fix's own contradiction, and a witness that was the background
+
+F38 was verified fixed (band sweep holds; a false-negative attack — turning a `failing` into
+`unverified` — **failed**, because the abstention is gated on `allMeetAA === true`). The drift was
+confirmed to be exactly **F6 + F7**. But the fix had carried three mechanical gaps, and left one
+real decision.
+
+### G1 — the abstention note contradicted the response's own `adequate` field
+
+`background_fit.adequate` is `explained_fraction >= 0.5` (`lib/measure.js`), but the note branched
+its wording on `GOOD_FIT_FRACTION` (**0.8**). At the top of the size band the two disagree, so the
+500px response said `adequate: true` **and**, in the same object, that the background "varies ...
+not to be trusted" — the exact note-vs-field contradiction F38 exists to remove, reintroduced.
+**Fixed** by testing the premise with the predicate the response actually **publishes**
+(`backgroundFit.adequate`), so the two can never disagree. No behaviour change; the wording is now
+*"even though the single global background is an ADEQUATE model here"*.
+
+### G2 — a local witness that IS the background could force the abstention
+
+At 400/500px the local witness list included `#1a1814@1:1 (20,428px) vs #1a1814` — the page colour
+itself (distance 0). A local "witness" within the platform's colour-merge distance of the
+background it was measured against is the local model's **known over-report** (the note the project
+ships warns of it), not text. **Fixed**: such witnesses are filtered before they can abstain. This
+is **necessary but not sufficient** for F7 (see below); it removes only the indefensible `1:1` case.
+
+### G4 — `verdict` was `undefined` on the abstention early-returns
+
+Both abstention early-returns set `all_meet_aa: null` but not `verdict`, so a caller following the
+"prefer `verdict`" advice got `undefined` (the doc comment recommends it). Both now carry
+`verdict: "unverified"` **and** `wcag_aa: null`, consistent with the main path. Asserted in a test.
+
+### G5 / F7 — a decision, not a constant (NOT fixed this round)
+
+The honest discriminator I earlier proposed (`explained_fraction >= 0.8`) is **falsified**: F38's
+500px case sits at **0.776**, inside its own acceptance band, so it would return `true` for the very
+case the fix exists to stop. And **F7's contract genuinely changed**: its witnesses
+(`#15130f@1.27`, 35,586px; `#1f1d19@1.15`) are **page-texture tones, not text** — measured from the
+fixture (`buildTexturedPageCardsFixture` draws a noisy `#1a1814` page with only `#e8dfd0` KPI text),
+and `isLargeBackgroundRegion` does **not** catch them (a fragmented texture, 421 components, mean
+84px, near-background distance 37). Classifying them needs a fragment/mean rule — a real change that
+**must not** be folded into a mechanical round. **Recorded as open**; F7 stays `unverified`
+(conservative) until its own measured round. F6's witness (`#8c8c8c`, the fixture's declared
+`darkText`, 8 components, mean 415px, distance 142) **is** genuine text, so **F6's abstention is
+defensible**.
+
+### Correction to the record
+
+Both **F6** and **F7** now return `all_meet_aa: null` / `verdict: "unverified"` (round 30), where
+they were previously recorded as `all_meet_aa: true`. Stated explicitly here.
+
+### Verification
+
+| check | result |
+|---|---|
+| `npm test` | **132/132** |
+| non-vacuity harnesses | **30/30**, **132 guards** |
+| `verify/nonvacuity-round31.mjs` | 3 perturbation guards + 1 construction-site invariant, all **NON-VACUOUS** |
+| live `verify-background-live.mjs` on 11402 | **no red checks** (the round-5 F6 check was updated to the new contract) |
+
 ## 9. New module map
 
 | File | Responsibility |

@@ -1,5 +1,42 @@
 # Changelog
 
+## Thirty-first audit: the F38 fix's own contradiction, and a background witness — 2026-09-28
+
+F38 verified fixed (band sweep holds; the false-negative attack — turning a `failing` into
+`unverified` — **failed**). Three mechanical gaps fixed; one decision recorded. See `ACCURACY.md`
+§5ah.
+
+### G1 — the F38 fix reintroduced the contradiction it removed
+
+`background_fit.adequate` is `frac >= 0.5`, but the abstention note branched its wording on
+`GOOD_FIT_FRACTION` (**0.8**). At 500px (0.776) the response said `adequate: true` **and** that the
+background "varies... not to be trusted" — a note contradicting a field in the same object. **Fixed**:
+the note now tests the predicate the response publishes (`backgroundFit.adequate`).
+
+### G2 — a local witness that IS the background
+
+At 400/500px the local witness list included `#1a1814@1:1 vs #1a1814` — the page colour. **Fixed**:
+witnesses within the platform's merge distance of the background they were measured against are
+filtered (the local model's known over-report).
+
+### G4 — `verdict` was `undefined` on the abstention paths
+
+Both abstention early-returns now carry `verdict: "unverified"` and `wcag_aa: null`, so the
+recommended field is never `undefined`.
+
+### G5 / F7 — recorded, not fixed
+
+The proposed `explained_fraction >= 0.8` discriminator is **falsified** (500px sits at 0.776, inside
+its own band). F7's witnesses are **page-texture tones, not text** (measured from the fixture), but
+`isLargeBackgroundRegion` does not catch them (fragmented texture); classifying them is a real change
+that deserves its own round. F7 stays `unverified` (conservative). F6's witness is genuine text, so
+F6's abstention is defensible. Both F6 and F7 are now `null`/`unverified` where previously `true`.
+
+### Verification
+
+- `npm test` **132/132**; non-vacuity **30/30** (**132 guards**); `verify/nonvacuity-round31.mjs` all
+  **NON-VACUOUS**; **no red checks** in the live harness on 11402.
+
 ## Thirtieth audit: the verdict field contradicted the tool's own cross-check (F38) — 2026-09-28
 
 F36/F37 verified by the auditor (independently), and the `0.5 → 0.2` threshold survived an attack
