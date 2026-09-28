@@ -366,6 +366,71 @@ export const SPLIT_BACKGROUND = {
   pieceFraction: 0.0013, // each piece does not
 };
 
+/**
+ * A soft drop shadow under a card — the twenty-ninth-audit F36 reproduction.
+ *
+ * A page (#1a1814) and a card (#2d2822) are two plateaus, so the blurred shadow — a blend
+ * of the two — becomes a SECOND-INK extra of the shadow component. Its parent component is
+ * a large HOLLOW ring (box 728x468, fill_ratio 0.22), but until round 29 the emitted extra
+ * hard-coded `looks_like_structure: false`, so it bypassed the decorative gate and was
+ * reported as failing text (`#0c0b09@1.35`, 75,440px). Pure decoration, no text.
+ *
+ * `stdDeviation` controls the blur (4 = tight, 14 = soft); `withCard: false` drops the card
+ * (the shadow then sits on the flat page and is a single-plateau case, which is immune).
+ */
+export async function buildSoftShadowFixture({
+  w = 1000, h = 700, page = "#1a1814", card = "#2d2822",
+  shadow = "#000", shadowOpacity = 0.6, stdDeviation = 14,
+  withCard = true, text = "Card title", fontSize = 34, fill = "#e8dfd0",
+} = {}) {
+  const parts = [
+    `<rect width="${w}" height="${h}" fill="${page}"/>`,
+    `<defs><filter id="sh"><feGaussianBlur stdDeviation="${stdDeviation}"/></filter></defs>`,
+    `<rect x="120" y="120" width="700" height="440" fill="${shadow}" opacity="${shadowOpacity}" filter="url(#sh)"/>`,
+  ];
+  if (withCard) parts.push(`<rect x="140" y="140" width="660" height="400" fill="${card}"/>`);
+  parts.push(
+    `<text x="180" y="220" font-family="DejaVu Sans" font-size="${fontSize}" ` +
+      `font-weight="bold" fill="${fill}">${text}</text>`,
+  );
+  return sharp(Buffer.from(`<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`)).png().toBuffer();
+}
+
+/** The F36 shadow colour: a page<->card blend, hollow, must be DISCLOSED not reported. */
+export const SOFT_SHADOW = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  shadowColour: "#0c0b09", // the blurred shadow (soft, sigma=14)
+  shadowTightColour: "#0a0a08", // the blurred shadow (tight, sigma=4)
+  shadowRatio: 1.35, // near-background, fails AA
+  shadowPixels: 75440,
+  parentFillRatio: 0.2214, // the shadow component is HOLLOW (>0.9 would be solid)
+  text: "#e8dfd0",
+  textRatio: 11.05, // passes
+};
+
+/**
+ * A hollow rectangle STROKE (a border) on a flat page — the negative direction of F36.
+ *
+ * Both the stroke (#3a3733) and its anti-aliased fringe toward the page (#2a2824) are
+ * decorative borders. Neither is text; the fringe in particular is a blend of a decoration,
+ * so it must NOT be reported as a failing text colour.
+ */
+export async function buildHollowRingFixture({
+  w = 1000, h = 700, background = "#1a1814", stroke = "#3a3733", strokeWidth = 3,
+} = {}) {
+  const svg =
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${background}"/>` +
+    `<rect x="200" y="150" width="600" height="400" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}"/></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+export const HOLLOW_RING = {
+  region: { left: 0, top: 0, width: 1000, height: 700 },
+  stroke: "#3a3733",
+  fringe: "#2a2824", // a stroke->page AA blend, must NOT be reported as text
+};
+
 /** A plain flat UI with a grid of cards — a legitimate single-background case. */
 export async function buildCardsFlatFixture() {
   const W = 1200, H = 800;

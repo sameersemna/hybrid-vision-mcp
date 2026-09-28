@@ -67,6 +67,8 @@ import {
   buildOutlinedTextFixture,
   buildDenseSmallCardsFixture,
   buildSplitBackgroundFixture,
+  buildSoftShadowFixture,
+  buildHollowRingFixture,
   FIXTURE,
   TWO_PANEL,
   SHALLOW_GRADIENT,
@@ -89,6 +91,8 @@ import {
   OUTLINED_TEXT,
   DENSE_SMALL_CARDS,
   SPLIT_BACKGROUND,
+  SOFT_SHADOW,
+  HOLLOW_RING,
 } from "../test-support/fixtures.mjs";
 import { measureImage } from "../lib/analyze.js";
 import { rgbDistance, parseColor } from "../lib/color.js";
@@ -2012,12 +2016,15 @@ test("COUNT-INVARIANCE (standing): a fixed colour total must give the SAME verdi
   // STANDING test for the per-piece class: for a fixed ink total, changing only how many
   // pieces it is split into must not change the verdict.
   //
-  // COVERAGE IS MEASURED, NOT ASSUMED (round 27). Re-introducing each historical defect and
-  // running THIS test:
+  // COVERAGE IS MEASURED, NOT ASSUMED (round 27; re-measured round 29). Re-introducing each
+  // historical defect and running THIS test:
   //   F32 (reject any blend)            -> caught (second-ink, n=1)
   //   F34 (per-component AA qualifier)  -> caught (second-ink, n=4/8/16)
   //   F35 (mean-only region rule)       -> caught (decoration, n=16/36)
   //   F29 / F30 / F31                   -> NOT caught here; each has its own test
+  //   F36 (hard-coded extra flags)      -> NOT caught here (measured: still passes); it needs a
+  //                                        HOLLOW parent (a shadow), which this sweep does not
+  //                                        build. It has its own F36 test.
   // The second-ink cases specifically require part (a)'s construction (a fill carrying its own
   // outline IN THE SAME ELEMENT, so the fill is a `multi_colour_of` extra). A bare filled
   // rectangle — part (b) — is a PRIMARY component (`extras = 0`) and never enters the
@@ -2065,5 +2072,81 @@ test("COUNT-INVARIANCE (standing): a fixed colour total must give the SAME verdi
     const r = contrastInRegion(await loadPixels(await buildSplitBackgroundFixture({ n })), SPLIT_BACKGROUND.region);
     assert.ok(!r.colours.some((c) => c.foreground === SPLIT_BACKGROUND.colour), `decoration n=${n} must stay filtered`);
   }
+});
+
+test("F36: a soft drop shadow (hollow decoration) is not reported as failing text", async () => {
+  // A blurred shadow between two plateaus (page + card) is emitted as a SECOND-INK extra of
+  // the shadow component. That component is a large HOLLOW ring (box 728x468, fill_ratio
+  // 0.2214), so it is decoration. But the emitted extra used to hard-code
+  // `looks_like_structure: false`, so `cl.hollow === 0` for the colour and it slipped past the
+  // decorative gate (which drops a colour only when EVERY box is structural). It set `worst`
+  // with a near-background ratio, flipping a decorative card to `all_meet_aa: false`. An extra
+  // shares the parent's box and fill_ratio, so it cannot be LESS structural than its parent.
+  const region = SOFT_SHADOW.region;
+
+  // (1) MUST FILTER — the soft shadow. It must ALSO be DISCLOSED (in `excluded`, with a
+  // decorative reason), never silently dropped.
+  const soft = contrastInRegion(await loadPixels(await buildSoftShadowFixture({ stdDeviation: 14 })), region);
+  assert.equal(soft.all_meet_aa, true, "a decorative shadow must not make the verdict fail");
+  assert.equal(soft.failing_count, 0, "the shadow is not failing text");
+  assert.ok(!soft.colours.some((c) => c.foreground === SOFT_SHADOW.shadowColour), "the shadow colour is not a text colour");
+  const disclosed = soft.excluded.find((c) => c.foreground === SOFT_SHADOW.shadowColour);
+  assert.ok(disclosed, "the shadow colour must be DISCLOSED in `excluded`, not silently dropped");
+  assert.match(disclosed.reason, /decorative/i, "disclosed with a decorative reason");
+
+  // (2) MUST FILTER — a tighter blur (sigma=4) produces a different blend colour, same outcome.
+  const tight = contrastInRegion(await loadPixels(await buildSoftShadowFixture({ stdDeviation: 4 })), region);
+  assert.equal(tight.all_meet_aa, true, "a tight shadow is still decoration");
+  assert.ok(!tight.colours.some((c) => c.foreground === SOFT_SHADOW.shadowTightColour));
+
+  // (3) MUST NOT CHANGE — a shadow on a single-plateau page (the card colour equals the page,
+  // so there is only one background) is not a second ink, and the page stays clean. The
+  // multi-plateau requirement is what makes the shadow an extra at all.
+  //
+  // KNOWN PRE-EXISTING RESIDUAL (recorded, not fixed here — see ACCURACY.md §5ae): a shadow
+  // plus text on a flat page with NO card makes ONE component (extremal = the text, a
+  // near-solid plateau-sized parent), and the shadow's tones become its extras — reported as
+  // failing text (measured `#151413@1.04`, unchanged by this fix and identical at HEAD). That
+  // is a different mechanism (a plateau-sized PARENT, not a hollow one) and is out of scope.
+  const flat = contrastInRegion(
+    await loadPixels(await buildSoftShadowFixture({ stdDeviation: 14, page: "#2d2822" })),
+    region,
+  );
+  assert.equal(flat.all_meet_aa, true, "single-plateau shadow case is unaffected");
+
+  // (4) MUST STILL REPORT — the F32 on-line fill (#312f2c under a 3px #ffffff stroke at 180px)
+  // is genuine second ink whose parent (the stroke) is NOT hollow. The fix must not touch it.
+  const f32 = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ fill: "#312f2c", stroke: "#ffffff", strokeWidth: 3, fontSize: 180 })),
+    OUTLINED_TEXT.region,
+  );
+  const f32fill = f32.colours.find((c) => c.foreground === "#312f2c");
+  assert.ok(f32fill, "the on-line fill is still reported");
+  assert.equal(f32fill.wcag_aa, false, "the on-line fill still fails AA");
+  assert.equal(f32.all_meet_aa, false, "the F32 verdict must not read clean");
+
+  // (5) MUST STILL REPORT — plain low-contrast text (the primary path) is untouched.
+  const plain = contrastInRegion(
+    await loadPixels(await buildOutlinedTextFixture({ fill: "#4a443c", stroke: "#4a443c", strokeWidth: 3, fontSize: 120 })),
+    OUTLINED_TEXT.region,
+  );
+  assert.ok(plain.colours.some((c) => c.foreground === "#4a443c" && !c.wcag_aa), "plain low-contrast text is still reported");
+
+  // (6) MUST STILL FILTER — a hollow ring of a stroke COLOUR, and its AA fringe toward the
+  // page, are both decorative borders, not text (the negative direction — guards against
+  // inverting the rule). The fringe is a blend of a decoration, so it is decoration too.
+  // The fixture is border-only (no text), so the honest verdict is `null` (nothing to assess),
+  // never `false` — it must NOT name either colour as failing text.
+  const ring = contrastInRegion(await loadPixels(await buildHollowRingFixture()), HOLLOW_RING.region);
+  assert.notEqual(ring.all_meet_aa, false, "a hollow border ring must not make the verdict fail");
+  assert.equal(ring.failing_count, 0, "a hollow border ring is not failing text");
+  assert.ok(!ring.colours.some((c) => c.foreground === HOLLOW_RING.stroke), "the border stroke is not a text colour");
+  assert.ok(!ring.colours.some((c) => c.foreground === HOLLOW_RING.fringe), "the border's AA fringe is not a text colour");
+
+  // (7) CONTROL — the F31 dense small-cards dashboard is still clean (the fix must not admit
+  // an anti-aliasing fringe anywhere else), and a SOLID region-sized block is still filtered.
+  const dense = contrastInRegion(await loadPixels(await buildDenseSmallCardsFixture()), DENSE_SMALL_CARDS.region);
+  assert.equal(dense.all_meet_aa, true, "F31 must remain fixed");
+  assert.equal(dense.failing_count, 0);
 });
 

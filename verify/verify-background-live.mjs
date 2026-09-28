@@ -806,4 +806,39 @@ console.log("\n=== 22. round-26 checks (F35 split background-sized decoration) =
   console.log(`  [F35] every split decoration filtered: ${allOk ? "YES" : "NO"}`);
 }
 
+// Round-29 checks (twenty-ninth audit F36): a soft drop shadow — a region-sized HOLLOW
+// decoration between two plateaus — must not be reported as failing text. Its extra carries the
+// parent's structural flags, so it routes into the decorative gate (disclosed, not silent).
+async function softShadow(stdDeviation = 14, page = "#1a1814") {
+  const w = 1000, h = 700;
+  return sharp(Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${w}" height="${h}" fill="${page}"/>` +
+    `<defs><filter id="sh"><feGaussianBlur stdDeviation="${stdDeviation}"/></filter></defs>` +
+    `<rect x="120" y="120" width="700" height="440" fill="#000" opacity="0.6" filter="url(#sh)"/>` +
+    `<rect x="140" y="140" width="660" height="400" fill="#2d2822"/>` +
+    `<text x="180" y="220" font-family="DejaVu Sans" font-size="34" font-weight="bold" fill="#e8dfd0">Card title</text>` +
+    `</svg>`,
+  )).png().toBuffer();
+}
+
+console.log("\n=== 23. round-29 checks (F36 soft shadow reported as failing text) ===");
+{
+  const region = { left: 0, top: 0, width: 1000, height: 700 };
+  const r = await call("measure_image", { image_source: toUri(await softShadow(14)), mode: "contrast", region });
+  const c = r.measurements.contrast;
+  const reported = c.colours.some((x) => x.foreground === "#0c0b09");
+  const excluded = (c.excluded || []).some((x) => x.foreground === "#0c0b09");
+  console.log(`  [F36 soft shadow] #0c0b09 ${reported ? "** REPORTED (bad) **" : "not a text colour"}  all_meet_aa=${c.all_meet_aa}  disclosed_in_excluded=${excluded}`);
+  console.log(`  [F36] shadow filtered: ${!reported && c.all_meet_aa !== false ? "YES" : "NO"}`);
+
+  const tight = await call("measure_image", { image_source: toUri(await softShadow(4)), mode: "contrast", region });
+  const tc = tight.measurements.contrast;
+  const tReported = tc.colours.some((x) => x.foreground === "#0a0a08");
+  console.log(`  [F36 tight  shadow] #0a0a08 ${tReported ? "** REPORTED (bad) **" : "not a text colour"}  all_meet_aa=${tc.all_meet_aa}`);
+
+  const flat = await call("measure_image", { image_source: toUri(await softShadow(14, "#2d2822")), mode: "contrast", region });
+  console.log(`  [F36 single-plateau] all_meet_aa=${flat.measurements.contrast.all_meet_aa} (must stay clean)`);
+}
+
 await client.close();
