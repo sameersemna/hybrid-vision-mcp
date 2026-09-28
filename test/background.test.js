@@ -32,6 +32,7 @@ import {
   mergeAntiAliasing,
   isAntiAliasingBlend,
   detectPlateaus,
+  PLATEAU_MERGE_DIST,
 } from "../lib/measure.js";
 import {
   buildContrastFixture,
@@ -2237,5 +2238,50 @@ test("F38: the verdict must not contradict the tool's own cross-check", async ()
   assert.equal(clean.all_meet_aa, true, "a genuinely clean large glyph stays clean");
   assert.equal(clean.verdict, "clean");
   assert.equal(clean.model_disagreement, null);
+});
+
+test("F38: the note never contradicts the response's own `adequate` field, and `verdict` is always set", async () => {
+  // Round 31 (G1/G2/G4). Three properties the round-30 fix must hold:
+  //  • G1 — the abstention note must not claim the background "varies" while the SAME object
+  //         publishes `background_fit.adequate: true` (the two thresholds differ: adequate is
+  //         frac >= 0.5, the old note branched on 0.8, so 500px said both).
+  //  • G2 — a local witness that IS the background (within the colour-merge distance it was
+  //         measured against) may not by itself force the abstention.
+  //  • G4 — `verdict` is a string on EVERY response, including the abstention paths.
+  const W = 1000, H = 700;
+  const region = { left: 0, top: 0, width: W, height: H };
+  const head = (fs) =>
+    sharp(Buffer.from(
+      `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg"><rect width="${W}" height="${H}" fill="#1a1814"/>` +
+        `<text x="30" y="350" font-family="DejaVu Sans" font-weight="bold" font-size="${fs}" fill="#312f2c" stroke="#ffffff" stroke-width="3">AB</text></svg>`,
+    )).png().toBuffer();
+
+  // G1 + G2 across the band.
+  for (const fs of [240, 300, 400, 500]) {
+    const r = contrastInRegion(await loadPixels(await head(fs)), region);
+    assert.equal(typeof r.verdict, "string", `[fs=${fs}] verdict must be a string`);
+    assert.equal(r.verdict, "unverified", `[fs=${fs}] a contradicting cross-check abstains`);
+    const note = (r.notes || []).find((n) => /Verdict set to UNVERIFIED/.test(n));
+    assert.ok(note, `[fs=${fs}] the abstention note is present`);
+    if (r.background_fit?.adequate) {
+      assert.ok(!/background varies/.test(note), `[fs=${fs}] the note must not say "varies" while adequate=true`);
+    }
+    // G2: no witness may be the background it was measured against.
+    for (const c of r.model_disagreement?.local_failing_colours || []) {
+      assert.ok(
+        rgbDistance(parseColor(c.foreground), parseColor(c.measured_against)) > PLATEAU_MERGE_DIST,
+        `[fs=${fs}] witness ${c.foreground} is the background (${c.measured_against}), it must be filtered`,
+      );
+    }
+  }
+
+  // G4: the abstention EARLY RETURNS carry a string verdict too (a text-free region, and a
+  // genuinely uniform one).
+  for (const png of [buildTextFreeGradientFixture(), buildPhotographicFixture()]) {
+    const r = contrastInRegion(await loadPixels(await png), region);
+    assert.equal(r.all_meet_aa, null, "the abstention path returns null");
+    assert.equal(typeof r.verdict, "string", "verdict must be a string on the abstention paths too");
+    assert.equal(r.verdict, "unverified");
+  }
 });
 
