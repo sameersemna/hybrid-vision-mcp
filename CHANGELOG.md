@@ -1,5 +1,52 @@
 # Changelog
 
+## Thirtieth audit: the verdict field contradicted the tool's own cross-check (F38) — 2026-09-28
+
+F36/F37 verified by the auditor (independently), and the `0.5 → 0.2` threshold survived an attack
+sweep. This round carried a **correction against me** and a **new mechanism**. See `ACCURACY.md`
+§5ag.
+
+### Corrected — the F37 claim said "in BOTH background modes", and that was false
+
+Reproduced in a **worktree at `a6cc6d2`**: **global** `all=false` `#151413@1.04`; **local**
+`all=true` (clean) — local was already clean. The F37 test comment `ACCURACY.md` §5ae and commit
+`a316f23` said "in BOTH background modes"; corrected to **global mode**. A measured claim surviving
+after the measurement stopped supporting it — the exact failure mode this loop fights.
+
+### Finding (F38)
+
+A large outlined glyph's failing fill (`#312f2c`, 1.33:1, 25,788px) leaves the **global** verdict at
+**≥240px** while `model_disagreement` names it — so the response read `all_meet_aa: true` **and**, in
+the same object, named the failing colour:
+
+| font size | global | `model_disagreement` |
+|---|---|---|
+| 200/220/230 | `false`, fill present | `null` |
+| **240+** | **`true`**, `#ffffff` only | **names `#312f2c@1.33`** |
+
+### Mechanism (traced)
+
+The drop is inside `extractInkComponents`, via **two** gates applying the same 2%-of-region test:
+the candidate-loop **region-size extras gate** (per-component count crosses 2% at 240px), then
+`isLargeBackgroundRegion`'s per-blob mean. **No constant retuned** (that gate is F7's backstop).
+
+### Fix — the class, not the cliff
+
+When the cross-check finds a failing colour the global model missed, the verdict **abstains**:
+`all_meet_aa: null` with a new three-valued **`verdict: "clean" | "failing" | "unverified"`**
+(`all_meet_aa` follows it). The colour is already named in
+`model_disagreement.local_failing_colours`; none is synthesised, so older guards stay observable.
+This also changes **F6/F7** to `null`/`unverified` — their own note already said *"treat the clean
+verdict as UNVERIFIED"*, so the field now agrees with the warning (a field that disagrees with its
+own warning is the bug).
+
+### Verification
+
+- `npm test` **131/131**; non-vacuity **29/29** (**128 guards**); `verify/nonvacuity-round30.mjs`
+  all **NON-VACUOUS**.
+- Size band 200–500: no `all_meet_aa: true` co-exists with a disagreement; 220px still reports a
+  real failure; a genuinely clean large glyph stays `true`/`clean`.
+
 ## Twenty-ninth audit: F36 — a soft shadow reported as failing text (new mechanism) — 2026-09-28
 
 Round 28 closed with a reopening criterion: a **genuinely new mechanism**, not another instance of
@@ -45,7 +92,9 @@ low-contrast text, and a solid region block are **byte-identical** (20 of 25 row
 
 The audit stated single-plateau pages are **immune**. Measured, they are not: a shadow + text on a
 flat page with no card makes **one** component whose extremal colour is the **text**, so the shadow
-tone becomes its **extra** and was reported as failing text (`#151413@1.04`, in both modes,
+tone becomes its **extra** and was reported as failing text (`#151413@1.04`, in **global** mode at
+HEAD — an earlier version of this text said "in both modes", which was wrong; local mode was already
+clean at `a6cc6d2`/`c700845`, corrected in round 30. See `ACCURACY.md` §5ae).
 pre-existing at HEAD). Its parent is not hollow — it is **near-solid and region-spanning** (box 48.7%
 of the region, fill 0.996). The **existing** parent-box gate already carries this rule in its
 comment (*"a GLYPH component cannot SPAN the region"*), but its threshold `0.5` sat at the gap's

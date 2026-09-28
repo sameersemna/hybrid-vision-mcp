@@ -3548,7 +3548,10 @@ solid region block — is **byte-identical**.
 The audit stated *"single-plateau pages are immune"* (§3). **Measured, that is not complete.** A
 shadow plus text on a flat page with **no card** makes **one** component whose extremal colour is
 the **text** (`#e8dfd0`), so the shadow tone becomes its **extra** and was reported as failing
-text — in **both** modes (`#151413@1.04`, pre-existing at HEAD, verified by stashing the patch):
+text — in **GLOBAL mode** (`#151413@1.04`, pre-existing at HEAD, verified by stashing the patch).
+Local mode was **already clean** at the pre-round-29 revisions (`a6cc6d2`, `c700845`) — reproduced
+in a worktree at `a6cc6d2` in round 30. (An earlier version of this text, and commit `a316f23`,
+said "in **both** modes"; that was wrong and is corrected here.)
 
 | fixture | default (global) | local |
 |---|---|---|
@@ -3608,6 +3611,91 @@ filter its fringe. This is why the F36 test uses a **small** ring — it makes F
   ~5× text-side and ~2.4× decoration-side margin; a single-ink colour whose parent is a
   *mid-sized* panel (5–48% of the region) would still emit extras — unmeasured, and not observed.
 - Frequency remains unmeasured — reachability plus a control-backed verdict error, not prevalence.
+
+## 5af. Thirtieth audit: the verdict field contradicted the tool's own cross-check (F38)
+
+F36/F37 were verified by the auditor (independently), and the `0.5 → 0.2` threshold change
+**withstood** an attack sweep (real outlined-text parents measured ≤ 0.0627 across sizes 100–420px,
+so 0.2 keeps ~3.2× margin). This round also carried **a correction against me** and a **new
+mechanism**.
+
+### The correction (a measured claim that stopped being true)
+
+The F37 test comment and commit `a316f23` claimed the residual held *"in **both** background
+modes."* Reproduced in a **worktree at `a6cc6d2`** (pre-round-29 code): **global** `all=false`
+`#151413@1.04`, **local** `all=true` (clean) — so **local was already clean**, and the claim was
+false. Corrected in the test comment, `CHANGELOG.md`, and §5ae. This is the same failure mode the
+loop has fought all along: a measured claim kept after the measurement stopped supporting it. (My
+own round-29 probe had printed local-clean; I still wrote "both modes." The lesson is to write the
+claim from the run in front of me, not from the narrative around it.)
+
+### The finding (F38, reproduced and traced)
+
+A large outlined glyph's failing fill leaves the **global** verdict at ≥240px, while the per-tile
+(**local**) model still finds it — so the response read `all_meet_aa: true` and, in the same object,
+`model_disagreement` naming `#312f2c at 1.33:1`:
+
+| font size | global `all_meet_aa` | global `colours` | `model_disagreement` |
+|---|---|---|---|
+| 200 / 220 / 230 | `false` | `#312f2c@1.33` present | `null` |
+| **240** | **`true`** | `#ffffff` only | **names `#312f2c@1.33` (25,788px)** |
+| 300 / 400 / 500 | **`true`** | `#ffffff` only | names it |
+
+The raw census at 240px is `#312f2c` = **25,788px**; the fill fails AA at every size. The
+transition is a **step** between 230 and 240 — non-monotonic except in component size.
+
+**Mechanism (traced, beyond the auditor's account).** The drop happens **inside
+`extractInkComponents`**, and by **two** gates that apply the same 2%-of-region test:
+
+1. the candidate-loop **region-size extras gate** (`count2/scanArea > LARGE_REGION_AREA_FRACTION
+   (0.02) && contrastRatio < 1.5`) — the *per-component* count crosses 2% at 240px (21,039px =
+   3.0%) but not at 230px (1.92%);
+2. `isLargeBackgroundRegion`'s **per-blob mean** clause (mean ≥ 2% of the region).
+
+Measured: with gate (1) disabled, the fill is emitted as **two** components (mean ~2.09% ≥ 2%) and
+gate (2) then filters it — which is why disabling (1) alone does **not** recover it. **No constant
+is retuned**: gate (2) is F7's textured-page backstop (`LARGE_REGION_AREA_FRACTION = 0.02`).
+
+### The fix (the class, not the cliff)
+
+The project's own invariant, already in the response, is the answer: *"no response may read
+`all_meet_aa: true` with no caveat while a text run in scope fails contrast and an available mode
+returns it."* The caveat existed — but as a **note**, while `all_meet_aa` is a **field**. A field
+that says `true` while the tool's own cross-check names a failing colour is a contradiction.
+
+So the fix is at the **verdict**, not the extraction: when the cross-check finds a failing colour
+the global model missed, the verdict **abstains** — `all_meet_aa: null` with a new three-valued
+`verdict: "unverified"` (and `"clean"` / `"failing"` otherwise). `all_meet_aa` follows `verdict`
+(`clean → true`, `failing → false`, `unverified → null`). The failing colour is already named in
+`model_disagreement.local_failing_colours`, so nothing is hidden; and no colour is synthesised into
+`colours`, so the independent gates the older guards exercise stay observable (a first attempt that
+**adopted** the colour made two guards vacuous — the same over-broad signal as round 29's F37).
+
+**This changes F6/F7 too, deliberately and consistently.** The shallow-gradient and textured-page
+responses already told the caller to *"treat the clean verdict as UNVERIFIED"* — so their field now
+says the same. That is the doctrine: **a field that disagrees with its own warning is the bug.**
+Those two tests are updated to the honest contract (`all_meet_aa: null`, `verdict: "unverified"`).
+
+### Verification
+
+| check | result |
+|---|---|
+| `npm test` | **131/131** |
+| non-vacuity harnesses | **29/29**, **128 guards** |
+| `verify/nonvacuity-round30.mjs` | 2 perturbation guards + 2 construction-site invariants, all **NON-VACUOUS** |
+| size band (200–500) | invariant holds: no `all_meet_aa:true` with a disagreement |
+| 220px control | `false`, `#312f2c@1.33` in `colours`, no disagreement |
+| clean large-glyph control | `true`, `verdict: "clean"`, no disagreement |
+
+### What this round has NOT proven
+
+- The precise expression in the extraction path that makes the fill cross the region fraction at
+  240px was **located to two gates** but not re-derived from first principles; the fix does not
+  depend on which fires first (it acts on the verdict).
+- The F37 mode correction relied on a worktree at `a6cc6d2`; I did not re-run `c700845` separately
+  (its `lib`/`index.js` are byte-identical to `a6cc6d2`, verified in round 29).
+- Untested reopen candidates are unchanged: **≥3 ink colours in one component**, **gradient/image
+  fills**.
 
 ## 9. New module map
 
