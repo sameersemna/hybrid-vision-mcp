@@ -2347,12 +2347,22 @@ test("F42: reported failing colours that are AA shades of a MASKED colour say so
   // discloses the masking (mask reconciliation) and folds AA shades — but the fold runs on the
   // SURVIVORS and cannot reach a masked parent, so the note ("blends are not distinct text
   // colours") contradicted the failing list. This asserts the list is now characterised.
+  //
+  // Round 36 (F44): the classification is three-way. Genuine shades (13-18px mean) are called
+  // shades; `#262522` at 48px is in the band where shades and small text OVERLAP (real 9px text
+  // measures 41px), so it is now named as AMBIGUOUS rather than mislabelled — the honest answer.
+  // Every on-line colour must appear in ONE of the three notes.
   const r = contrastInRegion(await loadPixels(await buildDropcapTextFixture()), DROPCAP_TEXT.region);
-  const note = (r.notes || []).find((n) => /ANTI-ALIASING shades of a MASKED/.test(n));
-  assert.ok(note, "the failing-colour list must state that its entries are shades of a masked colour");
+  const notes = r.notes || [];
+  const shade = notes.find((n) => /ANTI-ALIASING shades of a MASKED/.test(n));
+  const ambiguous = notes.find((n) => /structure is in the range where/.test(n));
+  assert.ok(shade, "genuine AA shades (18px, 13px mean) must be called shades");
+  const onLine = `${shade || ""}\n${ambiguous || ""}`;
   for (const fg of r.colours.filter((c) => !c.wcag_aa).map((c) => c.foreground)) {
-    assert.match(note, new RegExp(fg), `the note must name the reported colour ${fg}`);
+    assert.match(onLine, new RegExp(fg), `every on-line failing colour must be named (shade or ambiguous): ${fg}`);
   }
+  assert.match(shade, /#444443/, "the 18px shade is classified as a shade");
+  assert.ok(!/structurally TEXT/.test(shade + (ambiguous || "")), "no dropcap colour is classified as text");
 
   // The masked text itself must still be disclosed (unchanged) — the note ADDS to the disclosure.
   assert.ok(r.mask_reconciliation, "the masked colour is still disclosed by mask reconciliation");
@@ -2405,6 +2415,37 @@ test("F43: a REAL text colour on the masked line is not called a shade", async (
     !(drop.notes || []).some((n) => /structurally TEXT/.test(n)),
     "genuine shades must NOT be disclosed as text",
   );
+});
+
+test("F44: ordinary UI text on the masked line is never mislabelled a shade (size sweep)", async () => {
+  // Round 36. The F43 fix keyed the shade test on `MIN_TEXT_MEAN_AREA` (100), whose OWN sibling
+  // comment records that 100 "would hide real ink at mean 75-94 (measured)". Measured, the boundary
+  // sat at ~19px, so 12-18px body text (mean 54-91px) was called "not a distinct ink" while the
+  // same response listed it as text. The F43 test used only a large heading, so the regression was
+  // invisible to it — the "test one parameter value" trap.
+  //
+  // The two populations OVERLAP (measured shades 13-48px, real 9px text 41px), so no single
+  // threshold separates them. The fix asserts the VALUE relationship always, the CLASSIFICATION
+  // only when structure is decisive, and leaves the overlap unclassified. This test sweeps the
+  // sizes and asserts that a real failing text colour is NEVER classified as a shade.
+  const W = 1000, H = 700;
+  const region = { left: 0, top: 0, width: W, height: H };
+  const build = (fs) =>
+    sharp(Buffer.from(
+      `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
+        `<rect width="${W}" height="${H}" fill="#1a1814"/>` +
+        `<rect x="40" y="40" width="700" height="400" fill="#464646"/>` +
+        `<text x="60" y="620" font-family="DejaVu Sans" font-weight="bold" font-size="${fs}" fill="#302f2d">Settings and preferences</text></svg>`,
+    )).png().toBuffer();
+
+  for (const fs of [8, 10, 12, 14, 16, 18, 20, 24, 32]) {
+    const r = contrastInRegion(await loadPixels(await build(fs)), region);
+    const notes = r.notes || [];
+    const mislabelled = notes.some((n) => /ANTI-ALIASING shades of a MASKED/.test(n) && /#302f2d/.test(n));
+    assert.ok(!mislabelled, `[fs=${fs}] real text on the line must NEVER be called a shade`);
+    // The colour is still reported as failing text; the disclosure may be the "ambiguous" note.
+    assert.ok(r.colours.some((c) => c.foreground === "#302f2d" && !c.wcag_aa), `[fs=${fs}] the failing text is reported`);
+  }
 });
 
 test("F40: the service entry point and the library agree, and the tolerance is surfaced", async () => {

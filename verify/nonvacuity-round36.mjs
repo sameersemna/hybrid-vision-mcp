@@ -1,6 +1,7 @@
-// Non-vacuity verification for the THIRTY-FIFTH-audit fix (F43: the masked-shade note was keyed on
-// COLOUR ONLY, so it could declare a real text colour "not a distinct ink" — while the same response
-// listed it as text). Perturbs the structural gate, confirms the matching test FAILS, restores.
+// Non-vacuity verification for the THIRTY-SIXTH-audit fix (F44: the shade separator keyed on
+// MIN_TEXT_MEAN_AREA (100) misclassified ordinary UI text as "not a distinct ink"; the fix asserts
+// the VALUE relationship always, classifies only where structure is decisive, and leaves the
+// overlap band unclassified). Perturbs each part, confirms the F44 test FAILS, restores.
 //
 // SAFETY: mutates lib/measure.js temporarily. Kept OUT of test/ discovery.
 import fs from "node:fs";
@@ -9,22 +10,21 @@ import { spawnSync } from "node:child_process";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const MEASURE = "lib/measure.js";
-const F43 = "a REAL text colour on the masked line";
+const F44 = "ordinary UI text on the masked line";
 
 const cases = [
   {
-    id: "F43/F44 the decisive shade-size gate (widening it misclassifies real text)",
-    test: F43,
+    id: "F44 the unclassified overlap band (classifying it by the 100px line mislabels body text)",
+    test: F44,
     testfile: "background.test.js",
     file: MEASURE,
-    // The gate is `meanOf(e) < shadeDecisiveMax`. Perturbing the BOUND to the whole range makes
-    // every on-line colour a shade, including real text.
+    // Re-introduce the round-35 behaviour: the shade bound becomes the full 100px line.
     from: "      const shadeDecisiveMax = MIN_TEXT_MEAN_AREA / 4; // 25px: below the measured real-text floor",
-    to: "      const shadeDecisiveMax = Infinity;",
+    to: "      const shadeDecisiveMax = MIN_TEXT_MEAN_AREA;",
   },
   {
-    id: "F43/F44 the mirror note for structurally-text on-line colours (dropping it leaves the text undisclosed)",
-    test: F43,
+    id: "F43 the structurally-TEXT note (dropping it leaves on-line real text undisclosed as text)",
+    test: "a REAL text colour on the masked line",
     testfile: "background.test.js",
     file: MEASURE,
     from: "      const asText = onLine.filter((e) => meanOf(e) >= MIN_TEXT_MEAN_AREA);",
@@ -61,12 +61,22 @@ for (const c of cases) {
   results.push({ id: c.id, passesWithFix: before.ok, failsWithoutFix: !after.ok, nonVacuous: before.ok && !after.ok });
 }
 
-console.log("\n=== ROUND-35 NON-VACUITY REPORT ===");
+// Structural invariant: the note must be THREE-way (value always; shade / text / ambiguous split),
+// not a single colour-only classification.
+const src = fs.readFileSync(path.join(ROOT, MEASURE), "utf8");
+const threeWay = /const shades = onLine\.filter/.test(src) && /const asText = onLine\.filter/.test(src) && /const ambiguous = onLine\.filter/.test(src);
+const keepsOverlap = /OVERLAP/.test(src);
+
+console.log("\n=== ROUND-36 NON-VACUITY REPORT ===");
 let allGood = true;
 for (const r of results) {
   if (r.error) { console.log(`ERR            ${r.id}: ${r.error}`); allGood = false; continue; }
   if (!r.nonVacuous) allGood = false;
   console.log(`${(r.nonVacuous ? "NON-VACUOUS" : "VACUOUS").padEnd(14)} ${r.id}  (pass-with-fix=${r.passesWithFix}, fail-without-fix=${r.failsWithoutFix})`);
 }
-console.log(allGood ? "\nAll round-35 guards confirmed non-vacuous." : "\nSOME GUARDS ARE VACUOUS — investigate.");
+console.log(`${(threeWay ? "NON-VACUOUS" : "VACUOUS").padEnd(14)} CONSTRUCTION-SITE guard: the on-line note is three-way (shade/text/ambiguous) (threeWay=${threeWay})`);
+console.log(`${(keepsOverlap ? "NON-VACUOUS" : "VACUOUS").padEnd(14)} CONSTRUCTION-SITE guard: the overlap band is disclosed, not silently classified (keepsOverlap=${keepsOverlap})`);
+if (!threeWay || !keepsOverlap) allGood = false;
+
+console.log(allGood ? "\nAll round-36 guards confirmed non-vacuous." : "\nSOME GUARDS ARE VACUOUS — investigate.");
 process.exitCode = allGood ? 0 : 1;
