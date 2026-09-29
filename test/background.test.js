@@ -2367,6 +2367,46 @@ test("F42: reported failing colours that are AA shades of a MASKED colour say so
   );
 });
 
+test("F43: a REAL text colour on the masked line is not called a shade", async () => {
+  // Round 35. The shade note's test was COLOUR-ONLY (`isAntiAliasingBlend`), which F32 already
+  // measured to be insufficient: a real mid-tone fill can sit on the reference→masked line. So the
+  // note could declare a real text colour "not a distinct ink" while the same response listed it as
+  // "1 of 1 evaluated text colour(s)". The separator is STRUCTURAL — mean component area — because
+  // the repo's `looksLikeIndependentText` needs >=3 components, which a 2-glyph run fails.
+  const W = 1000, H = 700;
+  const region = { left: 0, top: 0, width: W, height: H };
+  const svg =
+    `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect width="${W}" height="${H}" fill="#1a1814"/>` +
+    `<rect x="40" y="40" width="700" height="400" fill="#464646"/>` +
+    `<text x="60" y="600" font-family="DejaVu Sans" font-weight="bold" font-size="150" fill="#302f2d">ABC</text>` +
+    `</svg>`;
+  const r = contrastInRegion(await loadPixels(await sharp(Buffer.from(svg)).png().toBuffer()), region);
+
+  // The mid-tone heading is the only text colour and it must be reported as text.
+  assert.ok(r.failing_count >= 1, "the mid-tone heading fails and must be reported");
+  assert.ok(r.colours.some((c) => c.foreground === "#302f2d"), "the heading is in the failing list");
+  assert.ok(
+    !(r.notes || []).some((n) => /ANTI-ALIASING shades of a MASKED/.test(n) && /#302f2d/.test(n)),
+    "a structurally-text colour must NOT be declared a shade of the masked plateau",
+  );
+  assert.ok(
+    (r.notes || []).some((n) => /structurally TEXT/.test(n) && /#302f2d/.test(n)),
+    "it is instead disclosed as text that merely lies on the line by value",
+  );
+
+  // CONTROL: the dropcap's GENUINE shades (small blobs) are still called shades.
+  const drop = contrastInRegion(await loadPixels(await buildDropcapTextFixture()), DROPCAP_TEXT.region);
+  assert.ok(
+    (drop.notes || []).some((n) => /ANTI-ALIASING shades of a MASKED/.test(n)),
+    "genuine AA shades (13-48px mean) must still be called shades",
+  );
+  assert.ok(
+    !(drop.notes || []).some((n) => /structurally TEXT/.test(n)),
+    "genuine shades must NOT be disclosed as text",
+  );
+});
+
 test("F40: the service entry point and the library agree, and the tolerance is surfaced", async () => {
   // Round 33. `measureImage` (the MCP tool) used to default `tolerance` to 24 while the library
   // defaulted to 16, so every test/guard/harness — which calls `contrastInRegion` directly — ran at
