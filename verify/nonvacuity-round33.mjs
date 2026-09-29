@@ -12,6 +12,7 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const TESTFILE = path.join(ROOT, "test", "background.test.js");
 const MEASURE = "lib/measure.js";
 const ANALYZE = "lib/analyze.js";
+const RESPONSE = "lib/response.js";
 const F40 = "the service entry point and the library agree";
 
 const cases = [
@@ -43,14 +44,42 @@ const cases = [
     from: "          `Contrast here could not be measured independently: the per-tile (local) model enumerated ` +",
     to: "          `DISABLED` +",
   },
+  {
+    id: "F41 the compact-first form (removing it degrades a fitting payload to an envelope)",
+    test: "a payload that fits COMPACT is returned complete",
+    testfile: "response.test.js",
+    file: RESPONSE,
+    from: "  const compactFull = JSON.stringify(value);\n  if (compactFull.length <= maxChars) return compactFull;",
+    to: "  // disabled",
+  },
+  {
+    id: "F41 the verdict skeleton replaces the bare success envelope",
+    test: "the last-resort fallback keeps the VERDICT",
+    testfile: "response.test.js",
+    file: RESPONSE,
+    from: "    const skeleton = buildVerdictSkeleton(value);",
+    to: "    const skeleton = { success: value.success === true };",
+  },
+  {
+    id: "F41 the envelope-honesty fallback (success must be false when the answer is absent)",
+    test: "the last-resort fallback keeps the VERDICT",
+    testfile: "response.test.js",
+    file: RESPONSE,
+    from: "        success: false,",
+    to: "        success: value.success === true,",
+  },
 ];
 
-function runTest(pattern) {
-  const r = spawnSync(process.execPath, ["--test", `--test-name-pattern=${pattern}`, TESTFILE], {
+function runTest(pattern, testfile = TESTFILE) {
+  const r = spawnSync(process.execPath, ["--test", `--test-name-pattern=${pattern}`, testfile], {
     cwd: ROOT,
     encoding: "utf8",
   });
-  return { ok: r.status === 0, out: (r.stdout || "") + (r.stderr || "") };
+  const out = (r.stdout || "") + (r.stderr || "");
+  // A pattern that matches NOTHING exits 0, which would read as a pass. Require at least one test
+  // to have run, so a mistargeted pattern is visible as a failure rather than a silent pass.
+  const ran = Number((out.match(/^# tests (\d+)/m) || out.match(/^ℹ tests (\d+)/m) || [])[1] || 0);
+  return { ok: r.status === 0 && ran > 0, ran, out };
 }
 
 const results = [];
@@ -61,9 +90,10 @@ for (const c of cases) {
     results.push({ id: c.id, error: `anchor not found in ${c.file}` });
     continue;
   }
-  const before = runTest(c.test);
+  const testfile = path.join(ROOT, "test", c.testfile ?? "background.test.js");
+  const before = runTest(c.test, testfile);
   fs.writeFileSync(filePath, original.replace(c.from, c.to), "utf8");
-  const after = runTest(c.test);
+  const after = runTest(c.test, testfile);
   fs.writeFileSync(filePath, original, "utf8");
   if (fs.readFileSync(filePath, "utf8") !== original) {
     results.push({ id: c.id, error: "RESTORE FAILED — file not byte-identical after revert" });

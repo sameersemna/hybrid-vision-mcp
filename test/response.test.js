@@ -99,6 +99,52 @@ test("truncateJsonForClient never returns a partial token stream", () => {
   assert.ok(out.length <= 2000);
 });
 
+test("F41: a payload that fits COMPACT is returned complete, not degraded to an envelope", () => {
+  // Round 33: the cap measured PRETTY-printed length, so a payload that is inside the cap in the
+  // compact form the client actually consumes was needlessly shredded — and, in the worst case,
+  // reduced to an envelope with no `measurements` while reporting `success: true`. Measured live:
+  // the photographic fixture (13,969 pretty / 9,660 compact) came back as an envelope and crashed
+  // the standing live harness. Compact-first keeps the response COMPLETE.
+  const value = { success: true, measurements: { contrast: { verdict: "failing", colours: Array.from({ length: 200 }, (_, i) => ({ foreground: `#${i.toString(16).padStart(6, "0")}`, pixel_count: i })) } } };
+  const pretty = JSON.stringify(value, null, 2).length;
+  const compact = JSON.stringify(value).length;
+  const limit = Math.floor((pretty + compact) / 2); // above compact, below pretty
+  assert.ok(compact <= limit && pretty > limit, "fixture must straddle the cap");
+  const out = truncateJsonForClient(value, limit);
+  const parsed = JSON.parse(out);
+  assert.equal(out.length, compact, "the compact form is returned whole");
+  assert.equal(parsed.measurements.contrast.verdict, "failing", "the verdict survives");
+  assert.equal(parsed.measurements.contrast.colours.length, 200, "no colours were dropped");
+  assert.equal(parsed._truncation, undefined, "nothing was dropped, so nothing is marked");
+});
+
+test("F41: the last-resort fallback keeps the VERDICT, never a success envelope with no answer", () => {
+  // When even the skeleton cannot fit in the client budget, the OLD code returned
+  // `{ success: true, _truncation }` — a success claim with the verdict removed. That is the
+  // failure mode to forbid: a caller must never read `success: true` and find no `measurements`.
+  //
+  // The payload defeats BOTH trimming phases on purpose (no string > 256 chars, no array > 1), so
+  // it reaches the last resort. A payload with a long string or a long array is handled earlier and
+  // would not exercise this path.
+  const value = {
+    success: true,
+    measurements: { contrast: { verdict: "unverified", all_meet_aa: null, worst: { foreground: "#262522", contrast_ratio: 1.62 }, notes: ["disclosed"], colours: [] } },
+  };
+  for (let i = 0; i < 4000; i++) value[`k${i}`] = i;
+
+  // A roomy budget lands on the verdict SKELETON: the answer survives, marked truncated.
+  const skel = JSON.parse(truncateJsonForClient(structuredClone(value), 2000));
+  assert.equal(skel.truncated_to, "verdict_skeleton", "the verdict skeleton is used when it fits");
+  assert.equal(skel.measurements.contrast.verdict, "unverified", "the verdict survives the skeleton");
+  assert.ok(skel._truncation, "a degraded response is marked truncated");
+
+  // A tiny budget overflows even the skeleton: the envelope must NOT claim success.
+  const env = JSON.parse(truncateJsonForClient(structuredClone(value), 600));
+  assert.equal(env.measurements, undefined, "the envelope path drops measurements");
+  assert.equal(env.success, false, "a response with no verdict must NOT report success=true");
+  assert.match(env._truncation.note, /did NOT return a verdict/i);
+});
+
 test("the default cap is a positive number and matches the documented value", () => {
   assert.equal(typeof DEFAULT_MAX_RESPONSE_TEXT_CHARS, "number");
   assert.ok(DEFAULT_MAX_RESPONSE_TEXT_CHARS > 0);
