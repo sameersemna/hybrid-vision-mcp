@@ -128,18 +128,29 @@ test("F41: the last-resort fallback keeps the VERDICT, never a success envelope 
   // would not exercise this path.
   const value = {
     success: true,
-    measurements: { contrast: { verdict: "unverified", all_meet_aa: null, worst: { foreground: "#262522", contrast_ratio: 1.62 }, notes: ["disclosed"], colours: [] } },
+    measurements: { contrast: { verdict: "unverified", all_meet_aa: null, failing_count: 3, worst: { foreground: "#262522", contrast_ratio: 1.62 }, best: { foreground: "#e8dfd0", contrast_ratio: 13.42 }, cluster_tolerance: 16, notes: ["disclosed"], colours: [] } },
   };
   for (let i = 0; i < 4000; i++) value[`k${i}`] = i;
 
-  // A roomy budget lands on the verdict SKELETON: the answer survives, marked truncated.
+  // Measured thresholds for this payload: >=800 -> skeleton, 400-700 -> verdict tier, <=300 ->
+  // envelope. The caps below are read from that measurement, not guessed.
   const skel = JSON.parse(truncateJsonForClient(structuredClone(value), 2000));
   assert.equal(skel.truncated_to, "verdict_skeleton", "the verdict skeleton is used when it fits");
   assert.equal(skel.measurements.contrast.verdict, "unverified", "the verdict survives the skeleton");
   assert.ok(skel._truncation, "a degraded response is marked truncated");
 
-  // A tiny budget overflows even the skeleton: the envelope must NOT claim success.
-  const env = JSON.parse(truncateJsonForClient(structuredClone(value), 600));
+  // Round 34: a SMALL budget lands on the verdict TIER — the scalars only — so the answer still
+  // survives. Before this tier existed the verdict was lost here and the caller got a bare
+  // envelope. `success` stays true: a verdict WAS measured; the omitted parts are detail and prose.
+  const tier = JSON.parse(truncateJsonForClient(structuredClone(value), 500));
+  assert.equal(tier.truncated_to, "verdict", "the verdict tier is used when the skeleton does not fit");
+  assert.equal(tier.success, true, "a measured verdict is still a success");
+  assert.equal(tier.measurements.contrast.verdict, "unverified", "the verdict survives the tier");
+  assert.equal(tier.measurements.contrast.worst.foreground, "#262522", "the worst colour survives (compactly)");
+  assert.equal(tier.measurements.contrast.cluster_tolerance, 16, "the effective tolerance survives");
+
+  // A tiny budget overflows even the tier: the envelope must NOT claim success.
+  const env = JSON.parse(truncateJsonForClient(structuredClone(value), 250));
   assert.equal(env.measurements, undefined, "the envelope path drops measurements");
   assert.equal(env.success, false, "a response with no verdict must NOT report success=true");
   assert.match(env._truncation.note, /did NOT return a verdict/i);
