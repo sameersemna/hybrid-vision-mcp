@@ -1,5 +1,18 @@
 # Changelog
 
+### F41 — the response cap shrank a measurement to a bare envelope (found while verifying F40)
+
+Unifying the tolerance raised the photographic fixture's contrast response to **13,969 chars
+pretty** (cap 12,000, measured pretty), so `truncateJsonForClient` fell back to
+`{ success: true, _truncation }` — a **success claim with the VERDICT REMOVED**. The standing live
+harness crashed on it (`d.measurements.contrast` of `undefined`). Pre-existing; F40 exposed it.
+
+- **Compact-first**: a payload that fits in the compact form the client consumes is returned
+  **complete** (13,969 pretty / **9,660 compact** → returned whole).
+- **Verdict skeleton + honest envelope**: when compact does not fit, the verdict and disclosure
+  block are kept and the bulky arrays emptied (`_truncation` records it); if even that overflows,
+  the envelope reports **`success: false`**, never a success with no answer.
+
 ## Thirty-third audit: the tested path was not the shipped path (F40) — 2026-09-28
 
 `measureImage` (the MCP tool) defaulted `tolerance` to **24** while the library defaulted to **16**,

@@ -3882,6 +3882,45 @@ open.
 | `verify/nonvacuity-round33.mjs` | 4 perturbation guards + 2 construction-site invariants, all **NON-VACUOUS** |
 | library vs service, 5 fixtures | **identical** `worst`/`failing_count` |
 
+## 5ak. Thirty-third audit (continued): the response cap shrank a measurement to a bare envelope (F41)
+
+Unifying the clustering tolerance (F40) exposed a **pre-existing** truncation defect. The
+photographic fixture's contrast response is **13,969 chars pretty-printed** at the new default
+(12,432 at the old 24) and the client cap is **12,000**, measured on the **pretty** form.
+`truncateJsonForClient` then shortened strings, dropped array items, and — when it still did not
+fit — fell back to:
+
+```json
+{ "success": true, "_truncation": { … "only the envelope is included." } }
+```
+
+That is the worst degradation the project has: a **`success: true` envelope with the VERDICT
+REMOVED**. A caller finds no `measurements`, and cannot tell an unmeasured result from a broken one.
+Measured live, it crashed the standing harness at section 2 (`d.measurements.contrast` of
+`undefined`).
+
+### Two fixes
+
+1. **Compact-first.** The cap protects the client's context, not indentation; 2-space pretty is
+   30-45% larger than compact. Measured, the photographic payload is 13,969 pretty but **9,660
+   compact** — inside the cap, with **every colour and the full disclosure block intact**. The
+   function now tries the compact form of the **untouched** value first, so a payload that fits is
+   returned complete rather than degraded.
+2. **Verdict skeleton + honest envelope.** When compact does not fit, the fallback keeps the
+   **verdict skeleton** (verdict, `all_meet_aa`, worst/best, counts, `cluster_tolerance`, the
+   disclosure block) with the bulky per-colour arrays emptied, and `_truncation` records exactly
+   what was dropped. If even the skeleton overflows, the envelope now reports **`success: false`** —
+   it never claims a successful measurement with the answer absent.
+
+### Verification
+
+| check | result |
+|---|---|
+| `npm test` | **136/136** |
+| non-vacuity harnesses | **31/31**, **146 guards** |
+| `verify/nonvacuity-round33.mjs` | 7 perturbation guards + 2 construction-site invariants, all **NON-VACUOUS** |
+| live harness on a scratch build | `exit=0`, **0 red** checks (section 2 now passes) |
+
 ## 9. New module map
 
 | File | Responsibility |
