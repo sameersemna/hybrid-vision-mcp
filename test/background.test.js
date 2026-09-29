@@ -2340,6 +2340,33 @@ test("F39: the witness filter must not delete low-contrast text (sweep the FILL,
   assert.equal(identity.verdict, "clean", "a background-identity-only witness must not force an abstention");
 });
 
+test("F42: reported failing colours that are AA shades of a MASKED colour say so", async () => {
+  // Round 34. On the dropcap fixture the declared text `#464646` is read as a 2.4% background
+  // plateau and masked, so it appears in NO content channel; the colours actually reported as
+  // failing (`#262522`, `#444443`, `#1d1b17`) are ANTI-ALIASING shades of it. The response already
+  // discloses the masking (mask reconciliation) and folds AA shades — but the fold runs on the
+  // SURVIVORS and cannot reach a masked parent, so the note ("blends are not distinct text
+  // colours") contradicted the failing list. This asserts the list is now characterised.
+  const r = contrastInRegion(await loadPixels(await buildDropcapTextFixture()), DROPCAP_TEXT.region);
+  const note = (r.notes || []).find((n) => /ANTI-ALIASING shades of a MASKED/.test(n));
+  assert.ok(note, "the failing-colour list must state that its entries are shades of a masked colour");
+  for (const fg of r.colours.filter((c) => !c.wcag_aa).map((c) => c.foreground)) {
+    assert.match(note, new RegExp(fg), `the note must name the reported colour ${fg}`);
+  }
+
+  // The masked text itself must still be disclosed (unchanged) — the note ADDS to the disclosure.
+  assert.ok(r.mask_reconciliation, "the masked colour is still disclosed by mask reconciliation");
+
+  // CONTROL: a fixture whose failing colours are NOT shades of a masked plateau must NOT emit the
+  // note. The outlined-text fixture has 1 failing colour and no masked colour at all.
+  const outlined = contrastInRegion(await loadPixels(await buildOutlinedTextFixture()), OUTLINED_TEXT.region);
+  assert.ok(outlined.failing_count >= 1, "the control has a failing colour to be mis-described");
+  assert.ok(
+    !(outlined.notes || []).some((n) => /ANTI-ALIASING shades of a MASKED/.test(n)),
+    "a region with no masked colour must not claim its colours are shades of one",
+  );
+});
+
 test("F40: the service entry point and the library agree, and the tolerance is surfaced", async () => {
   // Round 33. `measureImage` (the MCP tool) used to default `tolerance` to 24 while the library
   // defaulted to 16, so every test/guard/harness — which calls `contrastInRegion` directly — ran at
