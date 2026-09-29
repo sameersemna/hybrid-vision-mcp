@@ -52,7 +52,10 @@
     "verify:real": "node verify/verify-real-model.mjs",
     "verify:contrast": "node verify/verify-real-contrast.mjs",
     "verify:timeout": "node verify/verify-timeout.mjs",
-    "verify:regression": "node verify/final-regression.mjs"
+    "verify:regression": "node verify/final-regression.mjs",
+    "review": "node verify/review-harness.mjs",
+    "review:verbose": "node verify/review-harness.mjs --verbose",
+    "review:json": "node verify/review-harness.mjs --json"
   },
   "engines": {
     "node": ">=20.0.0"
