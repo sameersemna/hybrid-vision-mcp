@@ -3980,6 +3980,62 @@ papered over; a fix would be a naming/semantics change, not a threshold move.
 | non-vacuity harnesses | **32/32**, **149 guards** |
 | `verify/nonvacuity-round34.mjs` | 3 perturbation guards, all **NON-VACUOUS** |
 
+## 5am. Thirty-fifth audit: the shade note misclassified real text (F43), and two retractions
+
+F42 was verified on the deployed build (both notes present and additive; the verdict tier works).
+This round the auditor **retracted two of its own round-34 claims** — and both retractions are
+correct, and the second is important:
+
+- **The dropcap's ratio IS disclosed.** `mask_reconciliation.unmasked_failing_colours` carries
+  `#464646` with `contrast_ratio: 1.88`, matching `DROPCAP_TEXT.ratio` exactly. The auditor's \"matches
+  no returned entry\" was a probe-coverage error (six channels checked, the seventh omitted) — the
+  same round-26 lesson, applied to their own negative claim.
+- **Raising `PLATEAU_MIN_SHARE` is not free.** Measured against the full apparatus: `npm test`
+  **128/9**, non-vacuity **26/32**, and `test/background.test.js` asserts as a **named contract** that
+  \"the mask removes the drop-cap colour\". So masking the drop-cap colour is **intended**; six guards
+  depend on it. The proposal is withdrawn; the behaviour is a deliberate trade, not a
+  mis-classification. (My own §6.1 framing in round 34 was too strong; corrected here.)
+
+### F43 — the shade note declared a real text colour \"not a distinct ink\"
+
+Round 34's shade note tested **colour only** (`isAntiAliasingBlend`). F32 had already measured that
+being on the line is **not sufficient** — a real mid-tone fill can sit on it. Reproduced: a mid-tone
+heading (`#302f2d`, t=0.5) over a masked `#464646` panel produced a response that called `#302f2d`
+*\"ANTI-ALIASING shades of a MASKED plateau colour (… not a distinct ink)\"* **and** listed it as
+*\"1 of 1 evaluated text colour(s)\"* — a note-vs-list contradiction inside one response, and the only
+signal about the real text in the image.
+
+### Fix — the structural separator, keyed on SIZE
+
+The repo already ships the structural check (`looksLikeIndependentText`, whose doc says *\"the
+structural check that a colour-only test cannot make\"*), but it requires **≥3 components**, which a
+2-glyph run fails. Measured mean component area is the cleaner separator:
+
+| case | mean component area | class |
+|---|---|---|
+| real mid-tone heading (2–3 glyphs) | **7,186 / 6,561 px** | text |
+| dropcap genuine shades | **48 / 18 / 13 px** | shade |
+
+A **~135× margin**. A shade is now only called a shade when it is BOTH on the line AND structurally
+small (`meanArea < MIN_TEXT_MEAN_AREA`). Symmetrically, a failing colour that lies on the line but is
+**structurally text** gets its own note: *\"… lie between the background and a MASKED plateau colour
+by VALUE, but are structurally TEXT … the value-similarity is coincidental.\"* Both branches are
+guarded; the dropcap's genuine-shade disclosure is unchanged.
+
+### Verification
+
+| check | result |
+|---|---|
+| `npm test` | **138/138** |
+| non-vacuity harnesses | **33/33**, **151 guards** |
+| `verify/nonvacuity-round35.mjs` | 2 perturbation guards, both **NON-VACUOUS** |
+
+### Correction to a round-34 number
+
+The verdict tier's boundary is **payload-dependent** (the skeleton's size is dominated by the `notes`
+block). My \"holds to a 400-char cap\" was measured on one payload; the auditor measured **700** on
+theirs. The honest statement is *\"holds to the skeleton size for this payload\"*, not a fixed number.
+
 ## 9. New module map
 
 | File | Responsibility |

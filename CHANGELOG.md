@@ -1,5 +1,32 @@
 # Changelog
 
+## Thirty-fifth audit: the shade note misclassified real text (F43), and two retractions — 2026-09-29
+
+F42 verified on the deployed build (both notes present and additive; verdict tier works). The
+auditor **retracted two of its own round-34 claims** — both correct: the dropcap's ratio **IS**
+disclosed (`mask_reconciliation`, `#464646` at `1.88`), and raising `PLATEAU_MIN_SHARE` is **not**
+free (`npm test` 128/9, non-vacuity 26/32, and a named contract that "the mask removes the drop-cap
+colour"). The plateau trade stands. See `ACCURACY.md` §5am.
+
+### F43 — the fix
+
+The shade note tested **colour only** (`isAntiAliasingBlend`), which F32 already showed is
+insufficient. So a real mid-tone heading (`#302f2d`, t=0.5) over a masked panel was labelled *"not a
+distinct ink"* **while the same response listed it as "1 of 1 evaluated text colour(s)"**.
+
+The note is now gated on the **structural** separator, keyed on **size** (the repo's
+`looksLikeIndependentText` needs ≥3 components, which a 2-glyph run fails): a shade is called a
+shade only when it is BOTH on the line AND structurally small. Measured mean component area — real
+text **6,561–7,186 px** vs genuine shades **13–48 px** (~135× margin). A symmetrical note now names
+a colour that lies on the line but is **structurally TEXT**. The dropcap's genuine-shade disclosure
+is unchanged.
+
+### Verification
+
+- `npm test` **138/138**; non-vacuity **33/33** (**151 guards**); round-35 guard both **NON-VACUOUS**.
+- Also stated the clustering tolerance's **semantics** (raw RGB merge, not perceptual) in the tool
+description, and corrected the round-34 tier boundary (it is payload-dependent, not a fixed number).
+
 ## Thirty-fourth audit: the verdict survives every cap, and the failing list is characterised (F42) — 2026-09-29
 
 F40/F41 verified on the deployed build; the auditor's round-33 attack on the tolerance value was

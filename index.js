@@ -1300,7 +1300,7 @@ function createMcpServer() {
                 type: "string",
                 description: "Optional explicit background colour (hex). If omitted, the modal colour of the region is used.",
               },
-              tolerance: { type: "number", description: "RGB distance for merging near-identical colours into one reported colour (0-255). Default: 16 (the library's DEFAULT_CLUSTER_TOLERANCE, shared with the contrast engine — do not assume a different default)." },
+              tolerance: { type: "number", description: "RGB-space merging distance (0-255) for near-identical colours: colours within this distance are reported as ONE colour. This is a raw RGB distance, NOT a perceptual (delta-E) one. Default: 16 (the library's DEFAULT_CLUSTER_TOLERANCE, shared with the contrast engine — do not assume a different default). A larger value merges more, which can absorb a distinct colour; the effective value is always disclosed as `cluster_tolerance`." },
               large_text: { type: "boolean", description: "Assess against WCAG large-text thresholds (3:1) instead of 4.5:1." },
               ink_threshold: {
                 type: "number",
