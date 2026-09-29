@@ -4036,6 +4036,57 @@ The verdict tier's boundary is **payload-dependent** (the skeleton's size is dom
 block). My \"holds to a 400-char cap\" was measured on one payload; the auditor measured **700** on
 theirs. The honest statement is *\"holds to the skeleton size for this payload\"*, not a fixed number.
 
+## 5an. Thirty-sixth audit: the F43 separator misclassified ordinary UI text (F44)
+
+F43's fix keyed the shade test on `MIN_TEXT_MEAN_AREA` (**100**) — the constant whose **own sibling
+comment**, thirty lines away, records the contrary measurement:
+
+> *"NOTE this is a DIFFERENT quantity from the primary path's MIN_TEXT_MEAN_AREA (100): a fragmented
+> run's mean falls as text is ADDED (F14), so using 100 here would hide real ink at mean 75-94
+> (measured)."*
+
+So the F43 separator classified exactly the band the repo says is **real ink**. Reproduced (a
+mid-tone label over a masked panel, swept by size): **10–18px text (mean 54–91px) was called
+"not a distinct ink"** while the same response listed it as *"1 of 1 evaluated text colour(s)"*.
+The boundary sat at **~19px** — so F43 was correct only for the large glyphs its own test used.
+
+### The measurement that decides the fix
+
+| population | mean component area |
+|---|---|
+| genuine AA shades (dropcap) | **13, 18, 48 px** |
+| real text, 9px "Settings" | **41 px** |
+| real text, 10–18px runs | **54–91 px** |
+| real text, 20px+ | 109–244 px |
+
+Real text reaches **41px** while shades reach **48px** — the populations **overlap**, so **no single
+size threshold separates them** (rec 4.3). Retuning `MIN_TEXT_MEAN_AREA` would only move which case
+is wrong.
+
+### The fix — assert the value, classify only when structure decides
+
+This is the posture the file already uses for the same ambiguity (`mask_reconciliation`: *"The tool
+DOES NOT classify which"*). Three notes now:
+
+1. **shade** — on the line **and** mean < `MIN_TEXT_MEAN_AREA / 4` (25px, below the measured
+   real-text floor of 41px): *"… are ANTI-ALIASING shades … not a distinct ink"*;
+2. **text** — on the line **and** mean ≥ `MIN_TEXT_MEAN_AREA` (100px): *"… are structurally TEXT"*;
+3. **ambiguous** — the 25–100px band: named **by value**, with an explicit statement that the
+   structure is where shades and small text **overlap**, so this response does **not** classify
+   it. The value relationship is always stated; the class is only claimed where it is decisive.
+
+No constant was retuned (rec 4.3). The 25px bound is measured (below the 41px real-text floor), and
+`#262522` at 48px — which F42's test previously assumed was a shade — is now honestly **ambiguous**.
+
+### Verification
+
+| check | result |
+|---|---|
+| `npm test` | **139/139** |
+| non-vacuity harnesses | **34/34**, **154 guards** |
+| `verify/nonvacuity-round36.mjs` | 2 perturbation guards + 2 construction-site invariants, all **NON-VACUOUS** |
+| F44 size sweep (8–32px) | no real text colour is ever called a shade |
+
 ## 9. New module map
 
 | File | Responsibility |

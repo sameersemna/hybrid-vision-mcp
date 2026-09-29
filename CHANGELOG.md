@@ -1,5 +1,28 @@
 # Changelog
 
+## Thirty-sixth audit: the F43 separator misclassified ordinary UI text (F44) — 2026-09-29
+
+F43 keyed the shade separator on `MIN_TEXT_MEAN_AREA` (**100**), whose own sibling comment records
+that 100 *"would hide real ink at mean 75-94 (measured)"* — so it classified exactly the band the repo
+calls real ink. Measured: the boundary sat at **~19px**, so 10–18px body text (mean 54–91px) was
+called "not a distinct ink" while the same response listed it as text. See `ACCURACY.md` §5an.
+
+### Fix — assert the value, classify only where structure decides
+
+Measured, the populations **overlap** (real 9px text **41px** mean; genuine shades up to **48px**), so
+no single threshold separates them. Three notes now:
+
+- **shade** — on the line and mean < **25px** (`MIN_TEXT_MEAN_AREA / 4`, below the 41px floor);
+- **text** — on the line and mean ≥ **100px**;
+- **ambiguous** — the 25–100px band: named **by value**, explicitly NOT classified.
+
+No constant retuned. `#262522` (48px) is now honestly *ambiguous* rather than a shade.
+
+### Verification
+
+- `npm test` **139/139**; non-vacuity **34/34** (**154 guards**); round-36 guard all **NON-VACUOUS**;
+the F44 sweep (8–32px) asserts no real text colour is ever called a shade.
+
 ## Thirty-fifth audit: the shade note misclassified real text (F43), and two retractions — 2026-09-29
 
 F42 verified on the deployed build (both notes present and additive; verdict tier works). The
