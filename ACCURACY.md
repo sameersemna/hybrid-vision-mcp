@@ -3921,6 +3921,65 @@ Measured live, it crashed the standing harness at section 2 (`d.measurements.con
 | `verify/nonvacuity-round33.mjs` | 7 perturbation guards + 2 construction-site invariants, all **NON-VACUOUS** |
 | live harness on a scratch build | `exit=0`, **0 red** checks (section 2 now passes) |
 
+## 5al. Thirty-fourth audit: the verdict survives every cap, and the failing list is characterised (F42)
+
+This round verified F40/F41 on the deployed build, **falsified the auditor's own round-33 attack on
+the tolerance value** (measured: at `tolerance: 24` the `outlined` fixture reported `#7c7974@4.09`,
+which sits on the fill→stroke line at t=1/3 with **zero residual** — an AA blend reported as failing
+text, so 16 correctly removed a FALSE POSITIVE and is the better value, not merely the tested one),
+and closed the guard-bug class (**0 of 32 harnesses** had stale patterns; the auditor's two
+candidates were their own extraction error). Two fixes remained.
+
+### Rec 1 — a verdict tier, so the verdict survives a small cap
+
+The verdict skeleton carries the full `notes` block (~1,400) plus `worst`/`best` (~920), so it needs
+~1.3k+ chars and a smaller cap fell through to the bare envelope — the verdict was **lost**. A
+**verdict tier** now sits between them: the scalars (verdict, counts, compact worst/best,
+`cluster_tolerance`) with the prose dropped. Both degraded tiers are serialized **compact** (size is
+the binding constraint at that point) and the tier's `_truncation` drops the per-action `actions`
+list for a one-line summary. Measured thresholds for a representative payload:
+
+| cap | tier | verdict present |
+|---|---|---|
+| ≥800 | verdict skeleton | ✅ |
+| 400–700 | verdict tier | ✅ |
+| ≤300 | honest envelope (`success: false`) | ✗ (correctly) |
+
+Before the tier, the verdict was lost below ~1,200; now it holds to 400.
+
+### Rec 2 — the failing list now says when its colours are shades of a MASKED colour
+
+On the dropcap the declared text `#464646` is read as a **2.4%** background plateau and masked, so it
+appears in no content channel, while the colours reported as failing (`#262522`, `#444443`,
+`#1d1b17`) are **anti-aliasing shades of it** — measured on the correct line (`background→masked`,
+the fixture has **no stroke**): t = 0.279 / 0.95 / 0.064, residual ≤ 0.62, with the declared text at
+t=1. The AA fold runs on the **survivors** and cannot reach a masked parent, so the note
+("blends … are not distinct text colours") contradicted the failing list. A note now states it:
+
+> *N of the reported failing colour(s) are ANTI-ALIASING shades of a MASKED plateau colour (edge
+> pixels of a panel/plateau fill, not a distinct ink): … treat them as the edge of the masked colour,
+> not as separate text.*
+
+The masked set is taken from `maskReconciliation.unmasked_failing_colours`, **not** `plateauFills`
+(measured: the dropcap's `#464646` is dropped by the multi-plateau mask, so `plateauFills` is empty
+for it). The disclosure is **added to**, never replaces, the existing mask-reconciliation note.
+
+### On the auditor's §6.2 (`failing_count` non-monotonic in tolerance)
+
+Confirmed (dropcap: 5, 2, 3, 3, 2, 2 at t=4…32), and it is expected: a wider cluster tolerance
+**merges** colours, so the count can fall as tolerance rises, while finer tolerances resolve more
+edge shades, so it can rise. It is not a converging quantity — the honest reading is that
+`failing_count` counts *reported clusters*, not independent text runs. Stated here rather than
+papered over; a fix would be a naming/semantics change, not a threshold move.
+
+### Verification
+
+| check | result |
+|---|---|
+| `npm test` | **137/137** |
+| non-vacuity harnesses | **32/32**, **149 guards** |
+| `verify/nonvacuity-round34.mjs` | 3 perturbation guards, all **NON-VACUOUS** |
+
 ## 9. New module map
 
 | File | Responsibility |

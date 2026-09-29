@@ -1,5 +1,33 @@
 # Changelog
 
+## Thirty-fourth audit: the verdict survives every cap, and the failing list is characterised (F42) — 2026-09-29
+
+F40/F41 verified on the deployed build; the auditor's round-33 attack on the tolerance value was
+**falsified** (at 24 the `outlined` fixture reports `#7c7974@4.09`, a zero-residual AA blend — so 16
+removed a FALSE POSITIVE and is the better value, not just the tested one); the guard-bug class is
+**closed** (0/32 stale patterns). Two recommendations implemented. See `ACCURACY.md` §5al.
+
+### A verdict tier, so the verdict survives a small cap
+
+The skeleton needs ~1.3k+ chars (it carries the full `notes` block), so a smaller cap fell through to
+the bare envelope and the verdict was **lost**. A **verdict tier** (scalars + compact worst/best +
+`cluster_tolerance`, prose dropped) now sits between the skeleton and the envelope; both degraded
+tiers are serialized **compact**. Measured: the verdict now holds down to a **400-char** cap (was
+~1,200).
+
+### The failing list is characterised
+
+The dropcap's declared text `#464646` is masked as a 2.4% plateau, so the colours reported as failing
+(`#262522`, `#444443`, `#1d1b17`) are its **anti-aliasing shades** — measured on the
+`background→masked` line (t = 0.279/0.95/0.064, residual ≤ 0.62; the fixture has **no stroke**), with
+the declared text at t=1. The AA fold runs on the survivors and cannot reach a masked parent, so a note
+now states the list's entries are shades of the masked colour. It **adds to**, and never replaces, the
+mask-reconciliation note.
+
+### Verification
+
+- `npm test` **137/137**; non-vacuity **32/32** (**149 guards**); round-34 guard all **NON-VACUOUS**.
+
 ### F41 — the response cap shrank a measurement to a bare envelope (found while verifying F40)
 
 Unifying the tolerance raised the photographic fixture's contrast response to **13,969 chars
